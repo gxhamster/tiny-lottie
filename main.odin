@@ -545,12 +545,12 @@ json_lottie_read_file_handle :: proc(
 
 	data.raw = os.read_entire_file_from_handle_or_err(fd, allocator, loc) or_return
 	parsed_json, parse_err := json.parse(data.raw)
-	// note(iyaan): Need to call json.destroy_value on parsed_json
-	// after we have fully parsed it into the structure
 	if parse_err != nil {
 		return JsonLottie{}, parse_err
 	}
-
+	// note(iyaan): Need to call json.destroy_value on parsed_json
+	// after we have fully parsed it into the structure
+	defer delete(data.raw, allocator)
 	defer json.destroy_value(parsed_json)
 
 	root := parsed_json.(json.Object)
@@ -643,31 +643,30 @@ main :: proc() {
 			}
 			mem.tracking_allocator_destroy(&track)
 		}
+	} else {
+		// note(iyaan): All allocations related to the JsonLottie struct
+		// and all its sub structs would be nice to have in one arena block
+		// so that it would be easy to free it all together
+		json_lottie_arena: vmem.Arena
+		arena_err := vmem.arena_init_growing(&json_lottie_arena)
+		ensure(arena_err == nil)
+		json_lottie_arena_allocator := vmem.arena_allocator(&json_lottie_arena)
+
+		context.allocator = json_lottie_arena_allocator
+
+		// You free the underlying buffer for the arena. Not the
+		// stack allocated arena struct. Hmm very C like!
+		defer vmem.arena_destroy(&json_lottie_arena)
 	}
 
-	// note(iyaan): All allocations related to the JsonLottie struct
-	// and all its sub structs would be nice to have in one arena block
-	// so that it would be easy to free it all together
-	json_lottie_arena: vmem.Arena
-	arena_err := vmem.arena_init_growing(&json_lottie_arena)
-	ensure(arena_err == nil)
-	json_lottie_arena_allocator := vmem.arena_allocator(&json_lottie_arena)
-
-
 	lottie_struct, err := json_lottie_read_file_name(
-		"./data/Fire.json",
-		json_lottie_arena_allocator,
+			"./data/Fire.json",
+			context.allocator,
 	)
-
 	if err != nil && err != JsonLottie_Error.None {
 		fmt.eprintf("Could not read lottie json file due to %s\n", err)
 		panic("Could not read lottie json file")
 	}
-
 	fmt.eprintln(lottie_struct.animation)
-
-
-	// You free the underlying buffer for the arena. Not the
-	// stack allocated arena struct. Hmm very C like!
-	vmem.arena_destroy(&json_lottie_arena)
+	
 }
