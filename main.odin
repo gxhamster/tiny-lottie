@@ -23,6 +23,7 @@ JsonLottie_Error :: enum {
 	Incompatible_String_Type,
 	Too_Large_Vector,
 	Too_Small_Vector,
+	Incompatible_Transform_Type,
 }
 
 Error :: union {
@@ -423,63 +424,24 @@ json_lottie_parse_bool :: proc(
 
 json_lottie_parse_keyframe_easing_vec :: proc(
 	value: ^json.Value,
+	required := false,
 	allocator := context.allocator,
 	loc := #caller_location,
 ) -> (
-	JsonLottie_Prop_Keyframe_Easing_Vec,
-	JsonLottie_Error,
+	easing_vec: JsonLottie_Prop_Keyframe_Easing_Vec,
+	err: JsonLottie_Error,
 ) {
-	check_internal_value :: proc(value: ^json.Value) -> JsonLottie_Error {
-		#partial switch value_type in value {
-		case json.Array:
-			value_as_arr := &value.(json.Array)
-			if len(value_as_arr) < 1 {
-				return .Too_Small_Vector
-			}
-			for elem in value_as_arr {
-				float_val, float_err := json_lottie_try_float(elem)
-				if float_val < 0 || float_val > 1 {
-					return .Outof_Range_Value
-				}
-			}
-			return .None
-		case:
-			return .Incompatible_Vector_Type
-		}
-	}
-
 	#partial switch value_type in value {
 	case json.Object:
-		r_keyframe_easing := JsonLottie_Prop_Keyframe_Easing_Vec{}
 		value_as_obj := &value.(json.Object)
-		required_fields := []string{"x", "y"}
-		for field in required_fields {
-			if ok := field in value_as_obj; ok == false {
-				return JsonLottie_Prop_Keyframe_Easing_Vec{}, .Missing_Required_Value
-			}
-		}
-		if err := check_internal_value(&value_as_obj["x"]); err != .None {
-			return r_keyframe_easing, err
-		}
-		if err := check_internal_value(&value_as_obj["y"]); err != .None {
-			return r_keyframe_easing, err
-		}
 
-		for idx in 0 ..< len(value_as_obj["x"].(json.Array)) {
-			r_keyframe_easing.x[idx], _ = json_lottie_try_float(
-				value_as_obj["x"].(json.Array)[idx],
-			)
-		}
-		for idx in 0 ..< len(value_as_obj["y"].(json.Array)) {
-			r_keyframe_easing.x[idx], _ = json_lottie_try_float(
-				value_as_obj["y"].(json.Array)[idx],
-			)
-		}
+		easing_vec.x = json_lottie_parse_vec(&value_as_obj["x"], true) or_return
+		easing_vec.y = json_lottie_parse_vec(&value_as_obj["y"], true) or_return
 
-		return r_keyframe_easing, .None
+		return easing_vec, .None
 
 	case:
-		return JsonLottie_Prop_Keyframe_Easing_Vec{}, .Incompatible_Object_Type
+		return not_required_or_error(required, easing_vec, .Incompatible_Object_Type)
 
 	}
 }
@@ -585,6 +547,7 @@ json_lottie_parse_scalar_keyframe :: proc(
 
 json_lottie_parse_position_keyframe :: proc(
 	value: ^json.Value,
+	required := false,
 	allocator := context.allocator,
 	loc := #caller_location,
 ) -> (
@@ -606,7 +569,7 @@ json_lottie_parse_position_keyframe :: proc(
 		return pos_keyframe, .None
 
 	case:
-		return pos_keyframe, .Incompatible_Object_Type
+		return not_required_or_error(required, pos_keyframe, .Incompatible_Object_Type)
 	}
 }
 
@@ -666,6 +629,7 @@ json_lottie_parse_position :: proc(
 
 json_lottie_parse_transform :: proc(
 	value: ^json.Value,
+	required := false,
 	allocator := context.allocator,
 	loc := #caller_location,
 ) -> (
@@ -678,12 +642,16 @@ json_lottie_parse_transform :: proc(
 	case json.Object:
 		obj := value.(json.Object)
 		transform.a = json_lottie_parse_position(&obj["a"]) or_return
-	case:
+		transform.p = json_lottie_parse_split_position(&obj["p"]) or_return
+		transform.r = json_lottie_parse_prop_scalar(&obj["r"]) or_return
+		transform.s = json_lottie_parse_prop_vector(&obj["s"]) or_return
+		transform.o = json_lottie_parse_prop_scalar(&obj["o"]) or_return
+		transform.sk = json_lottie_parse_prop_scalar(&obj["sk"]) or_return
+		transform.sa = json_lottie_parse_prop_scalar(&obj["sa"]) or_return
 		return transform, .None
+	case:
+		return not_required_or_error(required, transform, .Incompatible_Transform_Type)
 	}
-
-
-	return transform, .None
 }
 
 json_lottie_read_file_handle :: proc(
