@@ -6,8 +6,6 @@ import "core:fmt"
 import "core:mem"
 import vmem "core:mem/virtual"
 import "core:os"
-import "core:reflect"
-
 
 JsonLottie_Error :: enum {
 	None,
@@ -15,7 +13,9 @@ JsonLottie_Error :: enum {
 	Outof_Range_Value,
 	Incompatible_Vector_Type,
 	Incompatible_Vector_Inner_Type,
+	Incompatible_Object_Type,
 	Too_Large_Vector,
+	Too_Small_Vector,
 }
 
 Error :: union {
@@ -44,9 +44,14 @@ Vec2 :: distinct [2]f64
 
 
 // Properties
-JsonLottie_Prop_Keyframe_Easing :: struct {
-	x: []f64,
-	y: []f64,
+JsonLottie_Prop_Keyframe_Easing_Vec :: struct {
+	x: Vec3,
+	y: Vec3,
+}
+
+JsonLottie_Prop_Keyframe_Easing_Scalar :: struct {
+	x: f64,
+	y: f64,
 }
 
 JsonLottie_Prop_Scalar :: union {
@@ -66,8 +71,8 @@ JsonLottie_Prop_Scalar_Anim :: struct {
 	k:   []struct {
 		t: f64,
 		h: i64,
-		i: JsonLottie_Prop_Keyframe_Easing,
-		o: JsonLottie_Prop_Keyframe_Easing,
+		i: JsonLottie_Prop_Keyframe_Easing_Scalar,
+		o: JsonLottie_Prop_Keyframe_Easing_Scalar,
 		s: f64,
 	},
 }
@@ -88,8 +93,8 @@ JsonLottie_Prop_Vector_Anim :: struct {
 	k:   []struct {
 		t: f64,
 		h: i64,
-		i: JsonLottie_Prop_Keyframe_Easing,
-		o: JsonLottie_Prop_Keyframe_Easing,
+		i: JsonLottie_Prop_Keyframe_Easing_Vec,
+		o: JsonLottie_Prop_Keyframe_Easing_Vec,
 		s: Vec3,
 	},
 }
@@ -108,8 +113,8 @@ JsonLottie_Prop_Position_Anim :: struct {
 	k:   []struct {
 		t:  f64,
 		h:  i64,
-		i:  JsonLottie_Prop_Keyframe_Easing,
-		o:  JsonLottie_Prop_Keyframe_Easing,
+		i:  JsonLottie_Prop_Keyframe_Easing_Vec,
+		o:  JsonLottie_Prop_Keyframe_Easing_Vec,
 		s:  []Vec3,
 		ti: []Vec3,
 		to: []Vec3,
@@ -264,6 +269,83 @@ json_lottie_parse_vec :: proc(
 			return vec, .None
 	}
 	return Vec3{}, .Incompatible_Vector_Type
+}
+
+json_lottie_try_float :: proc(
+	value: json.Value,
+	allocator := context.allocator,
+	loc := #caller_location,
+) -> (
+	f64,
+	JsonLottie_Error,
+) {
+	#partial switch elem_type in value {
+		case json.Float:
+			return f64(value.(json.Float)), .None
+		case json.Integer:
+			return f64(value.(json.Integer)), .None
+		case:
+			return f64(0.0), .Incompatible_Vector_Inner_Type
+	}
+}
+
+json_lottie_parse_keyframe_easing_vec :: proc(
+	value: ^json.Value,
+	allocator := context.allocator,
+	loc := #caller_location,
+) -> (
+	JsonLottie_Prop_Keyframe_Easing_Vec,
+	JsonLottie_Error,
+) {
+	check_internal_value :: proc(value: ^json.Value) -> JsonLottie_Error {
+		#partial switch value_type in value {
+			case json.Array:
+				value_as_arr := &value.(json.Array)
+				if len(value_as_arr) < 1 {
+					return .Too_Small_Vector
+				}
+				for elem in value_as_arr {
+					float_val, float_err := json_lottie_try_float(elem)
+					if float_val < 0 || float_val > 1 {
+						return .Outof_Range_Value
+					}
+				}
+				return .None
+			case:
+				return .Incompatible_Vector_Type
+		}
+	}
+
+	#partial switch value_type in value {
+		case json.Object:
+			r_keyframe_easing := JsonLottie_Prop_Keyframe_Easing_Vec{}
+			value_as_obj := &value.(json.Object)
+			required_fields := []string{"x", "y"}
+			for field in required_fields {
+				if ok := field in value_as_obj; ok == false {
+					return JsonLottie_Prop_Keyframe_Easing_Vec{}, .Missing_Required_Value
+				}
+			}
+			if err := check_internal_value(&value_as_obj["x"]); err != .None {
+				return r_keyframe_easing, err
+			}
+			if err := check_internal_value(&value_as_obj["y"]); err != .None {
+				return r_keyframe_easing, err
+			}
+
+			for idx in 0..<len(value_as_obj["x"].(json.Array)) {
+				r_keyframe_easing.x[idx], _ = json_lottie_try_float(value_as_obj["x"].(json.Array)[idx])
+			}
+			for idx in 0..<len(value_as_obj["y"].(json.Array)) {
+				r_keyframe_easing.x[idx], _ = json_lottie_try_float(value_as_obj["y"].(json.Array)[idx])
+			}
+
+			return r_keyframe_easing, .None
+
+		case:
+			return JsonLottie_Prop_Keyframe_Easing_Vec{}, .Incompatible_Object_Type
+
+	}
 }
 
 json_lottie_parse_position :: proc(
