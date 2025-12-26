@@ -97,16 +97,19 @@ JsonLottie_Prop_Vector_Single :: struct {
 	a:   bool,
 	k:   Vec3,
 }
+
+JsonLottie_Prop_Vector_Keyframe :: struct {
+	t: f64,
+	h: i64,
+	i: JsonLottie_Prop_Keyframe_Easing_Vec,
+	o: JsonLottie_Prop_Keyframe_Easing_Vec,
+	s: Vec3,
+}
+
 JsonLottie_Prop_Vector_Anim :: struct {
 	sid: string,
 	a:   bool,
-	k:   []struct {
-		t: f64,
-		h: i64,
-		i: JsonLottie_Prop_Keyframe_Easing_Vec,
-		o: JsonLottie_Prop_Keyframe_Easing_Vec,
-		s: Vec3,
-	},
+	k:   []JsonLottie_Prop_Vector_Keyframe,
 }
 
 // 2D version of a Vector property
@@ -295,6 +298,62 @@ json_lottie_parse_prop_scalar :: proc(
 		case:
 			return scalar, .Incompatible_Array_Type
 		}
+	}
+}
+
+json_lottie_parse_prop_vector :: proc(
+	value: ^json.Value,
+	required := false,
+	allocator := context.allocator,
+	loc := #caller_location,
+) -> (
+	vector_prop: JsonLottie_Prop_Vector,
+	err: JsonLottie_Error,
+) {
+	
+	#partial switch type in value {
+	case json.Object:
+		obj := value.(json.Object);
+		sid_val := json_lottie_parse_string(&obj["sid"]) or_return;
+		animated_val := json_lottie_parse_integer(&obj["a"]) or_return;
+
+		if animated_val == 0 {
+			single_vector := JsonLottie_Prop_Vector_Single {
+				a = false,
+				sid = sid_val,
+			}
+			single_vector.k = json_lottie_parse_vec(&obj["k"]) or_return
+			vector_prop = single_vector
+			return vector_prop, .None
+		} else if  animated_val == 1 {
+			anim_vector := JsonLottie_Prop_Vector_Anim {
+				a = true,
+			}
+			anim_vector.sid = json_lottie_parse_string(&obj["sid"]) or_return
+
+			#partial switch type in obj["k"] {
+			case json.Array:
+				arr := obj["k"].(json.Array)
+				// warning(iyaan): This allocation needs to be watched out for
+				// when using non-arena allocators. Does it matter during debug
+				// mode when using tracking allocator
+				keyframes := make([dynamic]JsonLottie_Prop_Vector_Keyframe)
+				resize(&keyframes, len(arr))
+				for &elem in arr {
+					keyframe := json_lottie_parse_vector_keyframe(&elem) or_return
+					append(&keyframes, keyframe)
+				}
+				anim_vector.k = keyframes[:]
+				return anim_vector, .None
+			case:
+				return vector_prop, .Incompatible_Array_Type
+			}
+		} else {
+			return vector_prop, .Incompatible_Boolean_Type
+		}
+
+	case:
+		return not_required_or_error(required, vector_prop, .Incompatible_Object_Type)
 	}
 }
 
@@ -542,6 +601,33 @@ json_lottie_parse_scalar_keyframe :: proc(
 
 	case:
 		return not_required_or_error(required, scalar_keyframe, .Incompatible_Object_Type)
+	}
+}
+
+
+json_lottie_parse_vector_keyframe :: proc(
+	value: ^json.Value,
+	required := false,
+	allocator := context.allocator,
+	loc := #caller_location,
+) -> (
+	vec_keyframe: JsonLottie_Prop_Vector_Keyframe,
+	err: JsonLottie_Error,
+) {
+	#partial switch value_type in value {
+	case json.Object:
+		object := value.(json.Object)
+
+		vec_keyframe.t = json_lottie_parse_number(object["t"]) or_return
+		vec_keyframe.h = json_lottie_parse_integer(&object["h"]) or_return
+		vec_keyframe.i = json_lottie_parse_keyframe_easing_vec(&object["i"]) or_return
+		vec_keyframe.o = json_lottie_parse_keyframe_easing_vec(&object["o"]) or_return
+		vec_keyframe.s = json_lottie_parse_vec(&object["s"]) or_return
+
+		return vec_keyframe, .None
+
+	case:
+		return not_required_or_error(required, vec_keyframe, .Incompatible_Object_Type)
 	}
 }
 
