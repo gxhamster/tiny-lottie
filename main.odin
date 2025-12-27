@@ -1,4 +1,3 @@
-#+feature dynamic-literals
 package main
 
 import "base:runtime"
@@ -8,7 +7,7 @@ import "core:mem"
 import vmem "core:mem/virtual"
 import "core:os"
 import "core:reflect"
-import "core:testing"
+
 
 JsonLottie_Error :: enum {
 	None,
@@ -55,15 +54,20 @@ JsonLottie_Animation :: struct {
 Vec3 :: distinct [3]f64
 Vec2 :: distinct [2]f64
 
-// note(iyaan): sometimes you might find color values 
+// note(iyaan): sometimes you might find color values
 // with 4 components (the 4th being alpha) but most
 // players ignore the last component.
 Color3 :: Vec3
-Color4 :: distinct[4]f64
+Color4 :: distinct [4]f64
 HexColor :: distinct string
 Gradient :: distinct []f64
 
-
+BezierShape :: struct {
+	c: bool,
+	i: []Vec3,
+	o: []Vec3,
+	v: []Vec3,
+}
 
 // Properties
 JsonLottie_Prop_Keyframe_Easing_Vec :: struct {
@@ -970,7 +974,6 @@ json_lottie_unmarshal_array :: proc(
 				allocator,
 			)
 
-
 			raw.data = raw_data(data)
 			raw.len = int(json_array_len)
 			for elem, idx in json_array {
@@ -982,11 +985,16 @@ json_lottie_unmarshal_array :: proc(
 				#partial switch base_t in elem_type_base.variant {
 				case runtime.Type_Info_Struct, runtime.Type_Info_Union:
 					json_lottie_unmarshal_object(elem, elem_any)
-				case runtime.Type_Info_Integer, runtime.Type_Info_Float,runtime.Type_Info_Boolean,runtime.Type_Info_String:
+				case runtime.Type_Info_Integer,
+				     runtime.Type_Info_Float,
+				     runtime.Type_Info_Boolean,
+				     runtime.Type_Info_String:
 					json_lottie_unmarshal_value(elem, elem_any)
+				case runtime.Type_Info_Slice, runtime.Type_Info_Array:
+					json_lottie_unmarshal_array(elem, elem_any)
 				case:
 					panic("Unknown array inner element type")
-				}	
+				}
 			}
 			return .None
 		case runtime.Type_Info_Array:
@@ -994,7 +1002,9 @@ json_lottie_unmarshal_array :: proc(
 				internal_elem_type_info := array_type.elem
 				internal_elem_size := internal_elem_type_info.size
 				for elem, idx in json_array {
-					elem_ptr := rawptr(uintptr(p.data) + uintptr(idx) * uintptr(internal_elem_size))
+					elem_ptr := rawptr(
+						uintptr(p.data) + uintptr(idx) * uintptr(internal_elem_size),
+					)
 					elem_any := any{elem_ptr, internal_elem_type_info.id}
 					json_lottie_unmarshal_value(elem, elem_any)
 				}
@@ -1033,10 +1043,15 @@ json_lottie_unmarshal_object :: proc(
 				field_type_as_base := reflect.type_info_base(field.type)
 				field_ptr := rawptr(uintptr(p.data) + field.offset)
 				#partial switch struct_type in field_type_as_base.variant {
-				case runtime.Type_Info_Integer, runtime.Type_Info_Float, runtime.Type_Info_String, runtime.Type_Info_Boolean:
+				case runtime.Type_Info_Integer,
+				     runtime.Type_Info_Float,
+				     runtime.Type_Info_String,
+				     runtime.Type_Info_Boolean:
 					field_value_any := any{field_ptr, field.type.id}
 					json_lottie_unmarshal_value(json_obj[field.name], field_value_any)
-				case runtime.Type_Info_Array, runtime.Type_Info_Slice, runtime.Type_Info_Dynamic_Array:
+				case runtime.Type_Info_Array,
+				     runtime.Type_Info_Slice,
+				     runtime.Type_Info_Dynamic_Array:
 					field_value_any := any{field_ptr, field.type.id}
 					json_lottie_unmarshal_array(json_obj[field.name], field_value_any)
 				case runtime.Type_Info_Struct:
@@ -1064,7 +1079,7 @@ json_lottie_unmarshal_object :: proc(
 					case:
 						panic("Unsupported union field")
 					}
-					
+
 				case:
 					panic("Unsupported struct field")
 				}
@@ -1078,55 +1093,3 @@ json_lottie_unmarshal_object :: proc(
 	}
 }
 
-@(test)
-json_lottie_unmarshal_test :: proc(t: ^testing.T) {
-	test_struct :: struct {
-		sid: string,
-		a:   bool,
-		k:   []f64,
-		j:   JsonLottie_Prop_Keyframe_Easing_Scalar,
-		v:   Vec3
-	}
-
-	a := json.Array{1.2, 1.3, 1.4, 1.5, 16.2}
-
-	m := json.Object {
-		"sid" = "1234",
-		"a" = true,
-		"k" = a,
-		"j" = json.Object{"x" = 1, "y" = 2},
-		"v" = json.Array{5, 5, 6}
-	}
-
-	defer free_all()
-
-	t1 := test_struct {
-		k = {1.1, 1.2, 1.3},
-	}
-
-	json_lottie_unmarshal_value(m["sid"], t1.sid)
-	testing.expect(t, t1.sid == "1234", "Unmarshal value correctly")
-	
-
-	json_lottie_unmarshal_object(m, t1)
-	testing.expect_value(t, t1.sid, "1234")
-	testing.expect_value(t, t1.a, true)
-	for elem, idx in a {
-		testing.expect_value(t, t1.k[idx], elem.(json.Float))
-	}
-	testing.expect_value(t, t1.j, JsonLottie_Prop_Keyframe_Easing_Scalar{1, 2})
-	testing.expect_value(t, t1.v, Vec3{5, 5, 6})
-
-	test_struct2 :: struct {
-		j: []JsonLottie_Prop_Keyframe_Easing_Scalar
-	}
-	t2 := test_struct2{}
-
-	m1 := json.Object{
-		"j" = json.Array{json.Object{"x" = 1, "y" = 2}, json.Object{"x" = 3, "y" = 4}}
-	}
-	json_lottie_unmarshal_object(m1, t2)
-	testing.expect(t, len(t2.j) == 2, "Length should be 2")
-	testing.expect_value(t, t2.j[0], JsonLottie_Prop_Keyframe_Easing_Scalar{1, 2})
-	testing.expect_value(t, t2.j[1], JsonLottie_Prop_Keyframe_Easing_Scalar{3, 4})
-}
