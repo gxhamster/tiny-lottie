@@ -1,3 +1,4 @@
+#+feature dynamic-literals
 package main
 
 import "base:runtime"
@@ -7,11 +8,14 @@ import "core:fmt"
 import "core:mem"
 import vmem "core:mem/virtual"
 import "core:os"
+import "core:reflect"
+import "core:testing"
 
 JsonLottie_Error :: enum {
 	None,
 	Missing_Required_Value,
 	Outof_Range_Value,
+	Unmarshal_Err,
 	Incompatible_Vector_Type,
 	Incompatible_Vector_Inner_Type,
 	Incompatible_Object_Type,
@@ -118,7 +122,7 @@ JsonLottie_Prop_Vector_Anim :: struct {
 JsonLottie_Prop_Position :: union {
 	JsonLottie_Prop_Position_Single,
 	JsonLottie_Prop_Position_Anim,
-	JsonLottie_Prop_Split_Position
+	JsonLottie_Prop_Split_Position,
 }
 
 JsonLottie_Prop_Position_Single :: JsonLottie_Prop_Vector_Single
@@ -163,8 +167,6 @@ JsonLottie_Layer :: struct {
 	ip:     f64,
 	op:     f64,
 }
-
-JsonLottie_Visual_Layer :: struct {}
 
 JsonLottie_Shape_Layer :: struct {}
 
@@ -251,11 +253,11 @@ json_lottie_parse_layers :: proc(
 	p := (layer_json_array[0].(json.Object)["ks"])
 
 	transform, err := json_lottie_parse_transform(p)
-	if err != .None {
-		fmt.println(err)
-	} else {
-		fmt.println(transform)
-	}
+	// if err != .None {
+	// 	fmt.println(err)
+	// } else {
+	// 	fmt.println(transform)
+	// }
 	return .None
 }
 
@@ -270,12 +272,12 @@ json_lottie_parse_prop_scalar :: proc(
 ) {
 	#partial switch type in value {
 	case json.Object:
-		obj := value.(json.Object);
-		sid_val := json_lottie_parse_string(obj["sid"]) or_return;
-		animated := json_lottie_parse_integer(obj["a"]) or_return;
+		obj := value.(json.Object)
+		sid_val := json_lottie_parse_string(obj["sid"]) or_return
+		animated := json_lottie_parse_integer(obj["a"]) or_return
 		if animated == 0 {
 			single_scalar := JsonLottie_Prop_Scalar_Single {
-				a = false,
+				a   = false,
 				sid = sid_val,
 			}
 			single_scalar.k = json_lottie_parse_number(obj["k"]) or_return
@@ -283,7 +285,7 @@ json_lottie_parse_prop_scalar :: proc(
 			return scalar, .None
 		} else {
 			anim_scalar := JsonLottie_Prop_Scalar_Anim {
-				a = true,
+				a   = true,
 				sid = sid_val,
 			}
 
@@ -320,22 +322,22 @@ json_lottie_parse_prop_vector :: proc(
 	vector_prop: JsonLottie_Prop_Vector,
 	err: JsonLottie_Error,
 ) {
-	
+
 	#partial switch type in value {
 	case json.Object:
-		obj := value.(json.Object);
-		sid_val := json_lottie_parse_string(obj["sid"]) or_return;
-		animated_val := json_lottie_parse_integer(obj["a"]) or_return;
+		obj := value.(json.Object)
+		sid_val := json_lottie_parse_string(obj["sid"]) or_return
+		animated_val := json_lottie_parse_integer(obj["a"]) or_return
 
 		if animated_val == 0 {
 			single_vector := JsonLottie_Prop_Vector_Single {
-				a = false,
+				a   = false,
 				sid = sid_val,
 			}
 			single_vector.k = json_lottie_parse_vec(obj["k"]) or_return
 			vector_prop = single_vector
 			return vector_prop, .None
-		} else if  animated_val == 1 {
+		} else if animated_val == 1 {
 			anim_vector := JsonLottie_Prop_Vector_Anim {
 				a = true,
 			}
@@ -742,6 +744,9 @@ json_lottie_parse_transform :: proc(
 	transform: JsonLottie_Transform,
 	err: JsonLottie_Error,
 ) {
+	spec := JsonLottie_Transform{}
+	// json_lottie_unmarshal(value, spec)
+
 	// note(iyaan): Not required fields in a transform
 	// just fill the struct with whatever available
 	#partial switch type in value {
@@ -886,11 +891,216 @@ main :: proc() {
 		defer vmem.arena_destroy(&json_lottie_arena)
 	}
 
+
 	lottie_struct, err := json_lottie_read_file_name("./data/Fire.json", context.allocator)
 	if err != nil && err != JsonLottie_Error.None {
 		fmt.eprintf("Could not read lottie json file due to %s\n", err)
 		panic("Could not read lottie json file")
 	}
-	fmt.eprintln(lottie_struct.animation)
+
+	test_struct :: struct {
+		sid: string,
+		a:   bool,
+		k:   []f64,
+		j:   test_struct1,
+		v:   Vec3
+	}
+
+	test_struct1 :: struct {
+		x: f64,
+		y: f64,
+	}
+
+	a := json.Array{1.2, 1.3, 1.4, 1.5, 16.2}
+
+	m := json.Object {
+		"sid" = "1234",
+		"a" = true,
+		"k" = a,
+		"j" = json.Object{"x" = 1, "y" = 2},
+		"v" = json.Array{5, 5, 6}
+	}
+
+	// defer json.destroy_value(m)
+	defer json.destroy_value(a)
+
+	t := test_struct {
+		k = {1.1, 1.2, 1.3},
+	}
+
+	// json_lottie_unmarshal_value(m["sid"], t.sid)
+	// json_lottie_unmarshal_array_types(m["k"], t.k)
+	json_lottie_unmarshal_object(m, t)
+	// delete(t.k)
+	fmt.println(t)
+	// fmt.eprintln(lottie_struct.animation)
+
+}
+
+
+json_lottie_unmarshal_value :: proc(
+	val: json.Value,
+	p: any,
+	allocator := context.allocator,
+) -> (
+	err: JsonLottie_Error,
+) {
+	type_info := reflect.type_info_base(type_info_of(p.id))
+	ptr := p.data
+
+	#partial switch t in type_info.variant {
+	case runtime.Type_Info_String:
+		val := json_lottie_parse_string(val) or_return
+		field_val_ptr := transmute(^string)ptr
+		field_val_ptr^ = val
+	case runtime.Type_Info_Boolean:
+		val := json_lottie_parse_bool(val) or_return
+		field_val_ptr := transmute(^bool)ptr
+		field_val_ptr^ = val
+	case runtime.Type_Info_Float:
+		val := json_lottie_parse_number(val) or_return
+		field_val_ptr := transmute(^f64)ptr
+		field_val_ptr^ = val
+	case runtime.Type_Info_Integer:
+		val := json_lottie_parse_integer(val) or_return
+		field_val_ptr := transmute(^i64)ptr
+		field_val_ptr^ = val
+	case:
+		return .Unmarshal_Err
+	}
+	return .None
+}
+
+json_lottie_unmarshal_array :: proc(
+	val: json.Value,
+	p: any,
+	allocator := context.allocator,
+) -> (
+	err: JsonLottie_Error,
+) {
+	type_info := reflect.type_info_base(type_info_of(p.id))
+	ptr := p.data
+
+	#partial switch t in val {
+	case json.Array:
+		json_array := val.(json.Array)
+		json_array_len := len(json_array)
+
+		#partial switch array_type in type_info.variant {
+		case runtime.Type_Info_Slice:
+			internal_elem_type_info := array_type.elem
+			internal_elem_size := internal_elem_type_info.size
+			internal_elem_alignment := internal_elem_type_info.align
+			raw := (^mem.Raw_Slice)(p.data)
+
+			data, alloc_err := mem.alloc_bytes(
+				internal_elem_size * int(json_array_len),
+				internal_elem_alignment,
+				allocator,
+			)
+
+			raw.data = raw_data(data)
+			raw.len = int(json_array_len)
+			for elem, idx in json_array {
+				elem_ptr := rawptr(uintptr(raw.data) + uintptr(idx) * uintptr(internal_elem_size))
+				elem_any := any{elem_ptr, internal_elem_type_info.id}
+				json_lottie_unmarshal_value(elem, elem_any)
+			}
+			return .None
+		case runtime.Type_Info_Array:
+			fmt.println("Array info:", array_type)
+			if json_array_len <= array_type.count {
+				internal_elem_type_info := array_type.elem
+				internal_elem_size := internal_elem_type_info.size
+				for elem, idx in json_array {
+					elem_ptr := rawptr(uintptr(p.data) + uintptr(idx) * uintptr(internal_elem_size))
+					elem_any := any{elem_ptr, internal_elem_type_info.id}
+					json_lottie_unmarshal_value(elem, elem_any)
+				}
+			} else {
+				return .Too_Large_Vector
+			}
+		case runtime.Type_Info_Dynamic_Array:
+		case:
+			return .Incompatible_Array_Type
+		}
+	case:
+		return .Incompatible_Array_Type
+	}
+	return .Unmarshal_Err
+}
+
+json_lottie_unmarshal_object :: proc(
+	val: json.Value,
+	p: any,
+	allocator := context.allocator,
+) -> (
+	err: JsonLottie_Error,
+) {
+	type_info := reflect.type_info_base(type_info_of(p.id))
+	ptr := p.data
+
+	#partial switch t in type_info.variant {
+	case reflect.Type_Info_Struct:
+		fields := reflect.struct_fields_zipped(p.id)
+
+		#partial switch tval in val {
+		case json.Object:
+			json_obj := val.(json.Object)
+			for field, idx in fields {
+				field_type_as_base := reflect.type_info_base(field.type)
+
+				field_ptr := rawptr(uintptr(p.data) + field.offset)
+				#partial switch struct_type in field_type_as_base.variant {
+				case runtime.Type_Info_Integer, runtime.Type_Info_Float, runtime.Type_Info_String, runtime.Type_Info_Boolean:
+					field_value_any := any{field_ptr, field.type.id}
+					json_lottie_unmarshal_value(json_obj[field.name], field_value_any)
+				case runtime.Type_Info_Array, runtime.Type_Info_Slice, runtime.Type_Info_Dynamic_Array:
+					field_value_any := any{field_ptr, field.type.id}
+					json_lottie_unmarshal_array(json_obj[field.name], field_value_any)
+				case runtime.Type_Info_Struct:
+					field_value_any := any{field_ptr, field.type.id}
+					json_lottie_unmarshal_object(json_obj[field.name], field_value_any)
+				case:
+					fmt.println(struct_type)
+					panic("Unsupported struct field")
+				}
+			}
+			return .None
+		case:
+			return .Incompatible_Object_Type
+		}
+	case:
+		return .Incompatible_Object_Type
+	}
+}
+
+@(test)
+json_lottie_unmarshal_test :: proc(t: ^testing.T) {
+	test_struct :: struct {
+		sid: string,
+		a:   bool,
+		k:   []f64,
+		j:   test_struct1,
+	}
+
+	test_struct1 :: struct {
+		x: f64,
+		y: f64,
+	}
+
+	a := json.Array{1.2, 1.3, 1.4, 1.5, 16.2}
+
+	m := json.Object {
+		"sid" = "1234",
+		"a" = true,
+		"k" = a,
+		"j" = json.Object{"x" = 1, "y" = 2},
+	}
+
+	t := test_struct {
+		k = {1.1, 1.2, 1.3},
+	}
+	// testing.expect_value(t, hash, 745)
 
 }
