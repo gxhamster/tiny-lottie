@@ -745,7 +745,8 @@ json_lottie_parse_transform :: proc(
 	err: JsonLottie_Error,
 ) {
 	spec := JsonLottie_Transform{}
-	// json_lottie_unmarshal(value, spec)
+	json_lottie_unmarshal_object(value, spec)
+	fmt.println(spec)
 
 	// note(iyaan): Not required fields in a transform
 	// just fill the struct with whatever available
@@ -898,43 +899,6 @@ main :: proc() {
 		panic("Could not read lottie json file")
 	}
 
-	test_struct :: struct {
-		sid: string,
-		a:   bool,
-		k:   []f64,
-		j:   test_struct1,
-		v:   Vec3
-	}
-
-	test_struct1 :: struct {
-		x: f64,
-		y: f64,
-	}
-
-	a := json.Array{1.2, 1.3, 1.4, 1.5, 16.2}
-
-	m := json.Object {
-		"sid" = "1234",
-		"a" = true,
-		"k" = a,
-		"j" = json.Object{"x" = 1, "y" = 2},
-		"v" = json.Array{5, 5, 6}
-	}
-
-	// defer json.destroy_value(m)
-	defer json.destroy_value(a)
-
-	t := test_struct {
-		k = {1.1, 1.2, 1.3},
-	}
-
-	// json_lottie_unmarshal_value(m["sid"], t.sid)
-	// json_lottie_unmarshal_array_types(m["k"], t.k)
-	json_lottie_unmarshal_object(m, t)
-	// delete(t.k)
-	fmt.println(t)
-	// fmt.eprintln(lottie_struct.animation)
-
 }
 
 
@@ -1008,7 +972,6 @@ json_lottie_unmarshal_array :: proc(
 			}
 			return .None
 		case runtime.Type_Info_Array:
-			fmt.println("Array info:", array_type)
 			if json_array_len <= array_type.count {
 				internal_elem_type_info := array_type.elem
 				internal_elem_size := internal_elem_type_info.size
@@ -1062,7 +1025,8 @@ json_lottie_unmarshal_object :: proc(
 					field_value_any := any{field_ptr, field.type.id}
 					json_lottie_unmarshal_object(json_obj[field.name], field_value_any)
 				case:
-					fmt.println(struct_type)
+					// TODO(iyaan): Handle some obvious unions (eg: JsonLottie_Prop_Position)
+					// Finding a generic way to handle all cases of unions would be too much
 					panic("Unsupported struct field")
 				}
 			}
@@ -1077,16 +1041,12 @@ json_lottie_unmarshal_object :: proc(
 
 @(test)
 json_lottie_unmarshal_test :: proc(t: ^testing.T) {
-	test_struct :: struct {
+test_struct :: struct {
 		sid: string,
 		a:   bool,
 		k:   []f64,
-		j:   test_struct1,
-	}
-
-	test_struct1 :: struct {
-		x: f64,
-		y: f64,
+		j:   JsonLottie_Prop_Keyframe_Easing_Scalar,
+		v:   Vec3
 	}
 
 	a := json.Array{1.2, 1.3, 1.4, 1.5, 16.2}
@@ -1096,11 +1056,25 @@ json_lottie_unmarshal_test :: proc(t: ^testing.T) {
 		"a" = true,
 		"k" = a,
 		"j" = json.Object{"x" = 1, "y" = 2},
+		"v" = json.Array{5, 5, 6}
 	}
 
-	t := test_struct {
+	defer free_all()
+
+	t1 := test_struct {
 		k = {1.1, 1.2, 1.3},
 	}
-	// testing.expect_value(t, hash, 745)
 
+	json_lottie_unmarshal_value(m["sid"], t1.sid)
+	testing.expect(t, t1.sid == "1234", "Unmarshal value correctly")
+	
+
+	json_lottie_unmarshal_object(m, t1)
+	testing.expect_value(t, t1.sid, "1234")
+	testing.expect_value(t, t1.a, true)
+	for elem, idx in a {
+		testing.expect_value(t, t1.k[idx], elem.(json.Float))
+	}
+	testing.expect_value(t, t1.j, JsonLottie_Prop_Keyframe_Easing_Scalar{1, 2})
+	testing.expect_value(t, t1.v, Vec3{5, 5, 6})
 }
