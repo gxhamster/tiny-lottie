@@ -2,7 +2,6 @@
 package main
 
 import "base:runtime"
-import "core:debug/pe"
 import "core:encoding/json"
 import "core:fmt"
 import "core:mem"
@@ -27,9 +26,9 @@ JsonLottie_Error :: enum {
 	Incompatible_String_Type,
 	Incompatible_Position_Type,
 	Incompatible_Prop_Scalar_Type,
+	Incompatible_Transform_Type,
 	Too_Large_Vector,
 	Too_Small_Vector,
-	Incompatible_Transform_Type,
 }
 
 Error :: union {
@@ -52,9 +51,18 @@ JsonLottie_Animation :: struct {
 	slots:   json.Object,
 }
 
-// Base types
+// Values
 Vec3 :: distinct [3]f64
 Vec2 :: distinct [2]f64
+
+// note(iyaan): sometimes you might find color values 
+// with 4 components (the 4th being alpha) but most
+// players ignore the last component.
+Color3 :: Vec3
+Color4 :: distinct[4]f64
+HexColor :: distinct string
+Gradient :: distinct []f64
+
 
 
 // Properties
@@ -334,7 +342,7 @@ json_lottie_parse_prop_vector :: proc(
 				a   = false,
 				sid = sid_val,
 			}
-			single_vector.k = json_lottie_parse_vec(obj["k"]) or_return
+			single_vector.k = json_lottie_parse_value_vector(obj["k"]) or_return
 			vector_prop = single_vector
 			return vector_prop, .None
 		} else if animated_val == 1 {
@@ -370,7 +378,7 @@ json_lottie_parse_prop_vector :: proc(
 }
 
 
-json_lottie_parse_vec :: proc(
+json_lottie_parse_value_vector :: proc(
 	value: json.Value,
 	required := false,
 	allocator := context.allocator,
@@ -506,8 +514,8 @@ json_lottie_parse_keyframe_easing_vec :: proc(
 	case json.Object:
 		value_as_obj := value.(json.Object)
 
-		easing_vec.x = json_lottie_parse_vec(value_as_obj["x"], true) or_return
-		easing_vec.y = json_lottie_parse_vec(value_as_obj["y"], true) or_return
+		easing_vec.x = json_lottie_parse_value_vector(value_as_obj["x"], true) or_return
+		easing_vec.y = json_lottie_parse_value_vector(value_as_obj["y"], true) or_return
 
 		return easing_vec, .None
 
@@ -644,7 +652,7 @@ json_lottie_parse_vector_keyframe :: proc(
 		vec_keyframe.h = json_lottie_parse_integer(object["h"]) or_return
 		vec_keyframe.i = json_lottie_parse_keyframe_easing_vec(object["i"]) or_return
 		vec_keyframe.o = json_lottie_parse_keyframe_easing_vec(object["o"]) or_return
-		vec_keyframe.s = json_lottie_parse_vec(object["s"]) or_return
+		vec_keyframe.s = json_lottie_parse_value_vector(object["s"]) or_return
 
 		return vec_keyframe, .None
 
@@ -670,9 +678,9 @@ json_lottie_parse_position_keyframe :: proc(
 		pos_keyframe.h = json_lottie_parse_integer(object["h"]) or_return
 		pos_keyframe.i = json_lottie_parse_keyframe_easing_vec(object["i"]) or_return
 		pos_keyframe.o = json_lottie_parse_keyframe_easing_vec(object["o"]) or_return
-		pos_keyframe.s = json_lottie_parse_vec(object["s"]) or_return
-		pos_keyframe.ti = json_lottie_parse_vec(object["ti"]) or_return
-		pos_keyframe.to = json_lottie_parse_vec(object["to"]) or_return
+		pos_keyframe.s = json_lottie_parse_value_vector(object["s"]) or_return
+		pos_keyframe.ti = json_lottie_parse_value_vector(object["ti"]) or_return
+		pos_keyframe.to = json_lottie_parse_value_vector(object["to"]) or_return
 
 		return pos_keyframe, .None
 
@@ -695,18 +703,14 @@ json_lottie_parse_position :: proc(
 	case json.Object:
 		position_obj := value.(json.Object)
 		required_fields := []string{"a", "k"}
-		for field in required_fields {
-			if ok := field in position_obj; ok == false {
-				return position, .Missing_Required_Value
-			}
-		}
+		json_check_missing_required(value, required_fields) or_return
 
 		animated := json_lottie_parse_integer(position_obj["a"], true) or_return
 		if animated == 0 {
 			single_pos := JsonLottie_Prop_Position_Single {
 				a = false,
 			}
-			single_pos.k = json_lottie_parse_vec(position_obj["k"]) or_return
+			single_pos.k = json_lottie_parse_value_vector(position_obj["k"]) or_return
 			return single_pos, .None
 		} else {
 			position_anim := JsonLottie_Prop_Position_Anim {
@@ -898,7 +902,6 @@ main :: proc() {
 		fmt.eprintf("Could not read lottie json file due to %s\n", err)
 		panic("Could not read lottie json file")
 	}
-
 }
 
 
@@ -957,18 +960,33 @@ json_lottie_unmarshal_array :: proc(
 			internal_elem_alignment := internal_elem_type_info.align
 			raw := (^mem.Raw_Slice)(p.data)
 
+			// note(iyaan): This memory will be tricky to free
+			// in a normal heap allocator. Maybe everything related
+			// to JsonLottie_* structs should be in one memory space,
+			// that will be freed together (arena)
 			data, alloc_err := mem.alloc_bytes(
 				internal_elem_size * int(json_array_len),
 				internal_elem_alignment,
 				allocator,
 			)
 
+
 			raw.data = raw_data(data)
 			raw.len = int(json_array_len)
 			for elem, idx in json_array {
 				elem_ptr := rawptr(uintptr(raw.data) + uintptr(idx) * uintptr(internal_elem_size))
 				elem_any := any{elem_ptr, internal_elem_type_info.id}
-				json_lottie_unmarshal_value(elem, elem_any)
+				elem_type_base := reflect.type_info_base(type_info_of(internal_elem_type_info.id))
+				// fmt.println(elem_type_base)
+
+				#partial switch base_t in elem_type_base.variant {
+				case runtime.Type_Info_Struct, runtime.Type_Info_Union:
+					json_lottie_unmarshal_object(elem, elem_any)
+				case runtime.Type_Info_Integer, runtime.Type_Info_Float,runtime.Type_Info_Boolean,runtime.Type_Info_String:
+					json_lottie_unmarshal_value(elem, elem_any)
+				case:
+					panic("Unknown array inner element type")
+				}	
 			}
 			return .None
 		case runtime.Type_Info_Array:
@@ -984,6 +1002,7 @@ json_lottie_unmarshal_array :: proc(
 				return .Too_Large_Vector
 			}
 		case runtime.Type_Info_Dynamic_Array:
+			panic("Dynamic array hit")
 		case:
 			return .Incompatible_Array_Type
 		}
@@ -1010,9 +1029,8 @@ json_lottie_unmarshal_object :: proc(
 		#partial switch tval in val {
 		case json.Object:
 			json_obj := val.(json.Object)
-			for field, idx in fields {
+			for field in fields {
 				field_type_as_base := reflect.type_info_base(field.type)
-
 				field_ptr := rawptr(uintptr(p.data) + field.offset)
 				#partial switch struct_type in field_type_as_base.variant {
 				case runtime.Type_Info_Integer, runtime.Type_Info_Float, runtime.Type_Info_String, runtime.Type_Info_Boolean:
@@ -1024,9 +1042,30 @@ json_lottie_unmarshal_object :: proc(
 				case runtime.Type_Info_Struct:
 					field_value_any := any{field_ptr, field.type.id}
 					json_lottie_unmarshal_object(json_obj[field.name], field_value_any)
-				case:
+				case runtime.Type_Info_Union:
 					// TODO(iyaan): Handle some obvious unions (eg: JsonLottie_Prop_Position)
 					// Finding a generic way to handle all cases of unions would be too much
+					switch field.type.id {
+					case JsonLottie_Prop_Position:
+						pos_val := json_lottie_parse_position(json_obj[field.name]) or_return
+						field_ptr_offset := uintptr(ptr) + field.offset
+						field_val_ptr := transmute(^JsonLottie_Prop_Position)field_ptr_offset
+						field_val_ptr^ = pos_val
+					case JsonLottie_Prop_Scalar:
+						scalar_val := json_lottie_parse_prop_scalar(json_obj[field.name]) or_return
+						field_ptr_offset := uintptr(ptr) + field.offset
+						field_val_ptr := transmute(^JsonLottie_Prop_Scalar)field_ptr_offset
+						field_val_ptr^ = scalar_val
+					case JsonLottie_Prop_Vector:
+						vector_val := json_lottie_parse_prop_vector(json_obj[field.name]) or_return
+						field_ptr_offset := uintptr(ptr) + field.offset
+						field_val_ptr := transmute(^JsonLottie_Prop_Vector)field_ptr_offset
+						field_val_ptr^ = vector_val
+					case:
+						panic("Unsupported union field")
+					}
+					
+				case:
 					panic("Unsupported struct field")
 				}
 			}
@@ -1041,7 +1080,7 @@ json_lottie_unmarshal_object :: proc(
 
 @(test)
 json_lottie_unmarshal_test :: proc(t: ^testing.T) {
-test_struct :: struct {
+	test_struct :: struct {
 		sid: string,
 		a:   bool,
 		k:   []f64,
@@ -1077,4 +1116,17 @@ test_struct :: struct {
 	}
 	testing.expect_value(t, t1.j, JsonLottie_Prop_Keyframe_Easing_Scalar{1, 2})
 	testing.expect_value(t, t1.v, Vec3{5, 5, 6})
+
+	test_struct2 :: struct {
+		j: []JsonLottie_Prop_Keyframe_Easing_Scalar
+	}
+	t2 := test_struct2{}
+
+	m1 := json.Object{
+		"j" = json.Array{json.Object{"x" = 1, "y" = 2}, json.Object{"x" = 3, "y" = 4}}
+	}
+	json_lottie_unmarshal_object(m1, t2)
+	testing.expect(t, len(t2.j) == 2, "Length should be 2")
+	testing.expect_value(t, t2.j[0], JsonLottie_Prop_Keyframe_Easing_Scalar{1, 2})
+	testing.expect_value(t, t2.j[1], JsonLottie_Prop_Keyframe_Easing_Scalar{3, 4})
 }
