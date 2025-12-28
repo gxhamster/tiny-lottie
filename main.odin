@@ -7,6 +7,7 @@ import "core:mem"
 import vmem "core:mem/virtual"
 import "core:os"
 import "core:reflect"
+import "core:log"
 
 
 JsonLottie_Error :: enum {
@@ -28,6 +29,16 @@ JsonLottie_Error :: enum {
 	Incompatible_Transform_Type,
 	Too_Large_Vector,
 	Too_Small_Vector,
+
+	Unmarshal_Unknown_Value_Type,
+	Unmarshal_Unknown_Array_Type,
+	Unmarshal_Unknown_Object_Type,
+	Unmarshal_Unknown_Array_Inner_Type,
+	Unmarshal_Unknown_Struct_Field_Type,
+	Unmarshal_Unknown_Union_Field_Type,
+	Unmarshal_Allocation_Error,
+	Unmarshal_Deallocation_Error
+
 }
 
 Error :: union {
@@ -752,27 +763,10 @@ json_lottie_parse_transform :: proc(
 	transform: JsonLottie_Transform,
 	err: JsonLottie_Error,
 ) {
-	spec := JsonLottie_Transform{}
-	json_lottie_unmarshal_object(value, spec)
-	fmt.println(spec)
-
-	// note(iyaan): Not required fields in a transform
-	// just fill the struct with whatever available
-	#partial switch type in value {
-	case json.Object:
-		obj := value.(json.Object)
-
-		transform.a = json_lottie_parse_position(obj["a"]) or_return
-		transform.p = json_lottie_parse_split_position(obj["p"]) or_return
-		transform.r = json_lottie_parse_prop_scalar(obj["r"]) or_return
-		transform.s = json_lottie_parse_prop_vector(obj["s"]) or_return
-		transform.o = json_lottie_parse_prop_scalar(obj["o"]) or_return
-		transform.sk = json_lottie_parse_prop_scalar(obj["sk"]) or_return
-		transform.sa = json_lottie_parse_prop_scalar(obj["sa"]) or_return
-		return transform, .None
-	case:
-		return not_required_or_error(required, transform, .Incompatible_Transform_Type)
-	}
+	transform_struct := JsonLottie_Transform{}
+	json_lottie_unmarshal_object(value, transform_struct) or_return
+	log.info(transform_struct)
+	return transform_struct, .None
 }
 
 json_lottie_read_file_handle :: proc(
@@ -866,9 +860,15 @@ main :: proc() {
 	when ODIN_DEBUG {
 		track: mem.Tracking_Allocator
 		mem.tracking_allocator_init(&track, context.allocator)
-		context.allocator = mem.tracking_allocator(&track)
+		tracking_allocator := mem.tracking_allocator(&track)
+		context.allocator = tracking_allocator
+
+		logger := log.create_console_logger(allocator = tracking_allocator)
+		context.logger = logger
 
 		defer {
+			log.destroy_console_logger(logger, allocator = tracking_allocator)
+
 			if len(track.allocation_map) > 0 {
 				fmt.eprintf("=== %v allocations not freed: ===\n", len(track.allocation_map))
 				for _, entry in track.allocation_map {
@@ -906,6 +906,7 @@ main :: proc() {
 		fmt.eprintf("Could not read lottie json file due to %s\n", err)
 		panic("Could not read lottie json file")
 	}
+
 }
 
 
@@ -937,7 +938,7 @@ json_lottie_unmarshal_value :: proc(
 		field_val_ptr := transmute(^i64)ptr
 		field_val_ptr^ = val
 	case:
-		return .Unmarshal_Err
+		return .Unmarshal_Unknown_Value_Type
 	}
 	return .None
 }
@@ -974,26 +975,33 @@ json_lottie_unmarshal_array :: proc(
 				allocator,
 			)
 
+			if alloc_err != .None {
+				return .Unmarshal_Allocation_Error
+			}
+
 			raw.data = raw_data(data)
 			raw.len = int(json_array_len)
 			for elem, idx in json_array {
 				elem_ptr := rawptr(uintptr(raw.data) + uintptr(idx) * uintptr(internal_elem_size))
 				elem_any := any{elem_ptr, internal_elem_type_info.id}
 				elem_type_base := reflect.type_info_base(type_info_of(internal_elem_type_info.id))
-				// fmt.println(elem_type_base)
 
 				#partial switch base_t in elem_type_base.variant {
 				case runtime.Type_Info_Struct, runtime.Type_Info_Union:
-					json_lottie_unmarshal_object(elem, elem_any)
+					json_lottie_unmarshal_object(elem, elem_any) or_return
 				case runtime.Type_Info_Integer,
 				     runtime.Type_Info_Float,
 				     runtime.Type_Info_Boolean,
 				     runtime.Type_Info_String:
-					json_lottie_unmarshal_value(elem, elem_any)
+					json_lottie_unmarshal_value(elem, elem_any) or_return
 				case runtime.Type_Info_Slice, runtime.Type_Info_Array:
-					json_lottie_unmarshal_array(elem, elem_any)
+					json_lottie_unmarshal_array(elem, elem_any) or_return
 				case:
-					panic("Unknown array inner element type")
+					if err := delete(data); err != .None {
+						return .Unmarshal_Deallocation_Error
+					} else {
+						return .Unmarshal_Unknown_Array_Inner_Type
+					}
 				}
 			}
 			return .None
@@ -1012,9 +1020,9 @@ json_lottie_unmarshal_array :: proc(
 				return .Too_Large_Vector
 			}
 		case runtime.Type_Info_Dynamic_Array:
-			panic("Dynamic array hit")
+			return .Unmarshal_Unknown_Array_Type
 		case:
-			return .Incompatible_Array_Type
+			return .Unmarshal_Unknown_Array_Type
 		}
 	case:
 		return .Incompatible_Array_Type
@@ -1048,15 +1056,15 @@ json_lottie_unmarshal_object :: proc(
 				     runtime.Type_Info_String,
 				     runtime.Type_Info_Boolean:
 					field_value_any := any{field_ptr, field.type.id}
-					json_lottie_unmarshal_value(json_obj[field.name], field_value_any)
+					json_lottie_unmarshal_value(json_obj[field.name], field_value_any) or_return
 				case runtime.Type_Info_Array,
 				     runtime.Type_Info_Slice,
 				     runtime.Type_Info_Dynamic_Array:
 					field_value_any := any{field_ptr, field.type.id}
-					json_lottie_unmarshal_array(json_obj[field.name], field_value_any)
+					json_lottie_unmarshal_array(json_obj[field.name], field_value_any) or_return
 				case runtime.Type_Info_Struct:
 					field_value_any := any{field_ptr, field.type.id}
-					json_lottie_unmarshal_object(json_obj[field.name], field_value_any)
+					json_lottie_unmarshal_object(json_obj[field.name], field_value_any) or_return
 				case runtime.Type_Info_Union:
 					// TODO(iyaan): Handle some obvious unions (eg: JsonLottie_Prop_Position)
 					// Finding a generic way to handle all cases of unions would be too much
@@ -1077,11 +1085,11 @@ json_lottie_unmarshal_object :: proc(
 						field_val_ptr := transmute(^JsonLottie_Prop_Vector)field_ptr_offset
 						field_val_ptr^ = vector_val
 					case:
-						panic("Unsupported union field")
+						return .Unmarshal_Unknown_Union_Field_Type
 					}
 
 				case:
-					panic("Unsupported struct field")
+					return .Unmarshal_Unknown_Struct_Field_Type
 				}
 			}
 			return .None
