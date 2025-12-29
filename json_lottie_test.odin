@@ -98,7 +98,7 @@ json_lottie_bezier_shape_test :: proc(t: ^testing.T) {
 		},
 	}
 	defer free_all()
-	p := BezierShape{}
+	p := BezierShapeValue{}
 	json_lottie_unmarshal_object(json_obj, p)
 	fmt.println(p)
 	testing.expect(t, p.c == true, "c is true")
