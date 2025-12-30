@@ -1114,15 +1114,6 @@ main :: proc() {
         panic("Could not read lottie json file")
     }
 
-    simple_test_schema := `{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "type": "number"
-}`
-    simple_test_data1 := `42`
-    simple_test_data2 := `foo`
-    schema, _ := json_schema_parse_from_string(simple_test_schema)
-    json_schema_validate_string_with_schema(simple_test_data1, schema)
-
 }
 
 
