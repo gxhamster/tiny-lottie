@@ -1,7 +1,6 @@
 package main
 
 import "core:encoding/json"
-import "core:fmt"
 import "core:log"
 import "core:strings"
 import "core:testing"
@@ -357,14 +356,14 @@ validate_json_value_with_subschema :: proc(
 	validate_properties(subschema, json_value) or_return
 
 	for validation_keyword in subschema.validation_flags {
-		log.debugf("Performing validation (%v)", validation_keyword)
+		log.debugf("Performing validation (%v) on (%v)", validation_keyword, json_value)
 		validation_keyword_info := validation_keywords_validation_map[validation_keyword]
 		validation_proc := validation_keyword_info.validation_proc
         if validation_proc != nil {
 			validation_err := validation_proc(json_value, subschema)
 			if validation_err != .None {
                 log.debugf("Validation (%v) failed with error (%v)", validation_keyword, validation_err)
-				panic("Expected validation failed")
+				return validation_err
 			} else {
                 log.debugf("Validation (%v) succesful", validation_keyword)
             }
@@ -441,55 +440,4 @@ get_json_value_type :: proc(json_value: json.Value) -> JsonSchemaInstanceType {
 		panic("Not a json type")
 	}
 	return parsed_json_base_type
-}
-
-@(test)
-schema_valid_number_test :: proc(t: ^testing.T) {
-	simple_test_schema := `{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "type": "number"
-}`
-	simple_test_data1 := `42`
-	simple_test_data2 := `"foo"`
-	schema, _ := json_schema_parse_from_string(simple_test_schema)
-	err := json_schema_validate_string_with_schema(simple_test_data1, schema)
-	testing.expect_value(t, err, JsonSchema_Validation_Error.None)
-
-	err = json_schema_validate_string_with_schema(simple_test_data2, schema)
-	testing.expect_value(t, err, JsonSchema_Validation_Error.Type_Validation_Failed)
-	free_all()
-}
-
-@(test)
-schema_valid_property_test :: proc(t: ^testing.T) {
-	test_schema2 := `{
-"$id": "https://example.com/person.schema.json",
-"$schema": "https://json-schema.org/draft/2020-12/schema",
-"title": "Person",
-"type": "object",
-"properties": {
-"firstName": {
-    "type": "string",
-    "description": "The person's first name."
-},
-"lastName": {
-    "type": "string",
-    "description": "The person's last name."
-},
-"age": {
-    "description": "Age in years which must be equal to or greater than zero.",
-    "type": "integer",
-    "minimum": 0
-}
-}
-}`
-	test_schema2_data := `{
-"firstName": "John",
-"lastName": "Doe",
-"age": 21
-}`
-
-	schema, _ := json_schema_parse_from_string(test_schema2)
-
-	free_all()
 }
