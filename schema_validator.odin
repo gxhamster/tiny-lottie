@@ -27,26 +27,39 @@ JsonSchemaError :: union {
 JsonSchema_Parse_Error :: enum {
 	None,
 	Invalid_Instance_Type,
+	Invalid_Number_Type,
+	Not_String_Field,
 }
 
 JsonSchema_Validation_Error :: enum {
 	None,
-	Clashing_Instance_Type,
+	Type_Validation_Failed,
 	Clashing_Property_Type,
+    Minimum_Validation_Failed
 }
 
 // Takes a pointer to the schema to set the correct parameter
 // to the parsed value
-parse_validation_proc :: proc(value: json.Value, schema: ^JsonSchema) -> JsonSchema_Parse_Error
+ParseProc :: proc(value: json.Value, schema: ^JsonSchema) -> JsonSchema_Parse_Error
+// No need to take a pointer since it does not need to set any
+// state in the schema. It just needs to read in the correct
+// field in the schema struct
+ValidationProc :: proc(value: json.Value, schema: JsonSchema) -> JsonSchema_Validation_Error
 
-ValidationKeywordInfo :: struct {
+KeywordValidationInfo :: struct {
 	keyword:    string,
 	type:       JsonSchemaValidationKeyword,
-	parse_proc: parse_validation_proc,
+	validation_proc: ValidationProc,
 }
 
-validation_keywords_map := [?]ValidationKeywordInfo {
-	{"type", .Type, nil},
+KeywordParseInfo :: struct {
+	keyword:    string,
+	type:       JsonSchemaValidationKeyword,
+	parse_proc: ParseProc,
+}
+
+validation_keywords_parse_map := [?]KeywordParseInfo {
+	{"type", .Type, parse_type},
 	{"enum", .Enum, nil},
 	{"const", .Const, nil},
 	{"maxLength", .MaxLength, nil},
@@ -68,8 +81,31 @@ validation_keywords_map := [?]ValidationKeywordInfo {
 	{"uniqueItems", .UniqueItems, nil},
 }
 
+validation_keywords_validation_map := [?]KeywordValidationInfo {
+	{"type", .Type, validate_type},
+	{"enum", .Enum, nil},
+	{"const", .Const, nil},
+	{"maxLength", .MaxLength, nil},
+	{"minLength", .MinLength, nil},
+	{"pattern", .Pattern, nil},
+	{"exclusiveMaximum", .ExclusiveMaximum, nil},
+	{"exclusiveMinimum", .ExclusiveMinimum, nil},
+	{"maximum", .Maximum, nil},
+	{"minimum", .Minimum, validate_minimum},
+	{"multipleOf", .MultipleOf, nil},
+	{"dependentRequired", .DependentRequired, nil},
+	{"maxProperties", .MaxProperties, nil},
+	{"minProperties", .MinProperties, nil},
+	{"required", .Required, nil},
+	{"maxItems", .MaxItems, nil},
+	{"minItems", .MinItems, nil},
+	{"maxContains", .MaxContains, nil},
+	{"minContains", .MinContains, nil},
+	{"uniqueItems", .UniqueItems, nil},
+}
+
 JsonSchemaValidationKeyword :: enum {
-	Type,
+	Type = 0,
 	Enum,
 	Const,
 	MaxLength,
@@ -129,25 +165,6 @@ json_schema_parse_from_json_value :: proc(
 		schema_struct.schema = json_lottie_parse_string(parsed_json["$schema"]) or_return
 		schema_struct.title = json_lottie_parse_string(parsed_json["title"]) or_return
 		schema_struct.id = json_lottie_parse_string(parsed_json["id"]) or_return
-		type := json_lottie_parse_string(parsed_json["type"]) or_return
-
-		if strings.compare(type, "null") == 0 {
-			schema_struct.type = .Null
-		} else if strings.compare(type, "boolean") == 0 {
-			schema_struct.type = .Boolean
-		} else if strings.compare(type, "object") == 0 {
-			schema_struct.type = .Object
-		} else if strings.compare(type, "array") == 0 {
-			schema_struct.type = .Array
-		} else if strings.compare(type, "number") == 0 {
-			schema_struct.type = .Number
-		} else if strings.compare(type, "integer") == 0 {
-			schema_struct.type = .Integer
-		} else if strings.compare(type, "string") == 0 {
-			schema_struct.type = .String
-		} else {
-			return schema_struct, JsonSchema_Parse_Error.Invalid_Instance_Type
-		}
 
 		properties_exists := "properties" in parsed_json
 		if properties_exists {
@@ -180,23 +197,19 @@ json_schema_parse_from_json_value :: proc(
 
 		// Parse any validation keywords existing and set appropriate
 		// flags for the validation stage
-		for keyword_info, idx in validation_keywords_map {
+		for keyword_info, idx in validation_keywords_parse_map {
 			val := parsed_json[keyword_info.keyword]
 			parse_proc := keyword_info.parse_proc
-			if parse_proc != nil {
-                parse_err := parse_proc(val, &schema_struct)
-                if parse_err == .None {
-                    schema_struct.validation_flags += {keyword_info.type}
-                } else {
-                    // TODO: Remove this in time
-                    panic("Could not parse a validation keyword field")
-                }
-            } else {
-                panic("Validation keyword not implemented yet")
-            }
-            
+			if val != nil && parse_proc != nil {
+				parse_err := parse_proc(val, &schema_struct)
+				if parse_err == .None {
+					schema_struct.validation_flags += {keyword_info.type}
+				} else {
+					// TODO: Remove this in time
+					panic("Could not parse a validation keyword field")
+				}
+			}
 		}
-
 		return schema_struct, JsonSchema_Parse_Error.None
 	case:
 		return schema_struct, .Incompatible_Object_Type
@@ -206,8 +219,44 @@ json_schema_parse_from_json_value :: proc(
 
 }
 
+@(private = "file")
+parse_type :: proc(value: json.Value, schema: ^JsonSchema) -> JsonSchema_Parse_Error {
+	type, ok := value.(json.String)
+	if !ok {
+		return .Not_String_Field
+	}
 
+	if strings.compare(type, "null") == 0 {
+		schema.type = .Null
+	} else if strings.compare(type, "boolean") == 0 {
+		schema.type = .Boolean
+	} else if strings.compare(type, "object") == 0 {
+		schema.type = .Object
+	} else if strings.compare(type, "array") == 0 {
+		schema.type = .Array
+	} else if strings.compare(type, "number") == 0 {
+		schema.type = .Number
+	} else if strings.compare(type, "integer") == 0 {
+		schema.type = .Integer
+	} else if strings.compare(type, "string") == 0 {
+		schema.type = .String
+	} else {
+		return JsonSchema_Parse_Error.Invalid_Instance_Type
+	}
+
+	return .None
+}
+
+@(private = "file")
 parse_minimum :: proc(value: json.Value, schema: ^JsonSchema) -> JsonSchema_Parse_Error {
+	#partial switch type in value {
+	case json.Float:
+		schema.minimum = value.(json.Float)
+	case json.Integer:
+		schema.minimum = f64(value.(json.Integer))
+	case:
+		return .Invalid_Number_Type
+	}
 	return .None
 }
 
@@ -263,8 +312,37 @@ json_schema_validate_string_with_schema :: proc(
 		parse_integers = true,
 	) or_return
 
+	validate_json_value_with_subschema(parsed_json, schema) or_return
 
 	return JsonSchema_Validation_Error.None
+}
+
+@(private = "file")
+// json_value is the parent object which contains the
+// properties, not the actual property value itself
+validate_properties :: proc(
+	schema: JsonSchema,
+	json_value: json.Value,
+) -> JsonSchema_Validation_Error {
+	// If the data is not an object it does not need to check
+	// the properties
+	if _, ok := json_value.(json.Object); !ok {
+		return .None
+	}
+	json_value_as_obj := json_value.(json.Object)
+	log.debug("JSON Value:", json_value_as_obj)
+	for prop in schema.properties_children {
+		val := json_value_as_obj[prop.property]
+		log.debug("Value:", val, ", Prop:", prop)
+		if val != nil {
+			val_type := get_json_value_type(val)
+			prop_valid_err := validate_json_value_with_subschema(val, prop)
+			if prop_valid_err != .None {
+				return prop_valid_err
+			}
+		}
+	}
+	return .None
 }
 
 @(private = "file")
@@ -272,22 +350,65 @@ validate_json_value_with_subschema :: proc(
 	json_value: json.Value,
 	subschema: JsonSchema,
 ) -> JsonSchema_Validation_Error {
-	parsed_json_base_type := get_json_value_type(json_value)
-	if ok := json_schema_check_type_compatibility(subschema.type, parsed_json_base_type); !ok {
-		return .Clashing_Instance_Type
-	}
-
+	subschema_copy := subschema
+    
+	// note(iyaan): Will recursively validate each property
+	// in json_value with the correct subschema
 	validate_properties(subschema, json_value) or_return
+
+	for validation_keyword in subschema.validation_flags {
+		log.debugf("Performing validation (%v)", validation_keyword)
+		validation_keyword_info := validation_keywords_validation_map[validation_keyword]
+		validation_proc := validation_keyword_info.validation_proc
+        if validation_proc != nil {
+			validation_err := validation_proc(json_value, subschema)
+			if validation_err != .None {
+                log.debugf("Validation (%v) failed with error (%v)", validation_keyword, validation_err)
+				panic("Expected validation failed")
+			} else {
+                log.debugf("Validation (%v) succesful", validation_keyword)
+            }
+		}
+	}
 
 	return .None
 }
 
 @(private = "file")
-validation_minimum :: proc(
+validate_type :: proc(
 	json_value: json.Value,
 	subschema: JsonSchema,
 ) -> JsonSchema_Validation_Error {
-	return .None
+    parsed_json_base_type := get_json_value_type(json_value)
+	if ok := json_schema_check_type_compatibility(subschema.type, parsed_json_base_type); !ok {
+		return .Type_Validation_Failed
+	}
+
+    return .None
+}
+
+@(private = "file")
+validate_minimum :: proc(
+	json_value: json.Value,
+	subschema: JsonSchema,
+) -> JsonSchema_Validation_Error {
+    
+    #partial switch type in json_value {
+    case json.Float:
+        num_val := json_value.(json.Float)
+        if num_val < subschema.minimum {
+            return .Minimum_Validation_Failed
+        }    
+    case json.Integer:
+        num_val := f64(json_value.(json.Integer))
+        if num_val < subschema.minimum {
+            return .Minimum_Validation_Failed
+        } 
+    case:
+        return .None
+    }
+
+    return .None
 }
 
 @(private = "file")
@@ -322,33 +443,6 @@ get_json_value_type :: proc(json_value: json.Value) -> JsonSchemaInstanceType {
 	return parsed_json_base_type
 }
 
-
-@(private = "file")
-// json_value is the parent object which contains the
-// properties, not the actual property value itself
-validate_properties :: proc(
-	schema: JsonSchema,
-	json_value: json.Value,
-) -> JsonSchema_Validation_Error {
-	// If the data is not an object it does not need to check
-	// the properties
-	if _, ok := json_value.(json.Object); !ok {
-		return .None
-	}
-	json_value_as_obj := json_value.(json.Object)
-	for prop in schema.properties_children {
-		val := json_value_as_obj[prop.property]
-		if val != nil {
-			val_type := get_json_value_type(val)
-			prop_valid_err := validate_json_value_with_subschema(val, prop)
-			if prop_valid_err != .None {
-				return prop_valid_err
-			}
-		}
-	}
-	return .None
-}
-
 @(test)
 schema_valid_number_test :: proc(t: ^testing.T) {
 	simple_test_schema := `{
@@ -362,8 +456,7 @@ schema_valid_number_test :: proc(t: ^testing.T) {
 	testing.expect_value(t, err, JsonSchema_Validation_Error.None)
 
 	err = json_schema_validate_string_with_schema(simple_test_data2, schema)
-	testing.expect_value(t, err, JsonSchema_Validation_Error.Clashing_Instance_Type)
-
+	testing.expect_value(t, err, JsonSchema_Validation_Error.Type_Validation_Failed)
 	free_all()
 }
 
@@ -397,7 +490,6 @@ schema_valid_property_test :: proc(t: ^testing.T) {
 }`
 
 	schema, _ := json_schema_parse_from_string(test_schema2)
-
 
 	free_all()
 }

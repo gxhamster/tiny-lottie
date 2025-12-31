@@ -1130,7 +1130,7 @@ main :: proc() {
 "age": {
     "description": "Age in years which must be equal to or greater than zero.",
     "type": "integer",
-    "minimum": 0
+    "minimum": 21
 }
 }
 }`
@@ -1142,6 +1142,7 @@ main :: proc() {
 
     schema, _ := json_schema_parse_from_string(test_schema2)
     log.debug(schema)
+    valid_err := json_schema_validate_string_with_schema(test_schema2_data, schema)
 }
 
 
