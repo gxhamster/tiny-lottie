@@ -1113,36 +1113,6 @@ main :: proc() {
         fmt.eprintf("Could not read lottie json file due to %s\n", err)
         panic("Could not read lottie json file")
     }
-    test_schema2 := `{
-"$id": "https://example.com/person.schema.json",
-"$schema": "https://json-schema.org/draft/2020-12/schema",
-"title": "Person",
-"type": "object",
-"properties": {
-"firstName": {
-    "type": "string",
-    "description": "The person's first name."
-},
-"lastName": {
-    "type": "string",
-    "description": "The person's last name."
-},
-"age": {
-    "description": "Age in years which must be equal to or greater than zero.",
-    "type": "integer",
-    "minimum": 21
-}
-}
-}`
-	test_schema2_data := `{
-"firstName": "John",
-"lastName": "Doe",
-"age": 21
-}`
-
-    schema, _ := json_schema_parse_from_string(test_schema2)
-    log.debug(schema)
-    valid_err := json_schema_validate_string_with_schema(test_schema2_data, schema)
 }
 
 

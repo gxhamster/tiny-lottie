@@ -3,7 +3,6 @@ package main
 import "core:encoding/json"
 import "core:log"
 import "core:strings"
-import "core:testing"
 
 JsonSchemaInstanceType :: enum {
 	Null = 0,
@@ -27,27 +26,35 @@ JsonSchema_Parse_Error :: enum {
 	None,
 	Invalid_Instance_Type,
 	Invalid_Number_Type,
+	Invalid_Enum_Type,
 	Not_String_Field,
+
+	Allocation_Error
 }
 
 JsonSchema_Validation_Error :: enum {
 	None,
 	Type_Validation_Failed,
 	Clashing_Property_Type,
-    Minimum_Validation_Failed
+	Minimum_Validation_Failed,
+	Maximum_Validation_Failed,
 }
 
 // Takes a pointer to the schema to set the correct parameter
 // to the parsed value
-ParseProc :: proc(value: json.Value, schema: ^JsonSchema) -> JsonSchema_Parse_Error
+ParseProc :: proc(
+	value: json.Value,
+	schema: ^JsonSchema,
+	allocator := context.allocator,
+) -> JsonSchema_Parse_Error
 // No need to take a pointer since it does not need to set any
 // state in the schema. It just needs to read in the correct
 // field in the schema struct
 ValidationProc :: proc(value: json.Value, schema: JsonSchema) -> JsonSchema_Validation_Error
 
 KeywordValidationInfo :: struct {
-	keyword:    string,
-	type:       JsonSchemaValidationKeyword,
+	keyword:         string,
+	type:            JsonSchemaValidationKeyword,
 	validation_proc: ValidationProc,
 }
 
@@ -57,6 +64,7 @@ KeywordParseInfo :: struct {
 	parse_proc: ParseProc,
 }
 
+// TODO: Implement parsing procedure for each of the keywords -_-
 validation_keywords_parse_map := [?]KeywordParseInfo {
 	{"type", .Type, parse_type},
 	{"enum", .Enum, nil},
@@ -66,7 +74,7 @@ validation_keywords_parse_map := [?]KeywordParseInfo {
 	{"pattern", .Pattern, nil},
 	{"exclusiveMaximum", .ExclusiveMaximum, nil},
 	{"exclusiveMinimum", .ExclusiveMinimum, nil},
-	{"maximum", .Maximum, nil},
+	{"maximum", .Maximum, parse_maximum},
 	{"minimum", .Minimum, parse_minimum},
 	{"multipleOf", .MultipleOf, nil},
 	{"dependentRequired", .DependentRequired, nil},
@@ -80,6 +88,7 @@ validation_keywords_parse_map := [?]KeywordParseInfo {
 	{"uniqueItems", .UniqueItems, nil},
 }
 
+// TODO: Implement validation procedure for each of the keywords -_-
 validation_keywords_validation_map := [?]KeywordValidationInfo {
 	{"type", .Type, validate_type},
 	{"enum", .Enum, nil},
@@ -89,7 +98,7 @@ validation_keywords_validation_map := [?]KeywordValidationInfo {
 	{"pattern", .Pattern, nil},
 	{"exclusiveMaximum", .ExclusiveMaximum, nil},
 	{"exclusiveMinimum", .ExclusiveMinimum, nil},
-	{"maximum", .Maximum, nil},
+	{"maximum", .Maximum, validate_maximum},
 	{"minimum", .Minimum, validate_minimum},
 	{"multipleOf", .MultipleOf, nil},
 	{"dependentRequired", .DependentRequired, nil},
@@ -146,6 +155,8 @@ JsonSchema :: struct {
 	// keyword
 	validation_flags:    bit_set[JsonSchemaValidationKeyword],
 	type:                JsonSchemaInstanceType,
+	// note(iyaan): Slice of the json map data
+	enums:               []json.Value,
 	minimum:             f64,
 	maximum:             f64,
 }
@@ -200,7 +211,7 @@ json_schema_parse_from_json_value :: proc(
 			val := parsed_json[keyword_info.keyword]
 			parse_proc := keyword_info.parse_proc
 			if val != nil && parse_proc != nil {
-				parse_err := parse_proc(val, &schema_struct)
+				parse_err := parse_proc(val, &schema_struct, allocator)
 				if parse_err == .None {
 					schema_struct.validation_flags += {keyword_info.type}
 				} else {
@@ -219,7 +230,11 @@ json_schema_parse_from_json_value :: proc(
 }
 
 @(private = "file")
-parse_type :: proc(value: json.Value, schema: ^JsonSchema) -> JsonSchema_Parse_Error {
+parse_type :: proc(
+	value: json.Value,
+	schema: ^JsonSchema,
+	allocator := context.allocator,
+) -> JsonSchema_Parse_Error {
 	type, ok := value.(json.String)
 	if !ok {
 		return .Not_String_Field
@@ -247,12 +262,54 @@ parse_type :: proc(value: json.Value, schema: ^JsonSchema) -> JsonSchema_Parse_E
 }
 
 @(private = "file")
-parse_minimum :: proc(value: json.Value, schema: ^JsonSchema) -> JsonSchema_Parse_Error {
+parse_enum :: proc(
+	value: json.Value,
+	schema: ^JsonSchema,
+	allocator := context.allocator,
+) -> JsonSchema_Parse_Error {
+	#partial switch type in value {
+	case json.Array:
+		as_array_val := value.(json.Array)
+		// note(iyaan): Here the enum values are just are slice
+		// of the original values parsed from the json module
+		// We need to keep the json value around until we have
+		// parsed and validated using a schema as values inside the
+		// schema are referencing non-owned values
+		schema.enums = as_array_val[:]
+	case:
+		return .Invalid_Enum_Type
+	}
+	return .None
+}
+
+@(private = "file")
+parse_minimum :: proc(
+	value: json.Value,
+	schema: ^JsonSchema,
+	allocator := context.allocator,
+) -> JsonSchema_Parse_Error {
 	#partial switch type in value {
 	case json.Float:
 		schema.minimum = value.(json.Float)
 	case json.Integer:
 		schema.minimum = f64(value.(json.Integer))
+	case:
+		return .Invalid_Number_Type
+	}
+	return .None
+}
+
+@(private = "file")
+parse_maximum :: proc(
+	value: json.Value,
+	schema: ^JsonSchema,
+	allocator := context.allocator,
+) -> JsonSchema_Parse_Error {
+	#partial switch type in value {
+	case json.Float:
+		schema.maximum = value.(json.Float)
+	case json.Integer:
+		schema.maximum = f64(value.(json.Integer))
 	case:
 		return .Invalid_Number_Type
 	}
@@ -350,7 +407,7 @@ validate_json_value_with_subschema :: proc(
 	subschema: JsonSchema,
 ) -> JsonSchema_Validation_Error {
 	subschema_copy := subschema
-    
+
 	// note(iyaan): Will recursively validate each property
 	// in json_value with the correct subschema
 	validate_properties(subschema, json_value) or_return
@@ -359,14 +416,18 @@ validate_json_value_with_subschema :: proc(
 		log.debugf("Performing validation (%v) on (%v)", validation_keyword, json_value)
 		validation_keyword_info := validation_keywords_validation_map[validation_keyword]
 		validation_proc := validation_keyword_info.validation_proc
-        if validation_proc != nil {
+		if validation_proc != nil {
 			validation_err := validation_proc(json_value, subschema)
 			if validation_err != .None {
-                log.debugf("Validation (%v) failed with error (%v)", validation_keyword, validation_err)
+				log.debugf(
+					"Validation (%v) failed with error (%v)",
+					validation_keyword,
+					validation_err,
+				)
 				return validation_err
 			} else {
-                log.debugf("Validation (%v) succesful", validation_keyword)
-            }
+				log.debugf("Validation (%v) succesful", validation_keyword)
+			}
 		}
 	}
 
@@ -378,12 +439,12 @@ validate_type :: proc(
 	json_value: json.Value,
 	subschema: JsonSchema,
 ) -> JsonSchema_Validation_Error {
-    parsed_json_base_type := get_json_value_type(json_value)
+	parsed_json_base_type := get_json_value_type(json_value)
 	if ok := json_schema_check_type_compatibility(subschema.type, parsed_json_base_type); !ok {
 		return .Type_Validation_Failed
 	}
 
-    return .None
+	return .None
 }
 
 @(private = "file")
@@ -391,23 +452,47 @@ validate_minimum :: proc(
 	json_value: json.Value,
 	subschema: JsonSchema,
 ) -> JsonSchema_Validation_Error {
-    
-    #partial switch type in json_value {
-    case json.Float:
-        num_val := json_value.(json.Float)
-        if num_val < subschema.minimum {
-            return .Minimum_Validation_Failed
-        }    
-    case json.Integer:
-        num_val := f64(json_value.(json.Integer))
-        if num_val < subschema.minimum {
-            return .Minimum_Validation_Failed
-        } 
-    case:
-        return .None
-    }
 
-    return .None
+	#partial switch type in json_value {
+	case json.Float:
+		num_val := json_value.(json.Float)
+		if num_val < subschema.minimum {
+			return .Minimum_Validation_Failed
+		}
+	case json.Integer:
+		num_val := f64(json_value.(json.Integer))
+		if num_val < subschema.minimum {
+			return .Minimum_Validation_Failed
+		}
+	case:
+		return .None
+	}
+
+	return .None
+}
+
+@(private = "file")
+validate_maximum :: proc(
+	json_value: json.Value,
+	subschema: JsonSchema,
+) -> JsonSchema_Validation_Error {
+
+	#partial switch type in json_value {
+	case json.Float:
+		num_val := json_value.(json.Float)
+		if num_val > subschema.maximum {
+			return .Maximum_Validation_Failed
+		}
+	case json.Integer:
+		num_val := f64(json_value.(json.Integer))
+		if num_val > subschema.maximum {
+			return .Maximum_Validation_Failed
+		}
+	case:
+		return .None
+	}
+
+	return .None
 }
 
 @(private = "file")
