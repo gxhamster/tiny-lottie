@@ -1,69 +1,69 @@
 package schema_validator
 
-import "vendor:ENet"
 import "core:encoding/json"
 import "core:log"
 import "core:strings"
 
-JsonSchemaInstanceType :: enum {
-    Null = 0,
+InstanceTypes :: enum {
+    Null,
     Boolean,
     Object,
     Array,
     Number,
     Integer,
     String,
-    Not_Provided,
 }
 
-JsonSchemaError :: union {
-    json.Error,
-    JsonSchema_Parse_Error,
-    JsonSchema_Validation_Error,
-}
-
-JsonSchema_Parse_Error :: enum {
+Error :: enum {
     None,
+    
+    // JSON Errors
+    Json_Parse_Error,
+
+    // Parsing Errors
     Invalid_Instance_Type,
     Invalid_Number_Type,
     Invalid_Enum_Type,
     Invalid_Object_Type,
-    Not_String_Field,
-    Allocation_Error,
-}
+    Invalid_String_Type,
 
-JsonSchema_Validation_Error :: enum {
-    None,
+    // Validation Errors
     Type_Validation_Failed,
     Enum_Validation_Failed,
     Clashing_Property_Type,
     Minimum_Validation_Failed,
     Maximum_Validation_Failed,
+
+    // Allocation Errors
+    Allocation_Error,
+
 }
 
 // Takes a pointer to the schema to set the correct parameter
 // to the parsed value
+@(private)
 ParseProc :: proc(
     value: json.Value,
     schema: ^JsonSchema,
     allocator := context.allocator,
-) -> JsonSchema_Parse_Error
+) -> Error
 // No need to take a pointer since it does not need to set any
 // state in the schema. It just needs to read in the correct
 // field in the schema struct
+@(private)
 ValidationProc :: proc(
     value: json.Value,
     schema: JsonSchema,
-) -> JsonSchema_Validation_Error
+) -> Error
 
-@(private = "package")
+@(private)
 KeywordValidationInfo :: struct {
     keyword:         string,
     type:            JsonSchemaValidationKeyword,
     validation_proc: ValidationProc,
 }
 
-@(private = "package")
+@(private)
 KeywordParseInfo :: struct {
     keyword:    string,
     type:       JsonSchemaValidationKeyword,
@@ -71,7 +71,7 @@ KeywordParseInfo :: struct {
 }
 
 // TODO: Implement parsing procedure for each of the keywords -_-
-@(private = "package")
+@(private)
 validation_keywords_parse_map := [?]KeywordParseInfo {
     {"type", .Type, parse_type},
     {"enum", .Enum, parse_enum},
@@ -96,7 +96,7 @@ validation_keywords_parse_map := [?]KeywordParseInfo {
 }
 
 // TODO: Implement validation procedure for each of the keywords -_-
-@(private = "package")
+@(private)
 validation_keywords_validation_map := [?]KeywordValidationInfo {
     {"type", .Type, validate_type},
     {"enum", .Enum, validate_enum},
@@ -162,7 +162,7 @@ JsonSchema :: struct {
     // that we want. We need a sort of flag set for each defined validation
     // keyword
     validation_flags:    bit_set[JsonSchemaValidationKeyword],
-    type:                JsonSchemaInstanceType,
+    type:                InstanceTypes,
     // note(iyaan): Slice of the json map data
     enums:               []json.Value,
     minimum:             f64,
@@ -177,7 +177,7 @@ json_parse_string :: proc(
     loc := #caller_location,
 ) -> (
     string,
-    JsonSchema_Parse_Error,
+    Error,
 ) {
     #partial switch elem_type in value {
     case json.String:
@@ -187,13 +187,13 @@ json_parse_string :: proc(
     }
 }
 
-json_schema_parse_from_json_value :: proc(
+parse_schema_from_json_value :: proc(
     value: json.Value,
     allocator := context.allocator,
     logger := context.logger,
 ) -> (
     schema_struct: JsonSchema,
-    err: JsonSchemaError,
+    err: Error,
 ) {
     #partial switch t in value {
     case json.Object:
@@ -224,10 +224,10 @@ json_schema_parse_from_json_value :: proc(
                     properties_obj := parsed_json["properties"].(json.Object)
                     for prop_field in properties_obj {
                         prop_sub_schema, err :=
-                            json_schema_parse_from_json_value(
+                            parse_schema_from_json_value(
                                 properties_obj[prop_field],
                             )
-                        if err != JsonSchema_Parse_Error.None {
+                        if err != .None {
                             panic("Could not parse properties schema")
                         }
                         prop_sub_schema.property = prop_field
@@ -258,12 +258,12 @@ json_schema_parse_from_json_value :: proc(
                 }
             }
         }
-        return schema_struct, JsonSchema_Parse_Error.None
+        return schema_struct, .None
     case:
         return schema_struct, .Invalid_Object_Type
     }
 
-    return schema_struct, JsonSchema_Parse_Error.None
+    return schema_struct, .None
 
 }
 
@@ -272,10 +272,10 @@ parse_type :: proc(
     value: json.Value,
     schema: ^JsonSchema,
     allocator := context.allocator,
-) -> JsonSchema_Parse_Error {
+) -> Error {
     type, ok := value.(json.String)
     if !ok {
-        return .Not_String_Field
+        return .Invalid_String_Type
     }
 
     if strings.compare(type, "null") == 0 {
@@ -293,7 +293,7 @@ parse_type :: proc(
     } else if strings.compare(type, "string") == 0 {
         schema.type = .String
     } else {
-        return JsonSchema_Parse_Error.Invalid_Instance_Type
+        return .Invalid_Instance_Type
     }
 
     return .None
@@ -304,7 +304,7 @@ parse_enum :: proc(
     value: json.Value,
     schema: ^JsonSchema,
     allocator := context.allocator,
-) -> JsonSchema_Parse_Error {
+) -> Error {
     #partial switch type in value {
     case json.Array:
         as_array_val := value.(json.Array)
@@ -325,7 +325,7 @@ parse_minimum :: proc(
     value: json.Value,
     schema: ^JsonSchema,
     allocator := context.allocator,
-) -> JsonSchema_Parse_Error {
+) -> Error {
     #partial switch type in value {
     case json.Float:
         schema.minimum = value.(json.Float)
@@ -342,7 +342,7 @@ parse_maximum :: proc(
     value: json.Value,
     schema: ^JsonSchema,
     allocator := context.allocator,
-) -> JsonSchema_Parse_Error {
+) -> Error {
     #partial switch type in value {
     case json.Float:
         schema.maximum = value.(json.Float)
@@ -354,29 +354,34 @@ parse_maximum :: proc(
     return .None
 }
 
-json_schema_parse_from_string :: proc(
+parse_schema_from_string :: proc(
     schema: string,
     allocator := context.allocator,
     logger := context.logger,
 ) -> (
     schema_struct: JsonSchema,
-    err: JsonSchemaError,
+    err: Error,
 ) {
-    parsed_json := json.parse_string(schema) or_return
-    schema_struct, err = json_schema_parse_from_json_value(
+    parsed_json, parsed_json_err := json.parse_string(schema)
+    if parsed_json_err != .None {
+        log.debugf("json.parse_string returned error (%v)", parsed_json_err)
+        return schema_struct, .Json_Parse_Error
+    }
+    schema_struct, err = parse_schema_from_json_value(
         parsed_json,
         allocator,
     )
-    if err != (JsonSchema_Parse_Error.None) {
+    if err != (.None) {
         log.debugf("json_schema_parse_from_json_value() returned %v\n", err)
         panic("Returned an error")
     }
-    return schema_struct, JsonSchema_Parse_Error.None
+    return schema_struct, .None
 }
 
+@(private)
 json_schema_check_type_compatibility :: proc(
-    schema_type: JsonSchemaInstanceType,
-    parsed_data_type: JsonSchemaInstanceType,
+    schema_type: InstanceTypes,
+    parsed_data_type: InstanceTypes,
 ) -> bool {
     // note(iyaan): Note that while the JSON grammar does not distinguish
     // between integer and real numbers, JSON Schema provides the integer
@@ -396,23 +401,27 @@ json_schema_check_type_compatibility :: proc(
     }
 }
 
-json_schema_validate_string_with_schema :: proc(
+validate_string_with_schema :: proc(
     data: string,
     schema: JsonSchema,
     allocator := context.allocator,
-) -> JsonSchemaError {
+) -> Error {
     // note(iyaan): In odin parsing without JSON5 spec will
     // not work for single data at root level that is not
     // enclosed in a top-level object
-    parsed_json := json.parse_string(
+    parsed_json, ok := json.parse_string(
         data,
         spec = json.Specification.JSON5,
         parse_integers = true,
-    ) or_return
+    )
+    if ok != .None {
+        log.debugf("json.parse_string returned error (%v)", ok)
+        return .Json_Parse_Error
+    }
 
     validate_json_value_with_subschema(parsed_json, schema) or_return
 
-    return JsonSchema_Validation_Error.None
+    return .None
 }
 
 @(private)
@@ -421,7 +430,7 @@ json_schema_validate_string_with_schema :: proc(
 validate_properties :: proc(
     schema: JsonSchema,
     json_value: json.Value,
-) -> JsonSchema_Validation_Error {
+) -> Error {
     // If the data is not an object it does not need to check
     // the properties
     if _, ok := json_value.(json.Object); !ok {
@@ -447,7 +456,7 @@ validate_properties :: proc(
 validate_json_value_with_subschema :: proc(
     json_value: json.Value,
     subschema: JsonSchema,
-) -> JsonSchema_Validation_Error {
+) -> Error {
     subschema_copy := subschema
 
     // note(iyaan): Will recursively validate each property
@@ -485,7 +494,7 @@ validate_json_value_with_subschema :: proc(
 validate_type :: proc(
     json_value: json.Value,
     subschema: JsonSchema,
-) -> JsonSchema_Validation_Error {
+) -> Error {
     parsed_json_base_type := get_json_value_type(json_value)
     if ok := json_schema_check_type_compatibility(
         subschema.type,
@@ -501,7 +510,7 @@ validate_type :: proc(
 validate_minimum :: proc(
     json_value: json.Value,
     subschema: JsonSchema,
-) -> JsonSchema_Validation_Error {
+) -> Error {
 
     #partial switch type in json_value {
     case json.Float:
@@ -525,7 +534,7 @@ validate_minimum :: proc(
 validate_maximum :: proc(
     json_value: json.Value,
     subschema: JsonSchema,
-) -> JsonSchema_Validation_Error {
+) -> Error {
 
     #partial switch type in json_value {
     case json.Float:
@@ -673,11 +682,11 @@ check_if_match_array :: proc(
     return true
 }
 
-@(private = "file")
+@(private)
 validate_enum :: proc(
     json_value: json.Value,
     subschema: JsonSchema,
-) -> JsonSchema_Validation_Error {
+) -> Error {
 
     // Check if the json_value is one of the values in subschema.enum
     for enum_val in subschema.enums {
@@ -713,9 +722,9 @@ validate_enum :: proc(
     return .Enum_Validation_Failed
 }
 
-@(private = "file")
-get_json_value_type :: proc(json_value: json.Value) -> JsonSchemaInstanceType {
-    parsed_json_base_type: JsonSchemaInstanceType
+@(private)
+get_json_value_type :: proc(json_value: json.Value) -> InstanceTypes {
+    parsed_json_base_type: InstanceTypes
     parsed_json := json_value
     switch t in parsed_json {
     case json.Object:
