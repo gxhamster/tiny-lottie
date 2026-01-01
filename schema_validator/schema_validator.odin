@@ -1,5 +1,6 @@
 package schema_validator
 
+import "vendor:ENet"
 import "core:encoding/json"
 import "core:log"
 import "core:strings"
@@ -601,18 +602,17 @@ check_if_match_object :: proc(
     enum_val: json.Object,
     data_json_object: json.Object,
 ) -> bool {
+    if len(enum_val) != len(data_json_object) {
+        return false
+    }
     for key in enum_val {
         obj_val := enum_val[key]
         switch obj_val_type in obj_val {
         case json.Integer, json.Float, json.Boolean, json.String, json.Null:
-            // { "foo": "bar" }
-            // { "foo": "nuts"}
             if !check_if_match_base(obj_val, data_json_object[key]) {
                 return false
             }
         case json.Array:
-            // { "foo": [1, 2] }
-            // { "foo": [1, 3] }
             if data_json_object_arr_val, ok := data_json_object[key].(json.Array);
                ok {
                 if !check_if_match_array(
@@ -626,8 +626,6 @@ check_if_match_object :: proc(
             }
 
         case json.Object:
-            // { "foo": {"data": 1} }
-            // { "foo": {"data": 2} }
             if data_json_object_obj_val, ok := data_json_object[key].(json.Object);
                ok {
                 if !check_if_match_object(
@@ -649,25 +647,27 @@ check_if_match_array :: proc(
     enum_val: json.Array,
     data_json_array: json.Array,
 ) -> bool {
+    if len(enum_val) != len(data_json_array) {
+        return false
+    }
     for val, idx in enum_val {
-
         switch val_type in val {
         case json.Integer, json.Float, json.Boolean, json.String, json.Null:
-            log.debug(val, "->", data_json_array[idx])
-            if !check_if_match_base(val, data_json_array[idx]) {
-                return false
-            }
+            check_if_match_base(val, data_json_array[idx]) or_return
         case json.Array:
-            // "enum": [ "red", 123, true, { "foo": "bar" }, [ 1, [1, 2] ], null ]
-            // [1, [1, 3]]
             if data_json_array_val, ok := data_json_array[idx].(json.Array);
                ok {
-                check_if_match_array(val.(json.Array), data_json_array_val)
+                check_if_match_array(val.(json.Array), data_json_array_val) or_return
             } else {
                 return false
             }
         case json.Object:
-
+            if data_json_object_val, ok := data_json_array[idx].(json.Object);
+               ok {
+                check_if_match_object(val.(json.Object), data_json_object_val) or_return
+            } else {
+                return false
+            }
         }
     }
     return true
