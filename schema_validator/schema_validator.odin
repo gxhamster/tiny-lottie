@@ -168,7 +168,7 @@ JsonSchema :: struct {
     maximum:             f64,
 }
 
-@(private = "file")
+@(private)
 json_parse_string :: proc(
     value: json.Value,
     required := false,
@@ -182,7 +182,7 @@ json_parse_string :: proc(
     case json.String:
         return value.(json.String), .None
     case:
-        return "", .Not_String_Field
+        return "", .None
     }
 }
 
@@ -266,7 +266,7 @@ json_schema_parse_from_json_value :: proc(
 
 }
 
-@(private = "file")
+@(private)
 parse_type :: proc(
     value: json.Value,
     schema: ^JsonSchema,
@@ -298,7 +298,7 @@ parse_type :: proc(
     return .None
 }
 
-@(private = "file")
+@(private)
 parse_enum :: proc(
     value: json.Value,
     schema: ^JsonSchema,
@@ -319,7 +319,7 @@ parse_enum :: proc(
     return .None
 }
 
-@(private = "file")
+@(private)
 parse_minimum :: proc(
     value: json.Value,
     schema: ^JsonSchema,
@@ -336,7 +336,7 @@ parse_minimum :: proc(
     return .None
 }
 
-@(private = "file")
+@(private)
 parse_maximum :: proc(
     value: json.Value,
     schema: ^JsonSchema,
@@ -367,6 +367,7 @@ json_schema_parse_from_string :: proc(
         allocator,
     )
     if err != (JsonSchema_Parse_Error.None) {
+        log.debugf("json_schema_parse_from_json_value() returned %v\n", err)
         panic("Returned an error")
     }
     return schema_struct, JsonSchema_Parse_Error.None
@@ -413,7 +414,7 @@ json_schema_validate_string_with_schema :: proc(
     return JsonSchema_Validation_Error.None
 }
 
-@(private = "file")
+@(private)
 // json_value is the parent object which contains the
 // properties, not the actual property value itself
 validate_properties :: proc(
@@ -441,7 +442,7 @@ validate_properties :: proc(
     return .None
 }
 
-@(private = "file")
+@(private)
 validate_json_value_with_subschema :: proc(
     json_value: json.Value,
     subschema: JsonSchema,
@@ -479,7 +480,7 @@ validate_json_value_with_subschema :: proc(
     return .None
 }
 
-@(private = "file")
+@(private)
 validate_type :: proc(
     json_value: json.Value,
     subschema: JsonSchema,
@@ -495,7 +496,7 @@ validate_type :: proc(
     return .None
 }
 
-@(private = "file")
+@(private)
 validate_minimum :: proc(
     json_value: json.Value,
     subschema: JsonSchema,
@@ -519,7 +520,7 @@ validate_minimum :: proc(
     return .None
 }
 
-@(private = "file")
+@(private)
 validate_maximum :: proc(
     json_value: json.Value,
     subschema: JsonSchema,
@@ -545,7 +546,7 @@ validate_maximum :: proc(
 
 // Checks whether the type of val1 and its
 // value is equal to that of val2
-@(private = "file")
+@(private)
 check_if_match_base :: proc(val1: json.Value, val2: json.Value) -> bool {
     #partial switch val1_type in val1 {
     case json.Integer:
@@ -553,12 +554,24 @@ check_if_match_base :: proc(val1: json.Value, val2: json.Value) -> bool {
             if int_json_val == val1.(json.Integer) {
                 return true
             }
+        } else if float_json_val, ok := val2.(json.Float); ok {
+            if float_json_val == f64(val1.(json.Integer)) {
+                return true
+            }
+        } else {
+            return false
         }
     case json.Float:
         if float_json_val, ok := val2.(json.Float); ok {
             if float_json_val == val1.(json.Float) {
                 return true
             }
+        } else if int_json_val, ok := val2.(json.Integer); ok {
+            if int_json_val == i64(val1.(json.Float)) {
+                return true
+            }
+        } else {
+            return false
         }
     case json.Boolean:
         if bool_json_val, ok := val2.(json.Boolean); ok {
@@ -572,13 +585,18 @@ check_if_match_base :: proc(val1: json.Value, val2: json.Value) -> bool {
                 return true
             }
         }
-    // TODO: What about null types?
+    case json.Null:
+        if null_json_val, ok := val2.(json.Null); ok {
+            if null_json_val == val1.(json.Null) {
+                return true
+            }
+        }
     }
 
     return false
 }
 
-@(private = "file")
+@(private)
 check_if_match_object :: proc(
     enum_val: json.Object,
     data_json_object: json.Object,
@@ -586,11 +604,7 @@ check_if_match_object :: proc(
     for key in enum_val {
         obj_val := enum_val[key]
         switch obj_val_type in obj_val {
-        case json.Integer:
-        case json.Float:
-        case json.Boolean:
-        case json.String:
-        case json.Null:
+        case json.Integer, json.Float, json.Boolean, json.String, json.Null:
             // { "foo": "bar" }
             // { "foo": "nuts"}
             if !check_if_match_base(obj_val, data_json_object[key]) {
@@ -630,18 +644,16 @@ check_if_match_object :: proc(
     return true
 }
 
-@(private = "file")
+@(private)
 check_if_match_array :: proc(
     enum_val: json.Array,
     data_json_array: json.Array,
 ) -> bool {
     for val, idx in enum_val {
+
         switch val_type in val {
-        case json.Integer:
-        case json.Float:
-        case json.Boolean:
-        case json.String:
-        case json.Null:
+        case json.Integer, json.Float, json.Boolean, json.String, json.Null:
+            log.debug(val, "->", data_json_array[idx])
             if !check_if_match_base(val, data_json_array[idx]) {
                 return false
             }
