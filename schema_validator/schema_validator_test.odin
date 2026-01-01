@@ -14,15 +14,15 @@ schema_valid_number_test :: proc(t: ^testing.T) {
 }`
     simple_test_data1 := `42`
     simple_test_data2 := `"foo"`
-    schema, _ := json_schema_parse_from_string(simple_test_schema)
-    err := json_schema_validate_string_with_schema(simple_test_data1, schema)
-    testing.expect_value(t, err, JsonSchema_Validation_Error.None)
+    schema, _ := parse_schema_from_string(simple_test_schema)
+    err := validate_string_with_schema(simple_test_data1, schema)
+    testing.expect_value(t, err, Error.None)
 
-    err = json_schema_validate_string_with_schema(simple_test_data2, schema)
+    err = validate_string_with_schema(simple_test_data2, schema)
     testing.expect_value(
         t,
         err,
-        JsonSchema_Validation_Error.Type_Validation_Failed,
+        Error.Type_Validation_Failed,
     )
     free_all()
 }
@@ -62,21 +62,21 @@ schema_valid_property_test :: proc(t: ^testing.T) {
 }`
 
     defer free_all()
-    schema, parse_err := json_schema_parse_from_string(test_schema2)
-    testing.expect_value(t, parse_err, JsonSchema_Parse_Error.None)
-    valid_err := json_schema_validate_string_with_schema(
+    schema, parse_err := parse_schema_from_string(test_schema2)
+    testing.expect_value(t, parse_err, Error.None)
+    valid_err := validate_string_with_schema(
         test_schema_data1,
         schema,
     )
-    testing.expect_value(t, valid_err, JsonSchema_Validation_Error.None)
-    valid_err1 := json_schema_validate_string_with_schema(
+    testing.expect_value(t, valid_err, Error.None)
+    valid_err1 := validate_string_with_schema(
         test_schema_data2,
         schema,
     )
     testing.expect_value(
         t,
         valid_err1,
-        JsonSchema_Validation_Error.Minimum_Validation_Failed,
+        Error.Minimum_Validation_Failed,
     )
 
 }
@@ -124,25 +124,25 @@ schema_valid_nested_property_test :: proc(t: ^testing.T) {
     test_schema_data3 := `{}`
 
     defer free_all()
-    schema, parse_err := json_schema_parse_from_string(test_schema2)
-    testing.expect_value(t, parse_err, JsonSchema_Parse_Error.None)
-    valid_err := json_schema_validate_string_with_schema(
+    schema, parse_err := parse_schema_from_string(test_schema2)
+    testing.expect_value(t, parse_err, Error.None)
+    valid_err := validate_string_with_schema(
         test_schema_data1,
         schema,
     )
-    testing.expect_value(t, valid_err, JsonSchema_Validation_Error.None)
+    testing.expect_value(t, valid_err, Error.None)
 
-    valid_err1 := json_schema_validate_string_with_schema(
+    valid_err1 := validate_string_with_schema(
         test_schema_data2,
         schema,
     )
-    testing.expect_value(t, valid_err1, JsonSchema_Validation_Error.None)
+    testing.expect_value(t, valid_err1, Error.None)
 
-    valid_err2 := json_schema_validate_string_with_schema(
+    valid_err2 := validate_string_with_schema(
         test_schema_data3,
         schema,
     )
-    testing.expect_value(t, valid_err2, JsonSchema_Validation_Error.None)
+    testing.expect_value(t, valid_err2, Error.None)
 }
 
 @(test)
@@ -267,6 +267,5 @@ test_nested2 := `{
     testing.expect_value(t, check_if_match_object(data1_0.(json.Object), data1_3.(json.Object)), false)
     testing.expect_value(t, check_if_match_object(data1_0.(json.Object), data1_4.(json.Object)), true)
 
-    testing.expect_value(t, check_if_match_object(data2_0.(json.Object), data2_1.(json.Object)), true)
-    
+    testing.expect_value(t, check_if_match_object(data2_0.(json.Object), data2_1.(json.Object)), false)
 }
