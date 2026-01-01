@@ -1,3 +1,4 @@
+#+feature dynamic-literals
 package schema_validator
 
 import "core:encoding/json"
@@ -146,7 +147,26 @@ schema_valid_nested_property_test :: proc(t: ^testing.T) {
 
 @(test)
 check_if_array_match_test :: proc(t: ^testing.T) {
+    defer free_all()
+    data1: json.Array = {1, 2, 3}
+    data2: json.Array = {1, 2, json.Array{1, 2}}
+    data3: json.Array = {1, 2, json.Array{1, 2, json.Array{3, 4}}}
+    data4: json.Array = {1, 2, json.Object{"foo" = "name"}}
 
+
+    testing.expect_value(t, check_if_match_array(data1, {1, 2, 3}), true)
+    testing.expect_value(t, check_if_match_array(data1, {1, 3, 2}), false)
+    testing.expect_value(t, check_if_match_array(data1, {1, 2, 3.2}), false)
+
+    testing.expect_value(t, check_if_match_array(data2, {1, 2, json.Array{1, 2}}), true)
+    testing.expect_value(t, check_if_match_array(data2, {1, 3, json.Array{1, 2}}), false)
+    testing.expect_value(t, check_if_match_array(data2, {1, 2, json.Array{1, 2}, 4}), false)
+
+    testing.expect_value(t, check_if_match_array(data3, {1, 2, json.Array{1, 2, json.Array{3, 4}}}), true)
+    testing.expect_value(t, check_if_match_array(data3, {1, 2, json.Array{1, 2, json.Array{3, 5}}}), false)
+
+    testing.expect_value(t, check_if_match_array(data4, {1, 2, json.Object{"foo" = "name"}}), true)
+    testing.expect_value(t, check_if_match_array(data4, {1, 2, json.Object{"foo" = "name1"}}), false)
 }
 
 @(test)
@@ -173,11 +193,80 @@ check_if_primitive_type_match_test :: proc(t: ^testing.T) {
     testing.expect_value(t, check_if_match_base(data3, nil), false)
     testing.expect_value(t, check_if_match_base(data3, "foo"), false)
     testing.expect_value(t, check_if_match_base(2345.0, 2345), true)
-
 }
 
 @(test)
 check_if_object_type_match_test :: proc(t: ^testing.T) {
 
+    defer free_all()
+test_schema_data1 := `{
+"name": {
+    "firstName": "John",
+    "lastName": "Doe",
+    "age": 21
+}}`
+test_schema_data2 := `{
+"name": {
+    "firstName": "John",
+    "lastName": "Doe",
+    "age": 21
+}}`
 
+test_schema_data3 := `{
+"name": {
+    "firstName": "John",
+    "lastName": "Doe",
+    "age": 22
+}}`
+
+test_schema_data4 := `{
+"name": {
+    "firstName": "John",
+    "lastName": "Doe",
+    "age": 22,
+    "dob": "1/1/2026"
+}}`
+test_schema_data5 := `{
+"name": {
+    "age": 21
+    "firstName": "John",
+    "lastName": "Doe",
+}}`
+test_nested1 := `{
+"name": {
+    "age": 21
+    "firstName": "John",
+    "lastName": "Doe",
+    "address": {
+         "street": "Main",
+         "city": "London"
+    }
+}}`
+test_nested2 := `{
+"name": {
+    "age": 21
+    "firstName": "John",
+    "lastName": "Doe",
+    "address": {
+         "street": "Main",
+         "city": "UK"
+    }
+}}`
+
+    data1_0, _ := json.parse_string(test_schema_data1)
+    data1_1, _ := json.parse_string(test_schema_data2)
+    data1_2, _ := json.parse_string(test_schema_data3)
+    data1_3, _ := json.parse_string(test_schema_data4)
+    data1_4, _ := json.parse_string(test_schema_data5)
+
+    data2_0, _ := json.parse_string(test_nested1)
+    data2_1, _ := json.parse_string(test_nested2)
+
+    testing.expect_value(t, check_if_match_object(data1_0.(json.Object), data1_1.(json.Object)), true)
+    testing.expect_value(t, check_if_match_object(data1_0.(json.Object), data1_2.(json.Object)), false)
+    testing.expect_value(t, check_if_match_object(data1_0.(json.Object), data1_3.(json.Object)), false)
+    testing.expect_value(t, check_if_match_object(data1_0.(json.Object), data1_4.(json.Object)), true)
+
+    testing.expect_value(t, check_if_match_object(data2_0.(json.Object), data2_1.(json.Object)), true)
+    
 }
