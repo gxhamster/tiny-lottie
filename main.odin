@@ -9,6 +9,8 @@ import vmem "core:mem/virtual"
 import "core:os"
 import "core:reflect"
 
+import sv "schema_validator"
+
 
 JsonLottie_Error :: enum {
     None,
@@ -145,8 +147,8 @@ JsonLottie_Prop_Color :: union {
 
 JsonLottie_Prop_Color_Single :: struct {
     sid: string,
-    a: bool,
-    k: Color4,
+    a:   bool,
+    k:   Color4,
 }
 
 JsonLottie_Prop_Color_Keyframe :: struct {
@@ -159,8 +161,8 @@ JsonLottie_Prop_Color_Keyframe :: struct {
 
 JsonLottie_Prop_Color_Anim :: struct {
     sid: string,
-    a: bool,
-    k: []JsonLottie_Prop_Color_Keyframe,
+    a:   bool,
+    k:   []JsonLottie_Prop_Color_Keyframe,
 }
 
 JsonLottie_Prop_Vector :: union {
@@ -263,7 +265,10 @@ JsonLottie_Core_Types :: enum {
     String,
 }
 
-json_obj_val_type :: proc(root: ^json.Object, key: string) -> JsonLottie_Core_Types {
+json_obj_val_type :: proc(
+    root: ^json.Object,
+    key: string,
+) -> JsonLottie_Core_Types {
     if root[key] == nil {
         return .Null
     }
@@ -368,7 +373,9 @@ json_lottie_parse_prop_scalar :: proc(
                 keyframes := make([dynamic]JsonLottie_Prop_Scalar_Keyframe)
                 resize(&keyframes, len(arr))
                 for elem in arr {
-                    keyframe := json_lottie_parse_scalar_keyframe(elem) or_return
+                    keyframe := json_lottie_parse_scalar_keyframe(
+                        elem,
+                    ) or_return
                     append(&keyframes, keyframe)
                 }
                 anim_scalar.k = keyframes[:]
@@ -378,7 +385,11 @@ json_lottie_parse_prop_scalar :: proc(
             }
         }
     case:
-        return not_required_or_error(required, scalar, .Incompatible_Prop_Scalar_Type)
+        return not_required_or_error(
+            required,
+            scalar,
+            .Incompatible_Prop_Scalar_Type,
+        )
     }
 
 }
@@ -404,7 +415,9 @@ json_lottie_parse_prop_vector :: proc(
                 a   = false,
                 sid = sid_val,
             }
-            single_vector.k = json_lottie_parse_value_vector(obj["k"]) or_return
+            single_vector.k = json_lottie_parse_value_vector(
+                obj["k"],
+            ) or_return
             vector_prop = single_vector
             return vector_prop, .None
         } else if animated_val == 1 {
@@ -422,7 +435,9 @@ json_lottie_parse_prop_vector :: proc(
                 keyframes := make([dynamic]JsonLottie_Prop_Vector_Keyframe)
                 resize(&keyframes, len(arr))
                 for elem in arr {
-                    keyframe := json_lottie_parse_vector_keyframe(elem) or_return
+                    keyframe := json_lottie_parse_vector_keyframe(
+                        elem,
+                    ) or_return
                     append(&keyframes, keyframe)
                 }
                 anim_vector.k = keyframes[:]
@@ -435,7 +450,11 @@ json_lottie_parse_prop_vector :: proc(
         }
 
     case:
-        return not_required_or_error(required, vector_prop, .Incompatible_Object_Type)
+        return not_required_or_error(
+            required,
+            vector_prop,
+            .Incompatible_Object_Type,
+        )
     }
 }
 
@@ -449,7 +468,8 @@ json_lottie_parse_color_keyframe :: proc(
     err: JsonLottie_Error,
 ) {
 
-    if err := json_lottie_unmarshal_object(value, color_keyframe); err != .None {
+    if err := json_lottie_unmarshal_object(value, color_keyframe);
+       err != .None {
         return not_required_or_error(required, color_keyframe, err)
     } else {
         return color_keyframe, .None
@@ -473,8 +493,8 @@ json_lottie_parse_prop_color :: proc(
 
         if animated_val == 0 {
             single_color := JsonLottie_Prop_Color_Single {
-                a = false,
-                sid = sid_val
+                a   = false,
+                sid = sid_val,
             }
             color_value: Color4
             json_lottie_unmarshal_array(obj["k"], color_value) or_return
@@ -483,8 +503,8 @@ json_lottie_parse_prop_color :: proc(
             return color_prop, .None
         } else if animated_val == 1 {
             anim_color_prop := JsonLottie_Prop_Color_Anim {
-                a = true,
-                sid = sid_val
+                a   = true,
+                sid = sid_val,
             }
 
             #partial switch type in obj["k"] {
@@ -496,19 +516,33 @@ json_lottie_parse_prop_color :: proc(
                 keyframes := make([dynamic]JsonLottie_Prop_Color_Keyframe)
                 resize(&keyframes, len(arr))
                 for elem in arr {
-                    keyframe := json_lottie_parse_color_keyframe(elem) or_return
+                    keyframe := json_lottie_parse_color_keyframe(
+                        elem,
+                    ) or_return
                     append(&keyframes, keyframe)
                 }
                 anim_color_prop.k = keyframes[:]
                 return anim_color_prop, .None
             case:
-                return not_required_or_error(required, color_prop, .Incompatible_Array_Type)
+                return not_required_or_error(
+                    required,
+                    color_prop,
+                    .Incompatible_Array_Type,
+                )
             }
         } else {
-            return not_required_or_error(required, color_prop, .Incompatible_Boolean_Type)
+            return not_required_or_error(
+                required,
+                color_prop,
+                .Incompatible_Boolean_Type,
+            )
         }
     case:
-        return not_required_or_error(required, color_prop, .Incompatible_Object_Type)
+        return not_required_or_error(
+            required,
+            color_prop,
+            .Incompatible_Object_Type,
+        )
     }
 }
 
@@ -522,7 +556,8 @@ json_lottie_parse_bezier_keyframe :: proc(
     err: JsonLottie_Error,
 ) {
 
-    if err := json_lottie_unmarshal_object(value, bezier_keyframe); err != .None {
+    if err := json_lottie_unmarshal_object(value, bezier_keyframe);
+       err != .None {
         return not_required_or_error(required, bezier_keyframe, err)
     } else {
         return bezier_keyframe, .None
@@ -548,7 +583,10 @@ json_lottie_parse_prop_bezier :: proc(
                 a = false,
             }
             bezier_shape_struct := BezierShapeValue{}
-            json_lottie_unmarshal_object(obj["k"], bezier_shape_struct) or_return
+            json_lottie_unmarshal_object(
+                obj["k"],
+                bezier_shape_struct,
+            ) or_return
             single_bezier.k = bezier_shape_struct
             bezier_prop = single_bezier
             return bezier_prop, .None
@@ -566,19 +604,33 @@ json_lottie_parse_prop_bezier :: proc(
                 keyframes := make([dynamic]JsonLottie_Prop_Bezier_Keyframe)
                 resize(&keyframes, len(arr))
                 for elem in arr {
-                    keyframe := json_lottie_parse_bezier_keyframe(elem) or_return
+                    keyframe := json_lottie_parse_bezier_keyframe(
+                        elem,
+                    ) or_return
                     append(&keyframes, keyframe)
                 }
                 anim_vector.k = keyframes[:]
                 return anim_vector, .None
             case:
-                return not_required_or_error(required, bezier_prop, .Incompatible_Array_Type)
+                return not_required_or_error(
+                    required,
+                    bezier_prop,
+                    .Incompatible_Array_Type,
+                )
             }
         } else {
-            return not_required_or_error(required, bezier_prop, .Incompatible_Boolean_Type)
+            return not_required_or_error(
+                required,
+                bezier_prop,
+                .Incompatible_Boolean_Type,
+            )
         }
     case:
-        return not_required_or_error(required, bezier_prop, .Incompatible_Object_Type)
+        return not_required_or_error(
+            required,
+            bezier_prop,
+            .Incompatible_Object_Type,
+        )
     }
 }
 
@@ -607,7 +659,11 @@ json_lottie_parse_value_vector :: proc(
 
         return vec, .None
     case:
-        return not_required_or_error(required, Vec3{}, .Incompatible_Vector_Type)
+        return not_required_or_error(
+            required,
+            Vec3{},
+            .Incompatible_Vector_Type,
+        )
     }
 
 }
@@ -645,7 +701,11 @@ json_lottie_try_float :: proc(
     case json.Integer:
         return f64(value.(json.Integer)), .None
     case:
-        return not_required_or_error(required, f64(0), .Incompatible_Number_Type)
+        return not_required_or_error(
+            required,
+            f64(0),
+            .Incompatible_Number_Type,
+        )
     }
 }
 
@@ -666,7 +726,11 @@ json_lottie_parse_integer :: proc(
     case json.Integer:
         return i64(value.(json.Integer)), .None
     case:
-        return not_required_or_error(required, i64(0), .Incompatible_Integer_Type)
+        return not_required_or_error(
+            required,
+            i64(0),
+            .Incompatible_Integer_Type,
+        )
     }
 }
 
@@ -719,7 +783,11 @@ json_lottie_parse_bool :: proc(
         }
 
     case:
-        return not_required_or_error(required, false, .Incompatible_Boolean_Type)
+        return not_required_or_error(
+            required,
+            false,
+            .Incompatible_Boolean_Type,
+        )
     }
 }
 
@@ -737,13 +805,23 @@ json_lottie_parse_keyframe_easing_vec :: proc(
     case json.Object:
         value_as_obj := value.(json.Object)
 
-        easing_vec.x = json_lottie_parse_value_vector(value_as_obj["x"], true) or_return
-        easing_vec.y = json_lottie_parse_value_vector(value_as_obj["y"], true) or_return
+        easing_vec.x = json_lottie_parse_value_vector(
+            value_as_obj["x"],
+            true,
+        ) or_return
+        easing_vec.y = json_lottie_parse_value_vector(
+            value_as_obj["y"],
+            true,
+        ) or_return
 
         return easing_vec, .None
 
     case:
-        return not_required_or_error(required, easing_vec, .Incompatible_Object_Type)
+        return not_required_or_error(
+            required,
+            easing_vec,
+            .Incompatible_Object_Type,
+        )
 
     }
 }
@@ -763,15 +841,23 @@ json_lottie_parse_keyframe_easing_scalar :: proc(
         required_fields := []string{"x", "y"}
         for field in required_fields {
             if ok := field in value_as_obj; ok == false {
-                return JsonLottie_Prop_Keyframe_Easing_Scalar{}, .Missing_Required_Value
+                return JsonLottie_Prop_Keyframe_Easing_Scalar{},
+                    .Missing_Required_Value
             }
         }
 
-        r_keyframe_easing.x = json_lottie_parse_number(value_as_obj["x"], true) or_return
-        r_keyframe_easing.x = json_lottie_parse_number(value_as_obj["y"], true) or_return
+        r_keyframe_easing.x = json_lottie_parse_number(
+            value_as_obj["x"],
+            true,
+        ) or_return
+        r_keyframe_easing.x = json_lottie_parse_number(
+            value_as_obj["y"],
+            true,
+        ) or_return
         return r_keyframe_easing, .None
     case:
-        return JsonLottie_Prop_Keyframe_Easing_Scalar{}, .Incompatible_Object_Type
+        return JsonLottie_Prop_Keyframe_Easing_Scalar{},
+            .Incompatible_Object_Type
 
     }
 }
@@ -827,7 +913,11 @@ json_lottie_parse_split_position :: proc(
             return pos, .None
         }
     case:
-        return not_required_or_error(required, pos, .Incompatible_Position_Type)
+        return not_required_or_error(
+            required,
+            pos,
+            .Incompatible_Position_Type,
+        )
     }
 }
 
@@ -846,14 +936,22 @@ json_lottie_parse_scalar_keyframe :: proc(
 
         scalar_keyframe.t = json_lottie_parse_number(object["t"]) or_return
         scalar_keyframe.h = json_lottie_parse_integer(object["h"]) or_return
-        scalar_keyframe.i = json_lottie_parse_keyframe_easing_scalar(object["i"]) or_return
-        scalar_keyframe.o = json_lottie_parse_keyframe_easing_scalar(object["o"]) or_return
+        scalar_keyframe.i = json_lottie_parse_keyframe_easing_scalar(
+            object["i"],
+        ) or_return
+        scalar_keyframe.o = json_lottie_parse_keyframe_easing_scalar(
+            object["o"],
+        ) or_return
         scalar_keyframe.s = json_lottie_parse_number(object["s"]) or_return
 
         return scalar_keyframe, .None
 
     case:
-        return not_required_or_error(required, scalar_keyframe, .Incompatible_Object_Type)
+        return not_required_or_error(
+            required,
+            scalar_keyframe,
+            .Incompatible_Object_Type,
+        )
     }
 }
 
@@ -873,14 +971,22 @@ json_lottie_parse_vector_keyframe :: proc(
 
         vec_keyframe.t = json_lottie_parse_number(object["t"]) or_return
         vec_keyframe.h = json_lottie_parse_integer(object["h"]) or_return
-        vec_keyframe.i = json_lottie_parse_keyframe_easing_vec(object["i"]) or_return
-        vec_keyframe.o = json_lottie_parse_keyframe_easing_vec(object["o"]) or_return
+        vec_keyframe.i = json_lottie_parse_keyframe_easing_vec(
+            object["i"],
+        ) or_return
+        vec_keyframe.o = json_lottie_parse_keyframe_easing_vec(
+            object["o"],
+        ) or_return
         vec_keyframe.s = json_lottie_parse_value_vector(object["s"]) or_return
 
         return vec_keyframe, .None
 
     case:
-        return not_required_or_error(required, vec_keyframe, .Incompatible_Object_Type)
+        return not_required_or_error(
+            required,
+            vec_keyframe,
+            .Incompatible_Object_Type,
+        )
     }
 }
 
@@ -899,16 +1005,28 @@ json_lottie_parse_position_keyframe :: proc(
 
         pos_keyframe.t = json_lottie_parse_number(object["t"]) or_return
         pos_keyframe.h = json_lottie_parse_integer(object["h"]) or_return
-        pos_keyframe.i = json_lottie_parse_keyframe_easing_vec(object["i"]) or_return
-        pos_keyframe.o = json_lottie_parse_keyframe_easing_vec(object["o"]) or_return
+        pos_keyframe.i = json_lottie_parse_keyframe_easing_vec(
+            object["i"],
+        ) or_return
+        pos_keyframe.o = json_lottie_parse_keyframe_easing_vec(
+            object["o"],
+        ) or_return
         pos_keyframe.s = json_lottie_parse_value_vector(object["s"]) or_return
-        pos_keyframe.ti = json_lottie_parse_value_vector(object["ti"]) or_return
-        pos_keyframe.to = json_lottie_parse_value_vector(object["to"]) or_return
+        pos_keyframe.ti = json_lottie_parse_value_vector(
+            object["ti"],
+        ) or_return
+        pos_keyframe.to = json_lottie_parse_value_vector(
+            object["to"],
+        ) or_return
 
         return pos_keyframe, .None
 
     case:
-        return not_required_or_error(required, pos_keyframe, .Incompatible_Object_Type)
+        return not_required_or_error(
+            required,
+            pos_keyframe,
+            .Incompatible_Object_Type,
+        )
     }
 }
 
@@ -928,12 +1046,17 @@ json_lottie_parse_position :: proc(
         required_fields := []string{"a", "k"}
         json_check_missing_required(value, required_fields) or_return
 
-        animated := json_lottie_parse_integer(position_obj["a"], true) or_return
+        animated := json_lottie_parse_integer(
+            position_obj["a"],
+            true,
+        ) or_return
         if animated == 0 {
             single_pos := JsonLottie_Prop_Position_Single {
                 a = false,
             }
-            single_pos.k = json_lottie_parse_value_vector(position_obj["k"]) or_return
+            single_pos.k = json_lottie_parse_value_vector(
+                position_obj["k"],
+            ) or_return
             return single_pos, .None
         } else {
             position_anim := JsonLottie_Prop_Position_Anim {
@@ -946,7 +1069,9 @@ json_lottie_parse_position :: proc(
                 keyframes := make([dynamic]JsonLottie_Prop_Position_Keyframe)
                 resize(&keyframes, len(arr))
                 for elem in arr {
-                    keyframe := json_lottie_parse_position_keyframe(elem) or_return
+                    keyframe := json_lottie_parse_position_keyframe(
+                        elem,
+                    ) or_return
                     append(&keyframes, keyframe)
                 }
                 position_anim.k = keyframes[:]
@@ -985,7 +1110,11 @@ json_lottie_read_file_handle :: proc(
     err: Error,
 ) {
 
-    data.raw = os.read_entire_file_from_handle_or_err(fd, allocator, loc) or_return
+    data.raw = os.read_entire_file_from_handle_or_err(
+        fd,
+        allocator,
+        loc,
+    ) or_return
     parsed_json, parse_err := json.parse(data.raw)
     if parse_err != nil {
         return JsonLottie{}, parse_err
@@ -1023,7 +1152,8 @@ json_lottie_read_file_handle :: proc(
     LOTTIE_VERSION_MIN :: 10000
     if root["ver"] != nil && root["ver"].(json.Integer) < LOTTIE_VERSION_MIN {
         return JsonLottie{}, JsonLottie_Error.Outof_Range_Value
-    } else if root["ver"] != nil && root["ver"].(json.Integer) > LOTTIE_VERSION_MIN {
+    } else if root["ver"] != nil &&
+       root["ver"].(json.Integer) > LOTTIE_VERSION_MIN {
         data.animation.ver = root["ver"].(json.Integer)
     }
 
@@ -1077,14 +1207,24 @@ main :: proc() {
             log.destroy_console_logger(logger, allocator = tracking_allocator)
 
             if len(track.allocation_map) > 0 {
-                fmt.eprintf("=== %v allocations not freed: ===\n", len(track.allocation_map))
+                fmt.eprintf(
+                    "=== %v allocations not freed: ===\n",
+                    len(track.allocation_map),
+                )
                 for _, entry in track.allocation_map {
-                    fmt.eprintf("- %v bytes @ %v\n", entry.size, entry.location)
+                    fmt.eprintf(
+                        "- %v bytes @ %v\n",
+                        entry.size,
+                        entry.location,
+                    )
                 }
 
             }
             if len(track.bad_free_array) > 0 {
-                fmt.eprintf("=== %v incorrect frees: ===\n", len(track.bad_free_array))
+                fmt.eprintf(
+                    "=== %v incorrect frees: ===\n",
+                    len(track.bad_free_array),
+                )
                 for entry in track.bad_free_array {
                     fmt.eprintf("- %p @ %v\n", entry.memory, entry.location)
                 }
@@ -1108,7 +1248,10 @@ main :: proc() {
     }
 
 
-    lottie_struct, err := json_lottie_read_file_name("./data/Fire.json", context.allocator)
+    lottie_struct, err := json_lottie_read_file_name(
+        "./data/Fire.json",
+        context.allocator,
+    )
     if err != nil && err != JsonLottie_Error.None {
         fmt.eprintf("Could not read lottie json file due to %s\n", err)
         panic("Could not read lottie json file")
@@ -1188,9 +1331,14 @@ json_lottie_unmarshal_array :: proc(
             raw.data = raw_data(data)
             raw.len = int(json_array_len)
             for elem, idx in json_array {
-                elem_ptr := rawptr(uintptr(raw.data) + uintptr(idx) * uintptr(internal_elem_size))
+                elem_ptr := rawptr(
+                    uintptr(raw.data) +
+                    uintptr(idx) * uintptr(internal_elem_size),
+                )
                 elem_any := any{elem_ptr, internal_elem_type_info.id}
-                elem_type_base := reflect.type_info_base(type_info_of(internal_elem_type_info.id))
+                elem_type_base := reflect.type_info_base(
+                    type_info_of(internal_elem_type_info.id),
+                )
 
                 #partial switch base_t in elem_type_base.variant {
                 case runtime.Type_Info_Struct, runtime.Type_Info_Union:
@@ -1217,7 +1365,8 @@ json_lottie_unmarshal_array :: proc(
                 internal_elem_size := internal_elem_type_info.size
                 for elem, idx in json_array {
                     elem_ptr := rawptr(
-                        uintptr(p.data) + uintptr(idx) * uintptr(internal_elem_size),
+                        uintptr(p.data) +
+                        uintptr(idx) * uintptr(internal_elem_size),
                     )
                     elem_any := any{elem_ptr, internal_elem_type_info.id}
                     json_lottie_unmarshal_value(elem, elem_any) or_return
@@ -1262,41 +1411,60 @@ json_lottie_unmarshal_object :: proc(
                      runtime.Type_Info_String,
                      runtime.Type_Info_Boolean:
                     field_value_any := any{field_ptr, field.type.id}
-                    json_lottie_unmarshal_value(json_obj[field.name], field_value_any) or_return
+                    json_lottie_unmarshal_value(
+                        json_obj[field.name],
+                        field_value_any,
+                    ) or_return
                 case runtime.Type_Info_Array,
                      runtime.Type_Info_Slice,
                      runtime.Type_Info_Dynamic_Array:
                     field_value_any := any{field_ptr, field.type.id}
-                    json_lottie_unmarshal_array(json_obj[field.name], field_value_any) or_return
+                    json_lottie_unmarshal_array(
+                        json_obj[field.name],
+                        field_value_any,
+                    ) or_return
                 case runtime.Type_Info_Struct:
                     field_value_any := any{field_ptr, field.type.id}
-                    json_lottie_unmarshal_object(json_obj[field.name], field_value_any) or_return
+                    json_lottie_unmarshal_object(
+                        json_obj[field.name],
+                        field_value_any,
+                    ) or_return
                 case runtime.Type_Info_Union:
                     // TODO(iyaan): Handle some obvious unions (eg: JsonLottie_Prop_Position)
                     // Finding a generic way to handle all cases of unions would be too much
                     switch field.type.id {
                     case JsonLottie_Prop_Position:
-                        pos_val := json_lottie_parse_position(json_obj[field.name]) or_return
+                        pos_val := json_lottie_parse_position(
+                            json_obj[field.name],
+                        ) or_return
                         field_ptr_offset := uintptr(ptr) + field.offset
                         field_val_ptr := transmute(^JsonLottie_Prop_Position)field_ptr_offset
                         field_val_ptr^ = pos_val
                     case JsonLottie_Prop_Scalar:
-                        scalar_val := json_lottie_parse_prop_scalar(json_obj[field.name]) or_return
+                        scalar_val := json_lottie_parse_prop_scalar(
+                            json_obj[field.name],
+                        ) or_return
                         field_ptr_offset := uintptr(ptr) + field.offset
                         field_val_ptr := transmute(^JsonLottie_Prop_Scalar)field_ptr_offset
                         field_val_ptr^ = scalar_val
                     case JsonLottie_Prop_Vector:
-                        vector_val := json_lottie_parse_prop_vector(json_obj[field.name]) or_return
+                        vector_val := json_lottie_parse_prop_vector(
+                            json_obj[field.name],
+                        ) or_return
                         field_ptr_offset := uintptr(ptr) + field.offset
                         field_val_ptr := transmute(^JsonLottie_Prop_Vector)field_ptr_offset
                         field_val_ptr^ = vector_val
                     case JsonLottie_Prop_Bezier:
-                        bezier_val := json_lottie_parse_prop_bezier(json_obj[field.name]) or_return
+                        bezier_val := json_lottie_parse_prop_bezier(
+                            json_obj[field.name],
+                        ) or_return
                         field_ptr_offset := uintptr(ptr) + field.offset
                         field_val_ptr := transmute(^JsonLottie_Prop_Bezier)field_ptr_offset
                         field_val_ptr^ = bezier_val
                     case JsonLottie_Prop_Color:
-                        color_val := json_lottie_parse_prop_color(json_obj[field.name]) or_return
+                        color_val := json_lottie_parse_prop_color(
+                            json_obj[field.name],
+                        ) or_return
                         field_ptr_offset := uintptr(ptr) + field.offset
                         field_val_ptr := transmute(^JsonLottie_Prop_Color)field_ptr_offset
                         field_val_ptr^ = color_val
