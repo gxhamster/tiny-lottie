@@ -23,9 +23,11 @@ Error :: enum {
     // Parsing Errors
     Invalid_Instance_Type,
     Invalid_Number_Type,
+    Invalid_Integer_Type,
     Invalid_Enum_Type,
     Invalid_Object_Type,
     Invalid_String_Type,
+    Invalid_Array_Type,
 
     // Validation Errors
     Type_Validation_Failed,
@@ -33,6 +35,10 @@ Error :: enum {
     Clashing_Property_Type,
     Minimum_Validation_Failed,
     Maximum_Validation_Failed,
+    Required_Validation_Failed,
+    Const_Validation_Failed,
+    Maxlength_Validation_Failed,
+    Minlength_Validation_Failed,
 
     // Allocation Errors
     Allocation_Error,
@@ -75,9 +81,9 @@ KeywordParseInfo :: struct {
 validation_keywords_parse_map := [?]KeywordParseInfo {
     {"type", .Type, parse_type},
     {"enum", .Enum, parse_enum},
-    {"const", .Const, nil},
-    {"maxLength", .MaxLength, nil},
-    {"minLength", .MinLength, nil},
+    {"const", .Const, parse_const},
+    {"maxLength", .MaxLength, parse_max_length},
+    {"minLength", .MinLength, parse_min_length},
     {"pattern", .Pattern, nil},
     {"exclusiveMaximum", .ExclusiveMaximum, nil},
     {"exclusiveMinimum", .ExclusiveMinimum, nil},
@@ -87,7 +93,7 @@ validation_keywords_parse_map := [?]KeywordParseInfo {
     {"dependentRequired", .DependentRequired, nil},
     {"maxProperties", .MaxProperties, nil},
     {"minProperties", .MinProperties, nil},
-    {"required", .Required, nil},
+    {"required", .Required, parse_required},
     {"maxItems", .MaxItems, nil},
     {"minItems", .MinItems, nil},
     {"maxContains", .MaxContains, nil},
@@ -100,9 +106,9 @@ validation_keywords_parse_map := [?]KeywordParseInfo {
 validation_keywords_validation_map := [?]KeywordValidationInfo {
     {"type", .Type, validate_type},
     {"enum", .Enum, validate_enum},
-    {"const", .Const, nil},
-    {"maxLength", .MaxLength, nil},
-    {"minLength", .MinLength, nil},
+    {"const", .Const, validate_const},
+    {"maxLength", .MaxLength, validate_max_length},
+    {"minLength", .MinLength, validate_min_length},
     {"pattern", .Pattern, nil},
     {"exclusiveMaximum", .ExclusiveMaximum, nil},
     {"exclusiveMinimum", .ExclusiveMinimum, nil},
@@ -112,7 +118,7 @@ validation_keywords_validation_map := [?]KeywordValidationInfo {
     {"dependentRequired", .DependentRequired, nil},
     {"maxProperties", .MaxProperties, nil},
     {"minProperties", .MinProperties, nil},
-    {"required", .Required, nil},
+    {"required", .Required, validate_required},
     {"maxItems", .MaxItems, nil},
     {"minItems", .MinItems, nil},
     {"maxContains", .MaxContains, nil},
@@ -163,10 +169,14 @@ JsonSchema :: struct {
     // keyword
     validation_flags:    bit_set[JsonSchemaValidationKeyword],
     type:                InstanceTypes,
+    const:               json.Value,
+    min_length:          int,
+    max_length:          int,
     // note(iyaan): Slice of the json map data
     enums:               []json.Value,
     minimum:             f64,
     maximum:             f64,
+    required:            []string,
 }
 
 @(private)
@@ -321,6 +331,46 @@ parse_enum :: proc(
 }
 
 @(private)
+parse_const :: proc(
+    value: json.Value,
+    schema: ^JsonSchema,
+    allocator := context.allocator,
+) -> Error {
+    schema.const = value
+    return .None
+}
+
+@(private)
+parse_min_length :: proc(
+    value: json.Value,
+    schema: ^JsonSchema,
+    allocator := context.allocator,
+) -> Error {
+    #partial switch type in value {
+    case json.Integer:
+        schema.min_length = int(value.(json.Integer))
+    case:
+        return .Invalid_Integer_Type
+    }
+    return .None
+}
+
+@(private)
+parse_max_length :: proc(
+    value: json.Value,
+    schema: ^JsonSchema,
+    allocator := context.allocator,
+) -> Error {
+    #partial switch type in value {
+    case json.Integer:
+        schema.max_length = int(value.(json.Integer))
+    case:
+        return .Invalid_Integer_Type
+    }
+    return .None
+}
+
+@(private)
 parse_minimum :: proc(
     value: json.Value,
     schema: ^JsonSchema,
@@ -352,6 +402,33 @@ parse_maximum :: proc(
         return .Invalid_Number_Type
     }
     return .None
+}
+
+@(private)
+parse_required :: proc(
+    value: json.Value,
+    schema: ^JsonSchema,
+    allocator := context.allocator,
+) -> Error {
+    if array_value, ok := value.(json.Array); ok {
+        // note(iyaan): Do i need a cloned slice here really?
+        // I mean i cant just assign the array_value here
+        // to the slice since its internal values are json.Values
+        // but the slice is []string. Maybe I can just set the internal
+        // data of the slice to it.
+        new_slice := make([]string, len(array_value), allocator)
+        for val, idx in array_value {
+            if str_val, ok := val.(json.String); ok {
+                new_slice[idx] = str_val             
+            } else {
+                return .Invalid_String_Type
+            }
+        }
+        schema.required = new_slice
+        return .None
+    } else {
+        return .Invalid_Array_Type
+    }
 }
 
 parse_schema_from_string :: proc(
@@ -554,6 +631,44 @@ validate_maximum :: proc(
     return .None
 }
 
+@(private)
+validate_max_length :: proc(
+    json_value: json.Value,
+    subschema: JsonSchema,
+) -> Error {
+
+    #partial switch type in json_value {
+    case json.String:
+        if len(json_value.(json.String)) > subschema.max_length {
+            return .Maxlength_Validation_Failed
+        } else {
+            return .None
+        }
+    case:
+        // A non-string value is valid
+        return .None
+    }
+}
+
+@(private)
+validate_min_length :: proc(
+    json_value: json.Value,
+    subschema: JsonSchema,
+) -> Error {
+
+    #partial switch type in json_value {
+    case json.String:
+        if len(json_value.(json.String)) < subschema.min_length {
+            return .Minlength_Validation_Failed
+        } else {
+            return .None
+        }
+    case:
+        // A non-string value is valid
+        return .None
+    }
+}
+
 // Checks whether the type of val1 and its
 // value is equal to that of val2
 @(private)
@@ -720,6 +835,66 @@ validate_enum :: proc(
         }
     }
     return .Enum_Validation_Failed
+}
+
+@(private)
+validate_required :: proc(
+    json_value: json.Value,
+    subschema: JsonSchema,
+) -> Error {
+    if json_value_object, ok := json_value.(json.Object); ok {
+        for required_key in subschema.required {
+            if required_key in json_value_object {
+                continue
+            } else {
+                return .Required_Validation_Failed
+            }
+        }
+        return .None
+    } else {
+        // If not an object no need to check required fields
+        return .None
+    }
+}
+
+
+@(private)
+validate_const :: proc(
+    json_value: json.Value,
+    subschema: JsonSchema,
+) -> Error {
+    // Basically a watered down version of validate_enum
+    // but you only have to compare against one thing
+    switch const_type in subschema.const {
+    case json.Integer, json.Float, json.Boolean, json.String, json.Null:
+        if check_if_match_base(subschema.const, json_value) {
+            return .None
+        } else {
+            return .Const_Validation_Failed
+        }
+    case json.Array:
+        if json_value_as_array, ok := json_value.(json.Array); ok {
+            if check_if_match_array(subschema.const.(json.Array), json_value_as_array) {
+                return .None
+            } else {
+                return .Const_Validation_Failed
+            }
+        } else {
+            return .Const_Validation_Failed
+        }
+    case json.Object:
+        if json_value_as_object, ok := json_value.(json.Object); ok {
+            if check_if_match_object(subschema.const.(json.Object), json_value_as_object) {
+                return .None
+            } else {
+                return .Const_Validation_Failed
+            }
+        } else {
+            return .Const_Validation_Failed
+        }
+    case:
+        unreachable()
+    }
 }
 
 @(private)
