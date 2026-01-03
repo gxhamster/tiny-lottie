@@ -4,6 +4,7 @@ package schema_validator
 import "core:encoding/json"
 import "core:log"
 import "core:testing"
+import "core:math"
 
 
 @(test)

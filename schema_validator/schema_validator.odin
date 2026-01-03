@@ -3,6 +3,7 @@ package schema_validator
 import "core:encoding/json"
 import "core:log"
 import "core:strings"
+import "core:math"
 
 InstanceTypes :: enum {
     Null,
@@ -39,6 +40,9 @@ Error :: enum {
     Const_Validation_Failed,
     Maxlength_Validation_Failed,
     Minlength_Validation_Failed,
+    Exclusive_Minimum_Validation_Failed,
+    Exclusive_Maximum_Validation_Failed,
+    Multiple_Of_Validation_Failed,
 
     // Allocation Errors
     Allocation_Error,
@@ -85,11 +89,11 @@ validation_keywords_parse_map := [?]KeywordParseInfo {
     {"maxLength", .MaxLength, parse_max_length},
     {"minLength", .MinLength, parse_min_length},
     {"pattern", .Pattern, nil},
-    {"exclusiveMaximum", .ExclusiveMaximum, nil},
-    {"exclusiveMinimum", .ExclusiveMinimum, nil},
+    {"exclusiveMaximum", .ExclusiveMaximum, parse_exclusive_max},
+    {"exclusiveMinimum", .ExclusiveMinimum, parse_exclusive_min},
     {"maximum", .Maximum, parse_maximum},
     {"minimum", .Minimum, parse_minimum},
-    {"multipleOf", .MultipleOf, nil},
+    {"multipleOf", .MultipleOf, parse_multipleof},
     {"dependentRequired", .DependentRequired, nil},
     {"maxProperties", .MaxProperties, nil},
     {"minProperties", .MinProperties, nil},
@@ -110,11 +114,11 @@ validation_keywords_validation_map := [?]KeywordValidationInfo {
     {"maxLength", .MaxLength, validate_max_length},
     {"minLength", .MinLength, validate_min_length},
     {"pattern", .Pattern, nil},
-    {"exclusiveMaximum", .ExclusiveMaximum, nil},
-    {"exclusiveMinimum", .ExclusiveMinimum, nil},
+    {"exclusiveMaximum", .ExclusiveMaximum, validate_exclusive_max},
+    {"exclusiveMinimum", .ExclusiveMinimum, validate_exclusive_min},
     {"maximum", .Maximum, validate_maximum},
     {"minimum", .Minimum, validate_minimum},
-    {"multipleOf", .MultipleOf, nil},
+    {"multipleOf", .MultipleOf, validate_multipleof},
     {"dependentRequired", .DependentRequired, nil},
     {"maxProperties", .MaxProperties, nil},
     {"minProperties", .MinProperties, nil},
@@ -172,6 +176,9 @@ JsonSchema :: struct {
     const:               json.Value,
     min_length:          int,
     max_length:          int,
+    exclusive_max:       f64,
+    exclusive_min:       f64,
+    multipleof:          f64,
     // note(iyaan): Slice of the json map data
     enums:               []json.Value,
     minimum:             f64,
@@ -371,6 +378,40 @@ parse_max_length :: proc(
 }
 
 @(private)
+parse_exclusive_max:: proc(
+    value: json.Value,
+    schema: ^JsonSchema,
+    allocator := context.allocator,
+) -> Error {
+    #partial switch type in value {
+    case json.Float:
+        schema.exclusive_max = value.(json.Float)
+    case json.Integer:
+        schema.exclusive_max = f64(value.(json.Integer))
+    case:
+        return .Invalid_Number_Type
+    }
+    return .None
+}
+
+@(private)
+parse_exclusive_min:: proc(
+    value: json.Value,
+    schema: ^JsonSchema,
+    allocator := context.allocator,
+) -> Error {
+    #partial switch type in value {
+    case json.Float:
+        schema.exclusive_min = value.(json.Float)
+    case json.Integer:
+        schema.exclusive_min = f64(value.(json.Integer))
+    case:
+        return .Invalid_Number_Type
+    }
+    return .None
+}
+
+@(private)
 parse_minimum :: proc(
     value: json.Value,
     schema: ^JsonSchema,
@@ -398,6 +439,23 @@ parse_maximum :: proc(
         schema.maximum = value.(json.Float)
     case json.Integer:
         schema.maximum = f64(value.(json.Integer))
+    case:
+        return .Invalid_Number_Type
+    }
+    return .None
+}
+
+@(private)
+parse_multipleof :: proc(
+    value: json.Value,
+    schema: ^JsonSchema,
+    allocator := context.allocator,
+) -> Error {
+    #partial switch type in value {
+    case json.Float:
+        schema.multipleof = value.(json.Float)
+    case json.Integer:
+        schema.multipleof = f64(value.(json.Integer))
     case:
         return .Invalid_Number_Type
     }
@@ -632,6 +690,54 @@ validate_maximum :: proc(
 }
 
 @(private)
+validate_exclusive_max :: proc(
+    json_value: json.Value,
+    subschema: JsonSchema,
+) -> Error {
+
+    #partial switch type in json_value {
+    case json.Float:
+        num_val := json_value.(json.Float)
+        if num_val >= subschema.exclusive_max {
+            return .Exclusive_Maximum_Validation_Failed
+        }
+    case json.Integer:
+        num_val := f64(json_value.(json.Integer))
+        if num_val >= subschema.exclusive_max {
+            return .Exclusive_Maximum_Validation_Failed
+        }
+    case:
+        return .None
+    }
+
+    return .None
+}
+
+@(private)
+validate_exclusive_min :: proc(
+    json_value: json.Value,
+    subschema: JsonSchema,
+) -> Error {
+
+    #partial switch type in json_value {
+    case json.Float:
+        num_val := json_value.(json.Float)
+        if num_val <= subschema.exclusive_min {
+            return .Exclusive_Minimum_Validation_Failed
+        }
+    case json.Integer:
+        num_val := f64(json_value.(json.Integer))
+        if num_val <= subschema.exclusive_min {
+            return .Exclusive_Minimum_Validation_Failed
+        }
+    case:
+        return .None
+    }
+
+    return .None
+}
+
+@(private)
 validate_max_length :: proc(
     json_value: json.Value,
     subschema: JsonSchema,
@@ -665,6 +771,38 @@ validate_min_length :: proc(
         }
     case:
         // A non-string value is valid
+        return .None
+    }
+}
+
+@(private)
+validate_multipleof :: proc(
+    json_value: json.Value,
+    subschema: JsonSchema,
+) -> Error {
+
+    float_is_multiple :: proc(n1: f64, n2: f64) -> Error {
+        // note(iyaan): This is a such a dumb way to overcome
+        // float precision errors when trying to find if mod
+        // is zero
+        MANTISSA_THRESHOLD :: 1e-15
+        mod := math.mod_f64(n1, n2)
+        if mod == 0 {
+            return .None
+        } else if mod < MANTISSA_THRESHOLD {
+            return .None
+        } else {
+            return .Multiple_Of_Validation_Failed
+        }
+    }
+
+    #partial switch type in json_value {
+    case json.Float:
+        return float_is_multiple(json_value.(json.Float), subschema.multipleof)
+    case json.Integer:
+        return float_is_multiple(f64(json_value.(json.Integer)), subschema.multipleof)
+    case:
+        // A non-number value is valid
         return .None
     }
 }
