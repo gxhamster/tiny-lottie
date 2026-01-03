@@ -270,3 +270,12 @@ test_nested2 := `{
 
     testing.expect_value(t, check_if_match_object(data2_0.(json.Object), data2_1.(json.Object)), false)
 }
+
+@(test)
+ref_path_test :: proc(t: ^testing.T) {
+    schema := JsonSchema{
+        ref = "#/$defs/helper"
+    }
+
+    get_schema_from_ref_path("#/$defs/helper", schema)
+}

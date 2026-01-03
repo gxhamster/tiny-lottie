@@ -2,8 +2,9 @@ package schema_validator
 
 import "core:encoding/json"
 import "core:log"
-import "core:strings"
 import "core:math"
+import "core:path/slashpath"
+import "core:strings"
 
 InstanceTypes :: enum {
     Null,
@@ -17,7 +18,7 @@ InstanceTypes :: enum {
 
 Error :: enum {
     None,
-    
+
     // JSON Errors
     Json_Parse_Error,
 
@@ -46,7 +47,6 @@ Error :: enum {
 
     // Allocation Errors
     Allocation_Error,
-
 }
 
 // Takes a pointer to the schema to set the correct parameter
@@ -61,28 +61,43 @@ ParseProc :: proc(
 // state in the schema. It just needs to read in the correct
 // field in the schema struct
 @(private)
-ValidationProc :: proc(
-    value: json.Value,
-    schema: JsonSchema,
-) -> Error
+ValidationProc :: proc(value: json.Value, schema: JsonSchema) -> Error
 
 @(private)
 KeywordValidationInfo :: struct {
     keyword:         string,
-    type:            JsonSchemaValidationKeyword,
+    type:            SchemaKeywords,
     validation_proc: ValidationProc,
 }
 
 @(private)
 KeywordParseInfo :: struct {
     keyword:    string,
-    type:       JsonSchemaValidationKeyword,
+    type:       SchemaKeywords,
     parse_proc: ParseProc,
 }
 
 // TODO: Implement parsing procedure for each of the keywords -_-
 @(private)
-validation_keywords_parse_map := [?]KeywordParseInfo {
+keywords_parse_table := [?]KeywordParseInfo {
+    // Applicators
+    {"allOf", .AllOf, nil},
+    {"anyOf", .AnyOf, nil},
+    {"oneOf", .OneOf, nil},
+    {"if", .If, nil},
+    {"then", .Then, nil},
+    {"else", .Else, nil},
+    {"not", .Not, nil},
+    {"properties", .Properties, parse_properties},
+    {"additionalProperties", .AdditionalProperties, nil},
+    {"patternProperties", .PatternProperties, nil},
+    {"dependentSchemas", .DependentSchemas, nil},
+    {"propertyNames", .PropertyNames, nil},
+    {"contains", .Contains, nil},
+    {"items", .Items, nil},
+    {"prefixItems", .PrefixItems, nil},
+
+    // Validators
     {"type", .Type, parse_type},
     {"enum", .Enum, parse_enum},
     {"const", .Const, parse_const},
@@ -107,7 +122,25 @@ validation_keywords_parse_map := [?]KeywordParseInfo {
 
 // TODO: Implement validation procedure for each of the keywords -_-
 @(private)
-validation_keywords_validation_map := [?]KeywordValidationInfo {
+keywords_validation_table := [?]KeywordValidationInfo {
+    // Applicators
+    {"allOf", .AllOf, nil},
+    {"anyOf", .AnyOf, nil},
+    {"oneOf", .OneOf, nil},
+    {"if", .If, nil},
+    {"then", .Then, nil},
+    {"else", .Else, nil},
+    {"not", .Not, nil},
+    {"properties", .Properties, validate_properties},
+    {"additionalProperties", .AdditionalProperties, nil},
+    {"patternProperties", .PatternProperties, nil},
+    {"dependentSchemas", .DependentSchemas, nil},
+    {"propertyNames", .PropertyNames, nil},
+    {"contains", .Contains, nil},
+    {"items", .Items, nil},
+    {"prefixItems", .PrefixItems, nil},
+
+    // Validators
     {"type", .Type, validate_type},
     {"enum", .Enum, validate_enum},
     {"const", .Const, validate_const},
@@ -130,8 +163,26 @@ validation_keywords_validation_map := [?]KeywordValidationInfo {
     {"uniqueItems", .UniqueItems, nil},
 }
 
-JsonSchemaValidationKeyword :: enum {
-    Type = 0,
+SchemaKeywords :: enum {
+    // Applicators
+    AllOf,
+    AnyOf,
+    OneOf,
+    If,
+    Then,
+    Else,
+    Not,
+    Properties,
+    AdditionalProperties,
+    PatternProperties,
+    DependentSchemas,
+    PropertyNames,
+    Contains,
+    Items,
+    PrefixItems,
+
+    // Validators
+    Type,
     Enum,
     Const,
     MaxLength,
@@ -154,10 +205,24 @@ JsonSchemaValidationKeyword :: enum {
 }
 
 JsonSchema :: struct {
+    // Core stuff of the schema
     schema:              string,
     id:                  string,
     title:               string,
-    property:            string, // Used as an internal name, not part of schema
+    // note(iyaan): I dont know whether I will be able to implement
+    // fully URI path support
+    ref:                 string,
+    defs:                map[string]JsonSchema,
+
+    // Internal stuff
+    // Used to create paths and for holding the name of
+    // a property
+    property:            string,
+
+    // Used to denote whether this schema is used to just
+    // as a holder for another schema. Used by $ref when
+    // referencing embedded sub-schemas
+    is_empty_container:  bool,
 
     // Applicator keywords
     properties_children: [dynamic]JsonSchema,
@@ -171,7 +236,7 @@ JsonSchema :: struct {
     // it will check whether a value is min zero, which is not the behaviour
     // that we want. We need a sort of flag set for each defined validation
     // keyword
-    validation_flags:    bit_set[JsonSchemaValidationKeyword],
+    validation_flags:    bit_set[SchemaKeywords],
     type:                InstanceTypes,
     const:               json.Value,
     min_length:          int,
@@ -179,7 +244,6 @@ JsonSchema :: struct {
     exclusive_max:       f64,
     exclusive_min:       f64,
     multipleof:          f64,
-    // note(iyaan): Slice of the json map data
     enums:               []json.Value,
     minimum:             f64,
     maximum:             f64,
@@ -204,6 +268,44 @@ json_parse_string :: proc(
     }
 }
 
+@(private)
+parse_properties :: proc(
+    value: json.Value,
+    schema: ^JsonSchema,
+    allocator := context.allocator,
+) -> Error {
+
+    if properties_as_object, ok := value.(json.Object); ok {
+        no_of_properties := len(properties_as_object)
+        // note(iyaan): I dont think the properties are likely to change for a schema after
+        // it has already been parsed.
+        schema.properties_children = make(
+            [dynamic]JsonSchema,
+            0,
+            allocator,
+        )
+        reserve(&schema.properties_children, no_of_properties)
+
+        if no_of_properties > 0 {
+            schema.type = .Object
+            for prop_field in properties_as_object {
+                prop_sub_schema, err := parse_schema_from_json_value(
+                    properties_as_object[prop_field],
+                )
+                if err != .None {
+                    panic("Could not parse properties schema")
+                }
+                prop_sub_schema.property = prop_field
+                append(&schema.properties_children, prop_sub_schema)
+            }
+        }
+    } else {
+        return .Invalid_Object_Type
+    }
+
+    return .None
+}
+
 parse_schema_from_json_value :: proc(
     value: json.Value,
     allocator := context.allocator,
@@ -221,48 +323,36 @@ parse_schema_from_json_value :: proc(
         schema_struct.title = json_parse_string(parsed_json["title"]) or_return
         schema_struct.id = json_parse_string(parsed_json["id"]) or_return
 
-        properties_exists := "properties" in parsed_json
-        if properties_exists {
-            if _, ok := parsed_json["properties"].(json.Object); ok {
-                no_of_properties := len(
-                    parsed_json["properties"].(json.Object),
-                )
-                // note(iyaan): I dont think the properties are likely to change for a schema after
-                // it has already been parsed.
-                schema_struct.properties_children = make(
-                    [dynamic]JsonSchema,
-                    0,
-                    allocator,
-                )
-                reserve(&schema_struct.properties_children, no_of_properties)
+        // note(iyaan): Parse any of $defs defined in a schema
+        // From what I have seen $defs allow schemas nested
+        // under keywords. e.g,
+        // "$defs": {
+        //     "foo1": {
+        //         "foo2": {
+        //             "type": number
+        //         }
+        //     }
+        // }
+        // I think we can have a single map and each value in
+        // the map will have the full path to the schema instead of
+        // the value having sub-schemas. In the above case for the root
+        // $defs map it will contain only '#/$defs/foo1/foo2'. Here foo1
+        // is just a container to hold the real schema foo2
+        if "$defs" in parsed_json {
+            if defs_object, ok := parsed_json["$defs"].(json.Object); ok {
+                for key in defs_object {
+                    // def_value := defs_object[key]
 
-                if properties_exists && no_of_properties > 0 {
-                    schema_struct.type = .Object
-                    properties_obj := parsed_json["properties"].(json.Object)
-                    for prop_field in properties_obj {
-                        prop_sub_schema, err :=
-                            parse_schema_from_json_value(
-                                properties_obj[prop_field],
-                            )
-                        if err != .None {
-                            panic("Could not parse properties schema")
-                        }
-                        prop_sub_schema.property = prop_field
-                        append(
-                            &schema_struct.properties_children,
-                            prop_sub_schema,
-                        )
-                    }
                 }
             } else {
-                // note(iyaan): No need for any action if no properties
-                // are found
+                return schema_struct, .Invalid_Object_Type
             }
         }
 
-        // Parse any validation keywords existing and set appropriate
-        // flags for the validation stage
-        for keyword_info, idx in validation_keywords_parse_map {
+        // Parse any keywords existing and set appropriate
+        // flags for the validation stage. Will parse both
+        // the applicators and the valiators keywords
+        for keyword_info, idx in keywords_parse_table {
             val := parsed_json[keyword_info.keyword]
             parse_proc := keyword_info.parse_proc
             if val != nil && parse_proc != nil {
@@ -378,7 +468,7 @@ parse_max_length :: proc(
 }
 
 @(private)
-parse_exclusive_max:: proc(
+parse_exclusive_max :: proc(
     value: json.Value,
     schema: ^JsonSchema,
     allocator := context.allocator,
@@ -395,7 +485,7 @@ parse_exclusive_max:: proc(
 }
 
 @(private)
-parse_exclusive_min:: proc(
+parse_exclusive_min :: proc(
     value: json.Value,
     schema: ^JsonSchema,
     allocator := context.allocator,
@@ -477,7 +567,7 @@ parse_required :: proc(
         new_slice := make([]string, len(array_value), allocator)
         for val, idx in array_value {
             if str_val, ok := val.(json.String); ok {
-                new_slice[idx] = str_val             
+                new_slice[idx] = str_val
             } else {
                 return .Invalid_String_Type
             }
@@ -502,10 +592,7 @@ parse_schema_from_string :: proc(
         log.debugf("json.parse_string returned error (%v)", parsed_json_err)
         return schema_struct, .Json_Parse_Error
     }
-    schema_struct, err = parse_schema_from_json_value(
-        parsed_json,
-        allocator,
-    )
+    schema_struct, err = parse_schema_from_json_value(parsed_json, allocator)
     if err != (.None) {
         log.debugf("json_schema_parse_from_json_value() returned %v\n", err)
         panic("Returned an error")
@@ -563,8 +650,8 @@ validate_string_with_schema :: proc(
 // json_value is the parent object which contains the
 // properties, not the actual property value itself
 validate_properties :: proc(
-    schema: JsonSchema,
     json_value: json.Value,
+    subschema: JsonSchema,
 ) -> Error {
     // If the data is not an object it does not need to check
     // the properties
@@ -573,7 +660,7 @@ validate_properties :: proc(
     }
     json_value_as_obj := json_value.(json.Object)
     log.debug("JSON Value:", json_value_as_obj)
-    for prop in schema.properties_children {
+    for prop in subschema.properties_children {
         val := json_value_as_obj[prop.property]
         log.debug("Value:", val, ", Prop:", prop)
         if val != nil {
@@ -594,10 +681,6 @@ validate_json_value_with_subschema :: proc(
 ) -> Error {
     subschema_copy := subschema
 
-    // note(iyaan): Will recursively validate each property
-    // in json_value with the correct subschema
-    validate_properties(subschema, json_value) or_return
-
     for validation_keyword in subschema.validation_flags {
         log.debugf(
             "Performing validation (%v) on (%v)",
@@ -605,7 +688,7 @@ validate_json_value_with_subschema :: proc(
             json_value,
         )
         validation_keyword_info :=
-            validation_keywords_validation_map[validation_keyword]
+            keywords_validation_table[validation_keyword]
         validation_proc := validation_keyword_info.validation_proc
         if validation_proc != nil {
             validation_err := validation_proc(json_value, subschema)
@@ -626,10 +709,7 @@ validate_json_value_with_subschema :: proc(
 }
 
 @(private)
-validate_type :: proc(
-    json_value: json.Value,
-    subschema: JsonSchema,
-) -> Error {
+validate_type :: proc(json_value: json.Value, subschema: JsonSchema) -> Error {
     parsed_json_base_type := get_json_value_type(json_value)
     if ok := json_schema_check_type_compatibility(
         subschema.type,
@@ -800,7 +880,10 @@ validate_multipleof :: proc(
     case json.Float:
         return float_is_multiple(json_value.(json.Float), subschema.multipleof)
     case json.Integer:
-        return float_is_multiple(f64(json_value.(json.Integer)), subschema.multipleof)
+        return float_is_multiple(
+            f64(json_value.(json.Integer)),
+            subschema.multipleof,
+        )
     case:
         // A non-number value is valid
         return .None
@@ -919,14 +1002,20 @@ check_if_match_array :: proc(
         case json.Array:
             if data_json_array_val, ok := data_json_array[idx].(json.Array);
                ok {
-                check_if_match_array(val.(json.Array), data_json_array_val) or_return
+                check_if_match_array(
+                    val.(json.Array),
+                    data_json_array_val,
+                ) or_return
             } else {
                 return false
             }
         case json.Object:
             if data_json_object_val, ok := data_json_array[idx].(json.Object);
                ok {
-                check_if_match_object(val.(json.Object), data_json_object_val) or_return
+                check_if_match_object(
+                    val.(json.Object),
+                    data_json_object_val,
+                ) or_return
             } else {
                 return false
             }
@@ -936,10 +1025,7 @@ check_if_match_array :: proc(
 }
 
 @(private)
-validate_enum :: proc(
-    json_value: json.Value,
-    subschema: JsonSchema,
-) -> Error {
+validate_enum :: proc(json_value: json.Value, subschema: JsonSchema) -> Error {
 
     // Check if the json_value is one of the values in subschema.enum
     for enum_val in subschema.enums {
@@ -1012,7 +1098,10 @@ validate_const :: proc(
         }
     case json.Array:
         if json_value_as_array, ok := json_value.(json.Array); ok {
-            if check_if_match_array(subschema.const.(json.Array), json_value_as_array) {
+            if check_if_match_array(
+                subschema.const.(json.Array),
+                json_value_as_array,
+            ) {
                 return .None
             } else {
                 return .Const_Validation_Failed
@@ -1022,7 +1111,10 @@ validate_const :: proc(
         }
     case json.Object:
         if json_value_as_object, ok := json_value.(json.Object); ok {
-            if check_if_match_object(subschema.const.(json.Object), json_value_as_object) {
+            if check_if_match_object(
+                subschema.const.(json.Object),
+                json_value_as_object,
+            ) {
                 return .None
             } else {
                 return .Const_Validation_Failed
@@ -1065,4 +1157,33 @@ get_json_value_type :: proc(json_value: json.Value) -> InstanceTypes {
         panic("Not a json type")
     }
     return parsed_json_base_type
+}
+
+// For now will only support finding
+// schemas through relative fragment
+// pointers
+get_schema_from_ref_path :: proc(
+    ref_path: string,
+    root_schema: JsonSchema,
+    allocator := context.allocator,
+) -> (
+    JsonSchema,
+    Error,
+) {
+    // "$ref": "#/$defs/helper"
+    //   "$defs": {
+    //     "helper": {
+    //     "$id": "my-helper",
+    //     "type": "string"
+    //     }
+    //    }
+
+    cur_schema := root_schema
+    target_schema_path := ref_path
+    paths := slashpath.split_elements(target_schema_path, allocator)
+    assert(paths[0] == "#", "Ref path needs a relative fragment path")
+    for path in paths[1:] {
+        log.debug(path)
+    }
+    return root_schema, .None
 }
