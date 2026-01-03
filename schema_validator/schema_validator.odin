@@ -80,6 +80,17 @@ KeywordParseInfo :: struct {
 // TODO: Implement parsing procedure for each of the keywords -_-
 @(private)
 keywords_parse_table := [?]KeywordParseInfo {
+    // Core vocabulary
+    {"$id", .Id, parse_id},
+    {"$schema", .Schema, parse_schema_field},
+    {"$ref", .Ref, nil},
+    {"$comment", .Comment, nil},
+    {"$defs", .Defs, nil},
+    {"$anchor", .Anchor, nil},
+    {"$dynamicAnchor", .DynamicAnchor, nil},
+    {"$dynamicRef", .DynamicRef, nil},
+    {"$vocabulary", .Vocabulary, nil},
+
     // Applicators
     {"allOf", .AllOf, nil},
     {"anyOf", .AnyOf, nil},
@@ -118,11 +129,32 @@ keywords_parse_table := [?]KeywordParseInfo {
     {"maxContains", .MaxContains, nil},
     {"minContains", .MinContains, nil},
     {"uniqueItems", .UniqueItems, nil},
+
+    // Metadata
+    {"title", .Title, parse_title},
+    {"description", .Description, nil},
+    {"default", .Default, nil},
+    {"deprecated", .Deprecated, nil},
+    {"examples", .Examples, nil},
+    {"readOnly", .ReadOnly, nil},
+    {"writeOnly", .WriteOnly, nil},
 }
 
 // TODO: Implement validation procedure for each of the keywords -_-
 @(private)
 keywords_validation_table := [?]KeywordValidationInfo {
+    // Core vocabulary. These do not have any validation
+    // to do. Just here to preserve the order of the enums
+    {"$id", .Id, nil},
+    {"$schema", .Schema, nil},
+    {"$ref", .Ref, nil},
+    {"$comment", .Comment, nil},
+    {"$defs", .Defs, nil},
+    {"$anchor", .Anchor, nil},
+    {"$dynamicAnchor", .DynamicAnchor, nil},
+    {"$dynamicRef", .DynamicRef, nil},
+    {"$vocabulary", .Vocabulary, nil},
+
     // Applicators
     {"allOf", .AllOf, nil},
     {"anyOf", .AnyOf, nil},
@@ -161,9 +193,36 @@ keywords_validation_table := [?]KeywordValidationInfo {
     {"maxContains", .MaxContains, nil},
     {"minContains", .MinContains, nil},
     {"uniqueItems", .UniqueItems, nil},
+
+    // Metadata
+    {"title", .Title, nil},
+    {"description", .Description, nil},
+    {"default", .Default, nil},
+    {"deprecated", .Deprecated, nil},
+    {"examples", .Examples, nil},
+    {"readOnly", .ReadOnly, nil},
+    {"writeOnly", .WriteOnly, nil},
 }
 
+// note(iyaan): Values of this enum will be used to
+// lookup the correct parse and validate
+// function from the tables above. So make sure
+// the entries are in order of this enum.
 SchemaKeywords :: enum {
+    // Core vocabulary. There are no validation
+    // procedures for these. In the validation table
+    // there procedure will be kept nil. But they will
+    // be parsed
+    Id,
+    Schema,
+    Ref,
+    Comment,
+    Defs,
+    Anchor,
+    DynamicAnchor,
+    DynamicRef,
+    Vocabulary ,
+
     // Applicators
     AllOf,
     AnyOf,
@@ -202,6 +261,17 @@ SchemaKeywords :: enum {
     MaxContains,
     MinContains,
     UniqueItems,
+
+    // Metadata
+    Title,
+    Description,
+    Default,
+    Deprecated,
+    Examples,
+    ReadOnly,
+    WriteOnly,
+
+    // TODO: Add all other keywords in schema specfification
 }
 
 JsonSchema :: struct {
@@ -215,14 +285,15 @@ JsonSchema :: struct {
     defs:                map[string]JsonSchema,
 
     // Internal stuff
-    // Used to create paths and for holding the name of
-    // a property
+    // Used for holding the name of a property
     property:            string,
 
     // Used to denote whether this schema is used to just
     // as a holder for another schema. Used by $ref when
     // referencing embedded sub-schemas
     is_empty_container:  bool,
+    other_keys:          map[string]JsonSchema,
+
 
     // Applicator keywords
     properties_children: [dynamic]JsonSchema,
@@ -306,6 +377,36 @@ parse_properties :: proc(
     return .None
 }
 
+@(private)
+parse_schema_field :: proc(
+    value: json.Value,
+    schema: ^JsonSchema,
+    allocator := context.allocator,
+) -> Error {
+    schema.schema = json_parse_string(value) or_return
+    return .None
+}
+
+@(private)
+parse_title :: proc(
+    value: json.Value,
+    schema: ^JsonSchema,
+    allocator := context.allocator,
+) -> Error {
+    schema.title = json_parse_string(value) or_return
+    return .None
+}
+
+@(private)
+parse_id :: proc(
+    value: json.Value,
+    schema: ^JsonSchema,
+    allocator := context.allocator,
+) -> Error {
+    schema.id = json_parse_string(value) or_return
+    return .None
+}
+
 parse_schema_from_json_value :: proc(
     value: json.Value,
     allocator := context.allocator,
@@ -314,15 +415,7 @@ parse_schema_from_json_value :: proc(
     schema_struct: JsonSchema,
     err: Error,
 ) {
-    #partial switch t in value {
-    case json.Object:
-        parsed_json := value.(json.Object)
-        schema_struct.schema = json_parse_string(
-            parsed_json["$schema"],
-        ) or_return
-        schema_struct.title = json_parse_string(parsed_json["title"]) or_return
-        schema_struct.id = json_parse_string(parsed_json["id"]) or_return
-
+    if parsed_json, ok := value.(json.Object); ok {
         // note(iyaan): Parse any of $defs defined in a schema
         // From what I have seen $defs allow schemas nested
         // under keywords. e.g,
@@ -352,12 +445,16 @@ parse_schema_from_json_value :: proc(
         // Parse any keywords existing and set appropriate
         // flags for the validation stage. Will parse both
         // the applicators and the valiators keywords
+        any_keywords_existed := false
         for keyword_info, idx in keywords_parse_table {
             val := parsed_json[keyword_info.keyword]
             parse_proc := keyword_info.parse_proc
             if val != nil && parse_proc != nil {
+                any_keywords_existed := true
                 parse_err := parse_proc(val, &schema_struct, allocator)
                 if parse_err == .None {
+                    // Setting the bit on keywords that needs
+                    // to be validated
                     schema_struct.validation_flags += {keyword_info.type}
                 } else {
                     // TODO: Remove this in time
@@ -365,13 +462,30 @@ parse_schema_from_json_value :: proc(
                 }
             }
         }
+
+
+        // Determine whether this current schema is just a bogus
+        // container
+        schema_struct.is_empty_container = any_keywords_existed
+
+
+        // Here we need to gather all the keys that are not
+        // keywords belonging to either applicator or validator or
+        // any of the other keywords. This needs to be recursive.
+        for key in parsed_json {
+            for info in keywords_parse_table {
+                if strings.compare(info.keyword, key) != 0 {
+                    bogus_schema := parse_schema_from_json_value(parsed_json[key], allocator) or_return
+                    schema_struct.other_keys[key] = bogus_schema 
+                }
+            }
+        }
+
+
         return schema_struct, .None
-    case:
+    } else {
         return schema_struct, .Invalid_Object_Type
     }
-
-    return schema_struct, .None
-
 }
 
 @(private)
