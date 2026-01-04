@@ -5,6 +5,7 @@ import "core:strings"
 import "core:os"
 import "core:log"
 import "core:testing"
+import "core:fmt"
 
 TEST_FILE :: "tests/const.json"
 
@@ -25,35 +26,31 @@ const_test :: proc(t: ^testing.T) {
 
     for test_object, test_idx in parsed_json.(json.Array) {
     	test_object := test_object.(json.Object)
-    	log.infof("(Test=%v, Description='%v')", test_idx, test_object["description"])
-    	if "schema" in test_object { 
-    		if schema_object, ok := test_object["schema"].(json.Object); ok {
-	    		schema_struct, err := parse_schema_from_json_value(schema_object)
-	    		testing.expect(t, err == .None, "Error occured when parsing schema")
+		if schema_object, ok := test_object["schema"].(json.Object); ok {
+    		schema_struct, err := parse_schema_from_json_value(schema_object)
+    		testing.expect(t, err == .None, "Error occured when parsing schema")
 
-	    		schema_tests := test_object["tests"].(json.Array)
-	    		for schema_test in schema_tests {
-	    			schema_test := schema_test.(json.Object)
-	    			description := schema_test["description"].(json.String)
-	    			log.infof("Running subtest (desc='%v')", description)
-	    			expected_result := schema_test["valid"].(json.Boolean)
+    		schema_tests := test_object["tests"].(json.Array)
+    		for schema_test in schema_tests {
+    			schema_test := schema_test.(json.Object)
+    			description := schema_test["description"].(json.String)
+    			expected_result := schema_test["valid"].(json.Boolean)
 
-	    			schema_test_data := schema_test["data"]
-	    			err := validate_json_value_with_subschema(schema_test_data, schema_struct)
-	    			if expected_result {
-	    				testing.expect(t, err == .None, "Test should validate correctly")
-	    			} else {
-	    				testing.expect(t, err != .None, "Test should not-validate correctly")
-	    				log.infof("Sub-test failed succesfully (desc='%v', err=%v)", description, err)
-	    			}
-	    			
-	    		}
-
-    		} else {
-    			testing.expect(t, ok == true, "Schema is not an object")
+    			schema_test_data := schema_test["data"]
+    			err := validate_json_value_with_subschema(schema_test_data, schema_struct)
+    			if expected_result {
+    				msg := fmt.tprintf("test (desc='%v') should pass, returned (%v)", description, err)
+    				testing.expect(t, err == .None, msg)
+    			} else {
+    				msg := fmt.tprintf("test (desc='%v') should fail, returned (%v)", description, err)
+    				testing.expect(t, err != .None, msg)
+    			}
+    			
     		}
-    	} else {
-    	    testing.expect(t, false == true, "Schema is missing in test")
-    	}
+
+		} else {
+			testing.expect(t, ok == true, "Schema is not an object")
+		}
+    	
     }
 }
