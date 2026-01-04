@@ -1,5 +1,7 @@
 package schema_validator
 
+import "core:encoding/json"
+
 InstanceTypes :: enum {
     Null,
     Boolean,
