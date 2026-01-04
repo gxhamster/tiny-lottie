@@ -85,7 +85,7 @@ keywords_parse_table := [?]KeywordParseInfo {
     {"$schema", .Schema, parse_schema_field},
     {"$ref", .Ref, nil},
     {"$comment", .Comment, nil},
-    {"$defs", .Defs, nil},
+    {"$defs", .Defs, parse_defs},
     {"$anchor", .Anchor, nil},
     {"$dynamicAnchor", .DynamicAnchor, nil},
     {"$dynamicRef", .DynamicRef, nil},
@@ -221,7 +221,7 @@ SchemaKeywords :: enum {
     Anchor,
     DynamicAnchor,
     DynamicRef,
-    Vocabulary ,
+    Vocabulary,
 
     // Applicators
     AllOf,
@@ -286,7 +286,7 @@ JsonSchema :: struct {
 
     // Internal stuff
     // Used for holding the name of a property
-    property:            string,
+    name:            string,
 
     // Used to denote whether this schema is used to just
     // as a holder for another schema. Used by $ref when
@@ -350,11 +350,7 @@ parse_properties :: proc(
         no_of_properties := len(properties_as_object)
         // note(iyaan): I dont think the properties are likely to change for a schema after
         // it has already been parsed.
-        schema.properties_children = make(
-            [dynamic]JsonSchema,
-            0,
-            allocator,
-        )
+        schema.properties_children = make([dynamic]JsonSchema, 0, allocator)
         reserve(&schema.properties_children, no_of_properties)
 
         if no_of_properties > 0 {
@@ -366,7 +362,7 @@ parse_properties :: proc(
                 if err != .None {
                     panic("Could not parse properties schema")
                 }
-                prop_sub_schema.property = prop_field
+                prop_sub_schema.name = prop_field
                 append(&schema.properties_children, prop_sub_schema)
             }
         }
@@ -407,6 +403,39 @@ parse_id :: proc(
     return .None
 }
 
+@(private)
+parse_defs :: proc(
+    value: json.Value,
+    schema: ^JsonSchema,
+    allocator := context.allocator,
+) -> Error {
+    // note(iyaan): Parse any of $defs defined in a schema
+    // From what I have seen $defs allow schemas nested
+    // under keywords. e.g,
+    // "$defs": {
+    //     "foo1": {
+    //         "foo2": {
+    //             "type": number
+    //         }
+    //     }
+    // }
+    if defs_object, ok := value.(json.Object); ok {
+        for key in defs_object {
+            def_value := defs_object[key]
+            subschema, def_subschema_err := parse_schema_from_json_value(def_value, allocator)
+            if def_subschema_err != .None {
+                // TODO: Remove this panic in time
+                panic("Could not parse subschema inside $defs")
+            }
+            schema.defs[key] = subschema
+        }
+    } else {
+        return .Invalid_Object_Type
+    }
+
+    return .None
+}
+
 parse_schema_from_json_value :: proc(
     value: json.Value,
     allocator := context.allocator,
@@ -416,31 +445,7 @@ parse_schema_from_json_value :: proc(
     err: Error,
 ) {
     if parsed_json, ok := value.(json.Object); ok {
-        // note(iyaan): Parse any of $defs defined in a schema
-        // From what I have seen $defs allow schemas nested
-        // under keywords. e.g,
-        // "$defs": {
-        //     "foo1": {
-        //         "foo2": {
-        //             "type": number
-        //         }
-        //     }
-        // }
-        // I think we can have a single map and each value in
-        // the map will have the full path to the schema instead of
-        // the value having sub-schemas. In the above case for the root
-        // $defs map it will contain only '#/$defs/foo1/foo2'. Here foo1
-        // is just a container to hold the real schema foo2
-        if "$defs" in parsed_json {
-            if defs_object, ok := parsed_json["$defs"].(json.Object); ok {
-                for key in defs_object {
-                    // def_value := defs_object[key]
 
-                }
-            } else {
-                return schema_struct, .Invalid_Object_Type
-            }
-        }
 
         // Parse any keywords existing and set appropriate
         // flags for the validation stage. Will parse both
@@ -475,8 +480,12 @@ parse_schema_from_json_value :: proc(
         for key in parsed_json {
             for info in keywords_parse_table {
                 if strings.compare(info.keyword, key) != 0 {
-                    bogus_schema := parse_schema_from_json_value(parsed_json[key], allocator) or_return
-                    schema_struct.other_keys[key] = bogus_schema 
+                    bogus_schema := parse_schema_from_json_value(
+                        parsed_json[key],
+                        allocator,
+                    ) or_return
+                    bogus_schema.name = key
+                    schema_struct.other_keys[key] = bogus_schema
                 }
             }
         }
@@ -775,7 +784,7 @@ validate_properties :: proc(
     json_value_as_obj := json_value.(json.Object)
     log.debug("JSON Value:", json_value_as_obj)
     for prop in subschema.properties_children {
-        val := json_value_as_obj[prop.property]
+        val := json_value_as_obj[prop.name]
         log.debug("Value:", val, ", Prop:", prop)
         if val != nil {
             val_type := get_json_value_type(val)
@@ -1275,7 +1284,9 @@ get_json_value_type :: proc(json_value: json.Value) -> InstanceTypes {
 
 // For now will only support finding
 // schemas through relative fragment
-// pointers
+// pointers. Any URI path in $ref actually needs
+// to do proper resolving of that URI path to whatever
+// schema it is pointing to
 get_schema_from_ref_path :: proc(
     ref_path: string,
     root_schema: JsonSchema,
