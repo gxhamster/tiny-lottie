@@ -4,7 +4,6 @@ package schema_validator
 import "core:encoding/json"
 import "core:log"
 import "core:testing"
-import "core:math"
 
 
 @(test)
@@ -273,9 +272,52 @@ test_nested2 := `{
 
 @(test)
 ref_path_test :: proc(t: ^testing.T) {
+    defer free_all()
     schema := JsonSchema{
         ref = "#/$defs/helper"
     }
 
-    get_schema_from_ref_path("#/$defs/helper", schema)
+    test_schema0 := `{
+"$id": "https://example.com/person.schema.json",
+"$schema": "https://json-schema.org/draft/2020-12/schema",
+"title": "Person",
+"type": "object",
+"properties": {
+    "name": {
+        "type": "object",
+        "properties": {
+            "firstName": {
+                "type": "string",
+                "description": "The person's first name."
+            },
+            "lastName": {
+                "type": "string",
+                "description": "The person's last name."
+            },
+            "age": {
+                "description": "Age in years which must be equal to or greater than zero.",
+                "type": "integer",
+                "minimum": 21
+            }
+        }
+    }
+},
+"$defs": {
+    "personal": {
+        "address": {
+            "type": "object",
+            "properties": {
+                "street": {
+                    "type": "string",
+                }
+            }
+        }
+    }
+}
+}`
+    data0, err := parse_schema_from_string(test_schema0)
+    log.debugf("Error: %v", err)
+    log.debug(data0)
+    log.debug(get_schema_from_ref_path("#/$defs/personal", &data0))
+
 }

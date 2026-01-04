@@ -47,6 +47,11 @@ Error :: enum {
 
     // Allocation Errors
     Allocation_Error,
+
+    // Referencing Errors
+    Ref_Non_Schema,
+    Ref_Schema_Not_Found,
+    Ref_Path_Not_Found_In_Defs
 }
 
 // Takes a pointer to the schema to set the correct parameter
@@ -286,7 +291,7 @@ JsonSchema :: struct {
 
     // Internal stuff
     // Used for holding the name of a property
-    name:            string,
+    name:                string,
 
     // Used to denote whether this schema is used to just
     // as a holder for another schema. Used by $ref when
@@ -360,6 +365,11 @@ parse_properties :: proc(
                     properties_as_object[prop_field],
                 )
                 if err != .None {
+                    log.debugf(
+                        "Parsing properties failed (field=%v) : %v",
+                        prop_field,
+                        err,
+                    )
                     panic("Could not parse properties schema")
                 }
                 prop_sub_schema.name = prop_field
@@ -422,7 +432,10 @@ parse_defs :: proc(
     if defs_object, ok := value.(json.Object); ok {
         for key in defs_object {
             def_value := defs_object[key]
-            subschema, def_subschema_err := parse_schema_from_json_value(def_value, allocator)
+            subschema, def_subschema_err := parse_schema_from_json_value(
+                def_value,
+                allocator,
+            )
             if def_subschema_err != .None {
                 // TODO: Remove this panic in time
                 panic("Could not parse subschema inside $defs")
@@ -455,7 +468,7 @@ parse_schema_from_json_value :: proc(
             val := parsed_json[keyword_info.keyword]
             parse_proc := keyword_info.parse_proc
             if val != nil && parse_proc != nil {
-                any_keywords_existed := true
+                any_keywords_existed = true
                 parse_err := parse_proc(val, &schema_struct, allocator)
                 if parse_err == .None {
                     // Setting the bit on keywords that needs
@@ -471,22 +484,27 @@ parse_schema_from_json_value :: proc(
 
         // Determine whether this current schema is just a bogus
         // container
-        schema_struct.is_empty_container = any_keywords_existed
+        schema_struct.is_empty_container = !any_keywords_existed
 
 
         // Here we need to gather all the keys that are not
         // keywords belonging to either applicator or validator or
         // any of the other keywords. This needs to be recursive.
         for key in parsed_json {
+            is_key_vocabulary := false
             for info in keywords_parse_table {
-                if strings.compare(info.keyword, key) != 0 {
-                    bogus_schema := parse_schema_from_json_value(
-                        parsed_json[key],
-                        allocator,
-                    ) or_return
-                    bogus_schema.name = key
-                    schema_struct.other_keys[key] = bogus_schema
+                if strings.compare(info.keyword, key) == 0 {
+                    is_key_vocabulary = true
                 }
+            }
+
+            if !is_key_vocabulary {
+                bogus_schema := parse_schema_from_json_value(
+                    parsed_json[key],
+                    allocator,
+                ) or_return
+                bogus_schema.name = key
+                schema_struct.other_keys[key] = bogus_schema
             }
         }
 
@@ -1289,11 +1307,11 @@ get_json_value_type :: proc(json_value: json.Value) -> InstanceTypes {
 // schema it is pointing to
 get_schema_from_ref_path :: proc(
     ref_path: string,
-    root_schema: JsonSchema,
+    root_schema: ^JsonSchema,
     allocator := context.allocator,
 ) -> (
-    JsonSchema,
-    Error,
+    schema: ^JsonSchema,
+    err: Error,
 ) {
     // "$ref": "#/$defs/helper"
     //   "$defs": {
@@ -1303,12 +1321,53 @@ get_schema_from_ref_path :: proc(
     //     }
     //    }
 
-    cur_schema := root_schema
+    DEFS_KEYWORDS :: "$defs"
+
+    // Pass the path after the $defs part
+    search_defs :: proc(
+        defs: ^map[string]JsonSchema,
+        path: []string,
+    ) -> (
+        target_schema: ^JsonSchema,
+        err: Error,
+    ) {
+        if len(path) == 0 {
+            return target_schema, .Ref_Schema_Not_Found
+        }
+
+        if path[0] in defs {
+            cur_schema: ^JsonSchema = &defs[path[0]]
+            if len(path) > 1 {
+                for pt in path[1:] {
+                    if pt in cur_schema.other_keys {
+                        cur_schema = &cur_schema.other_keys[pt]
+                    } else {
+                        return target_schema, .Ref_Schema_Not_Found
+                    }
+                }
+            }
+            return cur_schema, .None
+        }
+        
+        return target_schema, .Ref_Path_Not_Found_In_Defs
+    }
+
     target_schema_path := ref_path
+    cur_schema: ^JsonSchema = root_schema
     paths := slashpath.split_elements(target_schema_path, allocator)
     assert(paths[0] == "#", "Ref path needs a relative fragment path")
-    for path in paths[1:] {
-        log.debug(path)
+    if len(paths[1:]) > 0 {
+        if strings.compare(paths[1], DEFS_KEYWORDS) == 0 {
+            if len(paths[2:]) == 0 {
+                return schema, .Ref_Non_Schema
+            } else {
+                // Go down the $defs route
+                target_schema := search_defs(&cur_schema.defs, paths[2:]) or_return
+                return target_schema, .None
+            }
+        }
     }
-    return root_schema, .None
+
+    return cur_schema, .None
 }
+
