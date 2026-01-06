@@ -29,6 +29,7 @@ json_parse_string :: proc(
 parse_properties :: proc(
     value: json.Value,
     schema: ^JsonSchema,
+    schema_context: ^JsonSchemaContext,
     allocator := context.allocator,
 ) -> Error {
 
@@ -44,6 +45,7 @@ parse_properties :: proc(
             for prop_field in properties_as_object {
                 prop_sub_schema, err := parse_schema_from_json_value(
                     properties_as_object[prop_field],
+                    schema_context,
                 )
                 if err != .None {
                     log.debugf(
@@ -68,6 +70,7 @@ parse_properties :: proc(
 parse_schema_field :: proc(
     value: json.Value,
     schema: ^JsonSchema,
+    schema_context: ^JsonSchemaContext,
     allocator := context.allocator,
 ) -> Error {
     schema.schema = json_parse_string(value) or_return
@@ -78,6 +81,7 @@ parse_schema_field :: proc(
 parse_title :: proc(
     value: json.Value,
     schema: ^JsonSchema,
+    schema_context: ^JsonSchemaContext,
     allocator := context.allocator,
 ) -> Error {
     schema.title = json_parse_string(value) or_return
@@ -88,9 +92,20 @@ parse_title :: proc(
 parse_id :: proc(
     value: json.Value,
     schema: ^JsonSchema,
+    schema_context: ^JsonSchemaContext,
     allocator := context.allocator,
 ) -> Error {
     schema.id = json_parse_string(value) or_return
+    return .None
+}
+
+parse_ref :: proc(
+    value: json.Value,
+    schema: ^JsonSchema,
+    schema_context: ^JsonSchemaContext,
+    allocator := context.allocator,
+) -> Error {
+    schema.ref = json_parse_string(value) or_return
     return .None
 }
 
@@ -98,6 +113,7 @@ parse_id :: proc(
 parse_defs :: proc(
     value: json.Value,
     schema: ^JsonSchema,
+    schema_context: ^JsonSchemaContext,
     allocator := context.allocator,
 ) -> Error {
     // note(iyaan): Parse any of $defs defined in a schema
@@ -115,6 +131,7 @@ parse_defs :: proc(
             def_value := defs_object[key]
             subschema, def_subschema_err := parse_schema_from_json_value(
                 def_value,
+                schema_context,
                 allocator,
             )
             if def_subschema_err != .None {
@@ -132,6 +149,7 @@ parse_defs :: proc(
 
 parse_schema_from_json_value :: proc(
     value: json.Value,
+    schema_context: ^JsonSchemaContext,
     allocator := context.allocator,
     logger := context.logger,
 ) -> (
@@ -150,7 +168,7 @@ parse_schema_from_json_value :: proc(
             parse_proc := keyword_info.parse_proc
             if val != nil && parse_proc != nil {
                 any_keywords_existed = true
-                parse_err := parse_proc(val, &schema_struct, allocator)
+                parse_err := parse_proc(val, &schema_struct, schema_context, allocator)
                 if parse_err == .None {
                     // Setting the bit on keywords that needs
                     // to be validated
@@ -182,6 +200,7 @@ parse_schema_from_json_value :: proc(
             if !is_key_vocabulary {
                 bogus_schema := parse_schema_from_json_value(
                     parsed_json[key],
+                    schema_context,
                     allocator,
                 ) or_return
                 bogus_schema.name = key
@@ -200,6 +219,7 @@ parse_schema_from_json_value :: proc(
 parse_type :: proc(
     value: json.Value,
     schema: ^JsonSchema,
+    schema_context: ^JsonSchemaContext,
     allocator := context.allocator,
 ) -> Error {
     type, ok := value.(json.String)
@@ -232,6 +252,7 @@ parse_type :: proc(
 parse_enum :: proc(
     value: json.Value,
     schema: ^JsonSchema,
+    schema_context: ^JsonSchemaContext,
     allocator := context.allocator,
 ) -> Error {
     #partial switch type in value {
@@ -253,6 +274,7 @@ parse_enum :: proc(
 parse_const :: proc(
     value: json.Value,
     schema: ^JsonSchema,
+    schema_context: ^JsonSchemaContext,
     allocator := context.allocator,
 ) -> Error {
     schema.const = value
@@ -263,6 +285,7 @@ parse_const :: proc(
 parse_min_length :: proc(
     value: json.Value,
     schema: ^JsonSchema,
+    schema_context: ^JsonSchemaContext,
     allocator := context.allocator,
 ) -> Error {
     #partial switch type in value {
@@ -278,6 +301,7 @@ parse_min_length :: proc(
 parse_max_length :: proc(
     value: json.Value,
     schema: ^JsonSchema,
+    schema_context: ^JsonSchemaContext,
     allocator := context.allocator,
 ) -> Error {
     #partial switch type in value {
@@ -293,6 +317,7 @@ parse_max_length :: proc(
 parse_exclusive_max :: proc(
     value: json.Value,
     schema: ^JsonSchema,
+    schema_context: ^JsonSchemaContext,
     allocator := context.allocator,
 ) -> Error {
     #partial switch type in value {
@@ -310,6 +335,7 @@ parse_exclusive_max :: proc(
 parse_exclusive_min :: proc(
     value: json.Value,
     schema: ^JsonSchema,
+    schema_context: ^JsonSchemaContext,
     allocator := context.allocator,
 ) -> Error {
     #partial switch type in value {
@@ -327,6 +353,7 @@ parse_exclusive_min :: proc(
 parse_minimum :: proc(
     value: json.Value,
     schema: ^JsonSchema,
+    schema_context: ^JsonSchemaContext,
     allocator := context.allocator,
 ) -> Error {
     #partial switch type in value {
@@ -344,6 +371,7 @@ parse_minimum :: proc(
 parse_maximum :: proc(
     value: json.Value,
     schema: ^JsonSchema,
+    schema_context: ^JsonSchemaContext,
     allocator := context.allocator,
 ) -> Error {
     #partial switch type in value {
@@ -361,6 +389,7 @@ parse_maximum :: proc(
 parse_multipleof :: proc(
     value: json.Value,
     schema: ^JsonSchema,
+    schema_context: ^JsonSchemaContext,
     allocator := context.allocator,
 ) -> Error {
     #partial switch type in value {
@@ -378,6 +407,7 @@ parse_multipleof :: proc(
 parse_required :: proc(
     value: json.Value,
     schema: ^JsonSchema,
+    schema_context: ^JsonSchemaContext,
     allocator := context.allocator,
 ) -> Error {
     if array_value, ok := value.(json.Array); ok {
@@ -414,9 +444,12 @@ parse_schema_from_string :: proc(
         log.debugf("json.parse_string returned error (%v)", parsed_json_err)
         return schema_struct, .Json_Parse_Error
     }
-    schema_struct, err = parse_schema_from_json_value(parsed_json, allocator)
+
+    schema_context := JsonSchemaContext{}
+
+    schema_struct, err = parse_schema_from_json_value(parsed_json, &schema_context, allocator)
     if err != (.None) {
-        log.debugf("json_schema_parse_from_json_value() returned %v\n", err)
+        log.debugf("_parse_from_json_value() returned %v\n", err)
         panic("Returned an error")
     }
     return schema_struct, .None
@@ -1040,9 +1073,19 @@ get_schema_from_ref_path :: proc(
                 target_schema := search_defs(&cur_schema.defs, paths[2:]) or_return
                 return target_schema, .None
             }
+        } else {
+            assert(1 == 0, "Referencing schemas not inside $defs not implemented")
         }
     }
 
     return cur_schema, .None
+}
+
+resolve_refs_to_schemas :: proc(
+    root_schema: ^JsonSchema,
+) -> Error {
+    for {
+
+    }
 }
 

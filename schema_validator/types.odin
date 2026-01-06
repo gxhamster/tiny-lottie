@@ -56,6 +56,7 @@ Error :: enum {
 ParseProc :: proc(
     value: json.Value,
     schema: ^JsonSchema,
+    schema_context: ^JsonSchemaContext,
     allocator := context.allocator,
 ) -> Error
 // No need to take a pointer since it does not need to set any
@@ -84,7 +85,7 @@ keywords_parse_table := [?]KeywordParseInfo {
     // Core vocabulary
     {"$id", .Id, parse_id},
     {"$schema", .Schema, parse_schema_field},
-    {"$ref", .Ref, nil},
+    {"$ref", .Ref, parse_ref},
     {"$comment", .Comment, nil},
     {"$defs", .Defs, parse_defs},
     {"$anchor", .Anchor, nil},
@@ -281,8 +282,9 @@ JsonSchema :: struct {
     id:                  string,
     title:               string,
     // note(iyaan): I dont know whether I will be able to implement
-    // fully URI path support
+    // fully URI path support for refs
     ref:                 string,
+    ref_as_schema:       ^JsonSchema,
     defs:                map[string]JsonSchema,
 
     // Internal stuff
@@ -320,4 +322,16 @@ JsonSchema :: struct {
     minimum:             f64,
     maximum:             f64,
     required:            []string,
+}
+
+// Just a neat little to hold store related stuff
+JsonSchemaContext :: struct {
+    refs_to_resolve: [dynamic]struct {
+        ref: string,
+        // note(iyaan): This is just where the ref path
+        // string has been found in. Useful when we need to
+        // set the ref_as_schema after the target schema pointed
+        // to by the $ref has been found
+        source_schema: ^JsonSchema,
+    }
 }

@@ -24,10 +24,12 @@ const_test :: proc(t: ^testing.T) {
     testing.expect(t, ok == true, "Can read the test file")
     parsed_json, parse_err := json.parse(data_bytes)
 
+    schema_context := JsonSchemaContext{}
+
     for test_object, test_idx in parsed_json.(json.Array) {
     	test_object := test_object.(json.Object)
 		if schema_object, ok := test_object["schema"].(json.Object); ok {
-    		schema_struct, err := parse_schema_from_json_value(schema_object)
+    		schema_struct, err := parse_schema_from_json_value(schema_object, &schema_context)
     		testing.expect(t, err == .None, "Error occured when parsing schema")
 
     		schema_tests := test_object["tests"].(json.Array)
