@@ -456,6 +456,29 @@ parse_required :: proc(
 	}
 }
 
+parse_allof :: proc(
+	value: json.Value,
+	schema_idx: PoolIndex,
+	schema_context: ^Context,
+	allocator := context.allocator,
+) -> Error {
+	if value_as_array, ok := value.(json.Array); ok {
+		schema := get_schema(schema_context, schema_idx)
+		no_of_subschemas := len(value_as_array)
+		for subschema_val in value_as_array {
+			_, idx, _ := parse_schema_from_json_value(subschema_val, schema_context, allocator)
+			// note(iyaan): Has to make sure that allof field
+			// dynamic array is inititalized with the allocator
+			// we need
+			append(&schema.allof, idx)
+		}
+
+		return .None
+	}
+
+	return .Invalid_Array_Type
+}
+
 parse_schema_from_string :: proc(
 	schema: string,
 	schema_context: ^Context,
@@ -950,6 +973,15 @@ validate_const :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context
 	}
 }
 
+validate_allof :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context) -> Error {
+	for subschema_idx in subschema.allof {
+		subschema := get_schema(ctx, subschema_idx)
+		validate_json_value_with_subschema(json_value, subschema, ctx) or_return
+	}
+	return .None
+}
+
+
 @(private)
 get_json_value_type :: proc(json_value: json.Value) -> InstanceTypes {
 	parsed_json_base_type: InstanceTypes
@@ -1051,6 +1083,8 @@ get_schema_from_ref_path :: proc(
 	return cur_schema, .None
 }
 
+// note(iyaan): Make sure that this is called
+// before validation has been called
 resolve_refs_to_schemas :: proc(
 	root_schema: ^Schema,
 	schema_context: ^Context,
@@ -1072,10 +1106,7 @@ resolve_refs_to_schemas :: proc(
 			// with the resolved schema
 			// ref_info.source_schema^ = target_schema^
 			source_schema := get_schema(schema_context, ref_info.source_schema)
-			log.debugf("Source Schema: %v", get_schema(schema_context, ref_info.source_schema))
-			log.debugf("Target Schema: %v", target_schema)
 			source_schema^ = target_schema^
-			log.debugf("Source Schema: %v", get_schema(schema_context, ref_info.source_schema))
 		}
 	}
 	return .None

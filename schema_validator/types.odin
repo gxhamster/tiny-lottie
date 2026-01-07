@@ -95,7 +95,7 @@ keywords_parse_table := [?]KeywordParseInfo {
 	{"$vocabulary", .Vocabulary, nil},
 
 	// Applicators
-	{"allOf", .AllOf, nil},
+	{"allOf", .AllOf, parse_allof},
 	{"anyOf", .AnyOf, nil},
 	{"oneOf", .OneOf, nil},
 	{"if", .If, nil},
@@ -159,7 +159,7 @@ keywords_validation_table := [?]KeywordValidationInfo {
 	{"$vocabulary", .Vocabulary, nil},
 
 	// Applicators
-	{"allOf", .AllOf, nil},
+	{"allOf", .AllOf, validate_allof},
 	{"anyOf", .AnyOf, nil},
 	{"oneOf", .OneOf, nil},
 	{"if", .If, nil},
@@ -301,6 +301,7 @@ Schema :: struct {
 	// Applicator keywords
 	properties_children: [dynamic]PoolIndex,
 	items_children:      [dynamic]PoolIndex,
+	allof:               [dynamic]PoolIndex,
 
 	// Validation keywords
 	// note(iyaan): We need a way to know whether a schema has defined
