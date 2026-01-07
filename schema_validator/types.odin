@@ -41,6 +41,9 @@ Error :: enum {
 	Exclusive_Minimum_Validation_Failed,
 	Exclusive_Maximum_Validation_Failed,
 	Multiple_Of_Validation_Failed,
+	Allof_Validation_Failed,
+	Oneof_Validation_Failed,
+	Anyof_Validation_Failed,
 
 	// Allocation Errors
 	Allocation_Error,
@@ -96,7 +99,7 @@ keywords_parse_table := [?]KeywordParseInfo {
 
 	// Applicators
 	{"allOf", .AllOf, parse_allof},
-	{"anyOf", .AnyOf, nil},
+	{"anyOf", .AnyOf, parse_anyof},
 	{"oneOf", .OneOf, nil},
 	{"if", .If, nil},
 	{"then", .Then, nil},
@@ -160,7 +163,7 @@ keywords_validation_table := [?]KeywordValidationInfo {
 
 	// Applicators
 	{"allOf", .AllOf, validate_allof},
-	{"anyOf", .AnyOf, nil},
+	{"anyOf", .AnyOf, validate_anyof},
 	{"oneOf", .OneOf, nil},
 	{"if", .If, nil},
 	{"then", .Then, nil},
@@ -302,6 +305,8 @@ Schema :: struct {
 	properties_children: [dynamic]PoolIndex,
 	items_children:      [dynamic]PoolIndex,
 	allof:               [dynamic]PoolIndex,
+	anyof:               [dynamic]PoolIndex,
+	oneof:               [dynamic]PoolIndex,
 
 	// Validation keywords
 	// note(iyaan): We need a way to know whether a schema has defined

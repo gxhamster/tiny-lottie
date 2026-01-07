@@ -479,6 +479,52 @@ parse_allof :: proc(
 	return .Invalid_Array_Type
 }
 
+parse_anyof :: proc(
+	value: json.Value,
+	schema_idx: PoolIndex,
+	schema_context: ^Context,
+	allocator := context.allocator,
+) -> Error {
+	if value_as_array, ok := value.(json.Array); ok {
+		schema := get_schema(schema_context, schema_idx)
+		no_of_subschemas := len(value_as_array)
+		for subschema_val in value_as_array {
+			_, idx, _ := parse_schema_from_json_value(subschema_val, schema_context, allocator)
+			// note(iyaan): Has to make sure that allof field
+			// dynamic array is inititalized with the allocator
+			// we need
+			append(&schema.anyof, idx)
+		}
+
+		return .None
+	}
+
+	return .Invalid_Array_Type
+}
+
+parse_oneof :: proc(
+	value: json.Value,
+	schema_idx: PoolIndex,
+	schema_context: ^Context,
+	allocator := context.allocator,
+) -> Error {
+	if value_as_array, ok := value.(json.Array); ok {
+		schema := get_schema(schema_context, schema_idx)
+		no_of_subschemas := len(value_as_array)
+		for subschema_val in value_as_array {
+			_, idx, _ := parse_schema_from_json_value(subschema_val, schema_context, allocator)
+			// note(iyaan): Has to make sure that allof field
+			// dynamic array is inititalized with the allocator
+			// we need
+			append(&schema.oneof, idx)
+		}
+
+		return .None
+	}
+
+	return .Invalid_Array_Type
+}
+
 parse_schema_from_string :: proc(
 	schema: string,
 	schema_context: ^Context,
@@ -979,6 +1025,36 @@ validate_allof :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context
 		validate_json_value_with_subschema(json_value, subschema, ctx) or_return
 	}
 	return .None
+}
+
+validate_anyof :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context) -> Error {
+	at_least_one_validated := false
+	for subschema_idx in subschema.allof {
+		subschema := get_schema(ctx, subschema_idx)
+		if err := validate_json_value_with_subschema(json_value, subschema, ctx); err == .None {
+			at_least_one_validated = true
+		}
+	}
+	if at_least_one_validated {
+		return .None
+	} else {
+		return .Anyof_Validation_Failed
+	}
+}
+
+validate_oneof :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context) -> Error {
+	validated_schema_count := 0
+	for subschema_idx in subschema.allof {
+		subschema := get_schema(ctx, subschema_idx)
+		if err := validate_json_value_with_subschema(json_value, subschema, ctx); err == .None {
+			validated_schema_count += 1
+		}
+	}
+	if validated_schema_count == 1 {
+		return .None
+	} else {
+		return .Oneof_Validation_Failed
+	}
 }
 
 
