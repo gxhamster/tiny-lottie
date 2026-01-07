@@ -44,6 +44,8 @@ Error :: enum {
 	Allof_Validation_Failed,
 	Oneof_Validation_Failed,
 	Anyof_Validation_Failed,
+    If_Then_Validation_Failed,
+    If_Else_Validation_Failed,
 
 	// Allocation Errors
 	Allocation_Error,
@@ -100,10 +102,10 @@ keywords_parse_table := [?]KeywordParseInfo {
 	// Applicators
 	{"allOf", .AllOf, parse_allof},
 	{"anyOf", .AnyOf, parse_anyof},
-	{"oneOf", .OneOf, nil},
-	{"if", .If, nil},
-	{"then", .Then, nil},
-	{"else", .Else, nil},
+	{"oneOf", .OneOf, parse_oneof},
+	{"if", .If, parse_if},
+	{"then", .Then, parse_then},
+	{"else", .Else, parse_else},
 	{"not", .Not, nil},
 	{"properties", .Properties, parse_properties},
 	{"additionalProperties", .AdditionalProperties, nil},
@@ -164,8 +166,9 @@ keywords_validation_table := [?]KeywordValidationInfo {
 	// Applicators
 	{"allOf", .AllOf, validate_allof},
 	{"anyOf", .AnyOf, validate_anyof},
-	{"oneOf", .OneOf, nil},
-	{"if", .If, nil},
+	{"oneOf", .OneOf, validate_oneof},
+	{"if", .If, validate_if_then_else},
+    // note(iyaan): Leave `then` and `else` empty
 	{"then", .Then, nil},
 	{"else", .Else, nil},
 	{"not", .Not, nil},
@@ -307,6 +310,13 @@ Schema :: struct {
 	allof:               [dynamic]PoolIndex,
 	anyof:               [dynamic]PoolIndex,
 	oneof:               [dynamic]PoolIndex,
+    // note(iyaan): During validation probably we can just
+    // have a procedure just for if. `then` and `else` by themselves
+    // does not have meaning without the `if` condition schema. So checking
+    // of those fields could be done in the `if` validation proc..
+	_if:                  PoolIndex,
+	then:                 PoolIndex,
+	_else:                PoolIndex,
 
 	// Validation keywords
 	// note(iyaan): We need a way to know whether a schema has defined

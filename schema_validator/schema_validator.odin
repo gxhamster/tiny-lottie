@@ -525,6 +525,42 @@ parse_oneof :: proc(
 	return .Invalid_Array_Type
 }
 
+parse_if :: proc(
+	value: json.Value,
+	schema_idx: PoolIndex,
+	schema_context: ^Context,
+	allocator := context.allocator,
+) -> Error {
+    schema := get_schema(schema_context, schema_idx)
+    _, idx := parse_schema_from_json_value(value, schema_context, allocator) or_return
+    schema._if = idx
+    return .None
+}
+
+parse_then :: proc(
+	value: json.Value,
+	schema_idx: PoolIndex,
+	schema_context: ^Context,
+	allocator := context.allocator,
+) -> Error {
+    schema := get_schema(schema_context, schema_idx)
+    _, idx := parse_schema_from_json_value(value, schema_context, allocator) or_return
+    schema.then = idx
+    return .None
+}
+
+parse_else :: proc(
+	value: json.Value,
+	schema_idx: PoolIndex,
+	schema_context: ^Context,
+	allocator := context.allocator,
+) -> Error {
+    schema := get_schema(schema_context, schema_idx)
+    _, idx := parse_schema_from_json_value(value, schema_context, allocator) or_return
+    schema._else = idx
+    return .None
+}
+
 parse_schema_from_string :: proc(
 	schema: string,
 	schema_context: ^Context,
@@ -1055,6 +1091,37 @@ validate_oneof :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context
 	} else {
 		return .Oneof_Validation_Failed
 	}
+}
+
+validate_if_then_else :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context) -> Error {
+    // Will be checking the validity of the else and then schemas
+    // based on the value of the if schema
+    if_err := validate_json_value_with_subschema(json_value, subschema, ctx)
+    then_exists := SchemaKeywords.Then in subschema.validation_flags
+    else_exists := SchemaKeywords.Else in subschema.validation_flags
+    if then_exists {
+        then_schema := get_schema(ctx, subschema.then)
+        then_err := validate_json_value_with_subschema(json_value, then_schema, ctx)
+        if if_err == .None && then_err == .None {
+            return .None
+        } else {
+            return .If_Then_Validation_Failed
+        }
+    }
+
+    if else_exists {
+        else_schema := get_schema(ctx, subschema.then)
+        else_err := validate_json_value_with_subschema(json_value, else_schema, ctx)
+
+        if if_err != .None && else_err == .None {
+            return .None
+        } else {
+            return .If_Else_Validation_Failed
+        }
+    }
+
+    // note(iyaan): Case where `if` exists by itself
+    return .None
 }
 
 
