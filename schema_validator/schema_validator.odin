@@ -456,6 +456,42 @@ parse_required :: proc(
 	}
 }
 
+@(private)
+parse_max_properties :: proc(
+	value: json.Value,
+	schema_idx: PoolIndex,
+	schema_context: ^Context,
+	allocator := context.allocator,
+) -> Error {
+	schema := get_schema(schema_context, schema_idx)
+    if value_as_int, ok := value.(json.Integer); ok {
+        value_as_int := int(value_as_int)
+        assert(value_as_int >= 0, "maxProperties should be positive (I think)")
+        schema.max_properties = value_as_int
+        return .None
+    } else {
+        return .Invalid_Integer_Type
+    }
+}
+
+@(private)
+parse_min_properties :: proc(
+	value: json.Value,
+	schema_idx: PoolIndex,
+	schema_context: ^Context,
+	allocator := context.allocator,
+) -> Error {
+	schema := get_schema(schema_context, schema_idx)
+    if value_as_int, ok := value.(json.Integer); ok {
+        value_as_int := int(value_as_int)
+        assert(value_as_int >= 0, "minProperties should be positive (I think)")
+        schema.min_properties = value_as_int
+        return .None
+    } else {
+        return .Invalid_Integer_Type
+    }
+}
+
 parse_allof :: proc(
 	value: json.Value,
 	schema_idx: PoolIndex,
@@ -558,6 +594,18 @@ parse_else :: proc(
     schema := get_schema(schema_context, schema_idx)
     _, idx := parse_schema_from_json_value(value, schema_context, allocator) or_return
     schema._else = idx
+    return .None
+}
+
+parse_not :: proc(
+	value: json.Value,
+	schema_idx: PoolIndex,
+	schema_context: ^Context,
+	allocator := context.allocator,
+) -> Error {
+    schema := get_schema(schema_context, schema_idx)
+    _, idx := parse_schema_from_json_value(value, schema_context, allocator) or_return
+    schema.not = idx
     return .None
 }
 
@@ -1018,6 +1066,26 @@ validate_required :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Cont
 	}
 }
 
+@(private)
+validate_max_properties :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context) -> Error {
+	if json_value_object, ok := json_value.(json.Object); ok {
+        if len(json_value_object) > subschema.max_properties {
+            return .Max_Properties_Validation_Failed
+        }
+	}
+    return .None
+}
+
+@(private)
+validate_min_properties :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context) -> Error {
+	if json_value_object, ok := json_value.(json.Object); ok {
+        if len(json_value_object) < subschema.min_properties {
+            return .Min_Properties_Validation_Failed
+        }
+	}
+    return .None
+}
+
 
 @(private)
 validate_const :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context) -> Error {
@@ -1122,6 +1190,16 @@ validate_if_then_else :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^
 
     // note(iyaan): Case where `if` exists by itself
     return .None
+}
+
+validate_not :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context) -> Error {
+    not_schema := get_schema(ctx, subschema.not)
+    validation_err := validate_json_value_with_subschema(json_value, not_schema, ctx)
+    if validation_err != .None {
+        return .None
+    } else {
+        return .Not_Validation_Failed
+    }
 }
 
 

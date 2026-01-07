@@ -46,6 +46,9 @@ Error :: enum {
 	Anyof_Validation_Failed,
     If_Then_Validation_Failed,
     If_Else_Validation_Failed,
+    Not_Validation_Failed,
+    Max_Properties_Validation_Failed,
+    Min_Properties_Validation_Failed,
 
 	// Allocation Errors
 	Allocation_Error,
@@ -106,7 +109,7 @@ keywords_parse_table := [?]KeywordParseInfo {
 	{"if", .If, parse_if},
 	{"then", .Then, parse_then},
 	{"else", .Else, parse_else},
-	{"not", .Not, nil},
+	{"not", .Not, parse_not},
 	{"properties", .Properties, parse_properties},
 	{"additionalProperties", .AdditionalProperties, nil},
 	{"patternProperties", .PatternProperties, nil},
@@ -129,8 +132,8 @@ keywords_parse_table := [?]KeywordParseInfo {
 	{"minimum", .Minimum, parse_minimum},
 	{"multipleOf", .MultipleOf, parse_multipleof},
 	{"dependentRequired", .DependentRequired, nil},
-	{"maxProperties", .MaxProperties, nil},
-	{"minProperties", .MinProperties, nil},
+	{"maxProperties", .MaxProperties, parse_max_properties},
+	{"minProperties", .MinProperties, parse_min_properties},
 	{"required", .Required, parse_required},
 	{"maxItems", .MaxItems, nil},
 	{"minItems", .MinItems, nil},
@@ -171,7 +174,7 @@ keywords_validation_table := [?]KeywordValidationInfo {
     // note(iyaan): Leave `then` and `else` empty
 	{"then", .Then, nil},
 	{"else", .Else, nil},
-	{"not", .Not, nil},
+	{"not", .Not, validate_not},
 	{"properties", .Properties, validate_properties},
 	{"additionalProperties", .AdditionalProperties, nil},
 	{"patternProperties", .PatternProperties, nil},
@@ -194,8 +197,8 @@ keywords_validation_table := [?]KeywordValidationInfo {
 	{"minimum", .Minimum, validate_minimum},
 	{"multipleOf", .MultipleOf, validate_multipleof},
 	{"dependentRequired", .DependentRequired, nil},
-	{"maxProperties", .MaxProperties, nil},
-	{"minProperties", .MinProperties, nil},
+	{"maxProperties", .MaxProperties, validate_max_properties},
+	{"minProperties", .MinProperties, validate_min_properties},
 	{"required", .Required, validate_required},
 	{"maxItems", .MaxItems, nil},
 	{"minItems", .MinItems, nil},
@@ -317,6 +320,7 @@ Schema :: struct {
 	_if:                  PoolIndex,
 	then:                 PoolIndex,
 	_else:                PoolIndex,
+    not:                  PoolIndex,
 
 	// Validation keywords
 	// note(iyaan): We need a way to know whether a schema has defined
@@ -338,6 +342,9 @@ Schema :: struct {
 	minimum:             f64,
 	maximum:             f64,
 	required:            []string,
+    max_properties:      int,
+    min_properties:      int,
+    
 }
 
 // Just a neat little to hold store related stuff
