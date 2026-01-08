@@ -54,6 +54,8 @@ Error :: enum {
     Contains_Validation_Failed,
     Max_Contains_Validation_Failed,
     Min_Contains_Validation_Failed,
+    Items_Validation_Failed,
+    Prefix_Items_Validation_Failed,
 
     
     // Allocation Errors
@@ -122,8 +124,8 @@ keywords_parse_table := [?]KeywordParseInfo {
 	{"dependentSchemas", .DependentSchemas, nil},
 	{"propertyNames", .PropertyNames, nil},
 	{"contains", .Contains, parse_contains},
-	{"items", .Items, nil},
-	{"prefixItems", .PrefixItems, nil},
+	{"items", .Items, parse_items},
+	{"prefixItems", .PrefixItems, parse_prefix_items},
 
 	// Validators
 	{"type", .Type, parse_type},
@@ -187,7 +189,9 @@ keywords_validation_table := [?]KeywordValidationInfo {
 	{"dependentSchemas", .DependentSchemas, nil},
 	{"propertyNames", .PropertyNames, nil},
 	{"contains", .Contains, validate_contains},
-	{"items", .Items, nil},
+    // note(iyaan): `items` and `prefixItems` validated
+    // together. Keep `prefixItems` nil
+	{"items", .Items, validate_items},
 	{"prefixItems", .PrefixItems, nil},
 
 	// Validators
@@ -330,6 +334,8 @@ Schema :: struct {
 	_else:                PoolIndex,
     not:                  PoolIndex,
     contains:             PoolIndex,
+    items:                PoolIndex,
+    prefix_items:         [dynamic]PoolIndex,
 
 	// Validation keywords
 	// note(iyaan): We need a way to know whether a schema has defined

@@ -694,6 +694,38 @@ parse_contains :: proc(
     return .None
 }
 
+@(private)
+parse_items :: proc(
+	value: json.Value,
+	schema_idx: PoolIndex,
+	schema_context: ^Context,
+	allocator := context.allocator,
+) -> Error {
+    schema := get_schema(schema_context, schema_idx)
+    _, idx := parse_schema_from_json_value(value, schema_context, allocator) or_return
+    schema.items = idx
+    return .None
+}
+
+@(private)
+parse_prefix_items :: proc(
+	value: json.Value,
+	schema_idx: PoolIndex,
+	schema_context: ^Context,
+	allocator := context.allocator,
+) -> Error {
+    schema := get_schema(schema_context, schema_idx)
+    if value_as_array, ok := value.(json.Array); ok {
+        for schema_elem in value_as_array {
+            _, idx := parse_schema_from_json_value(schema_elem, schema_context, allocator) or_return
+            append(&schema.prefix_items, idx)
+        }
+        return .None
+    } else {
+        return .Invalid_Array_Type
+    }
+}
+
 parse_schema_from_string :: proc(
 	schema: string,
 	schema_context: ^Context,
@@ -1349,6 +1381,47 @@ validate_contains :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Cont
             // to validate
             return .Contains_Validation_Failed
         }
+    }
+
+    return .None
+}
+
+@(private)
+validate_items :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context) -> Error {
+    items_schema := get_schema(ctx, subschema.items)
+    // note(iyaan): Validate prefixItems first. Things covered by
+    // the prefixItems does need to have items schema validated against
+    // them
+    if json_value_array, ok := json_value.(json.Array); ok {
+        // How many values in the data array to skip to perform the
+        // items validation
+        rest_start_idx: int
+        if SchemaKeywords.PrefixItems in subschema.validation_flags {
+            for elem, idx in json_value_array {
+                if idx < len(subschema.prefix_items) {
+                    prefix_elem_schema := get_schema(ctx, PoolIndex(idx))
+                    err := validate_json_value_with_subschema(elem, prefix_elem_schema, ctx)
+                    if err != .None {
+                        return .Prefix_Items_Validation_Failed
+                    }
+                    rest_start_idx = idx
+                }
+
+            }
+        }
+        if rest_start_idx < len(json_value_array) - 1 {
+            // note(iyaan): Perform items validation here
+            for idx in rest_start_idx..<len(json_value_array) {
+                err := validate_json_value_with_subschema(json_value_array[idx], items_schema, ctx)
+                if err != .None {
+                    return .Items_Validation_Failed
+                }
+
+            }
+        }
+
+        // note(iyaan): If the data has no more elems after checking
+        // prefixItems no need to care
     }
 
     return .None
