@@ -51,6 +51,9 @@ Error :: enum {
     Min_Properties_Validation_Failed,
     Max_Items_Validation_Failed,
     Min_Items_Validation_Failed,
+    Contains_Validation_Failed,
+    Max_Contains_Validation_Failed,
+    Min_Contains_Validation_Failed,
 
     
     // Allocation Errors
@@ -118,7 +121,7 @@ keywords_parse_table := [?]KeywordParseInfo {
 	{"patternProperties", .PatternProperties, nil},
 	{"dependentSchemas", .DependentSchemas, nil},
 	{"propertyNames", .PropertyNames, nil},
-	{"contains", .Contains, nil},
+	{"contains", .Contains, parse_contains},
 	{"items", .Items, nil},
 	{"prefixItems", .PrefixItems, nil},
 
@@ -140,8 +143,8 @@ keywords_parse_table := [?]KeywordParseInfo {
 	{"required", .Required, parse_required},
 	{"maxItems", .MaxItems, parse_max_items},
 	{"minItems", .MinItems, parse_min_items},
-	{"maxContains", .MaxContains, nil},
-	{"minContains", .MinContains, nil},
+	{"maxContains", .MaxContains, parse_max_contains},
+	{"minContains", .MinContains, parse_min_contains},
 	{"uniqueItems", .UniqueItems, nil},
 
 	// Metadata
@@ -183,7 +186,7 @@ keywords_validation_table := [?]KeywordValidationInfo {
 	{"patternProperties", .PatternProperties, nil},
 	{"dependentSchemas", .DependentSchemas, nil},
 	{"propertyNames", .PropertyNames, nil},
-	{"contains", .Contains, nil},
+	{"contains", .Contains, validate_contains},
 	{"items", .Items, nil},
 	{"prefixItems", .PrefixItems, nil},
 
@@ -205,6 +208,8 @@ keywords_validation_table := [?]KeywordValidationInfo {
 	{"required", .Required, validate_required},
 	{"maxItems", .MaxItems, validate_max_items},
 	{"minItems", .MinItems, validate_min_items},
+    // note(iyaan): Validated inside `contains` so leave
+    // `maxContains` and `minContains` empty
 	{"maxContains", .MaxContains, nil},
 	{"minContains", .MinContains, nil},
 	{"uniqueItems", .UniqueItems, nil},
@@ -324,6 +329,7 @@ Schema :: struct {
 	then:                 PoolIndex,
 	_else:                PoolIndex,
     not:                  PoolIndex,
+    contains:             PoolIndex,
 
 	// Validation keywords
 	// note(iyaan): We need a way to know whether a schema has defined
@@ -349,6 +355,8 @@ Schema :: struct {
     min_items:           int,
     max_properties:      int,
     min_properties:      int,
+    max_contains:        int,
+    min_contains:        int,
     
 }
 

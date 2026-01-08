@@ -526,6 +526,42 @@ parse_min_properties :: proc(
     }
 }
 
+@(private)
+parse_max_contains :: proc(
+	value: json.Value,
+	schema_idx: PoolIndex,
+	schema_context: ^Context,
+	allocator := context.allocator,
+) -> Error {
+	schema := get_schema(schema_context, schema_idx)
+    if value_as_int, ok := value.(json.Integer); ok {
+        value_as_int := int(value_as_int)
+        assert(value_as_int >= 0, "maxContains should be positive")
+        schema.max_contains = value_as_int
+        return .None
+    } else {
+        return .Invalid_Integer_Type
+    }
+}
+
+@(private)
+parse_min_contains :: proc(
+	value: json.Value,
+	schema_idx: PoolIndex,
+	schema_context: ^Context,
+	allocator := context.allocator,
+) -> Error {
+	schema := get_schema(schema_context, schema_idx)
+    if value_as_int, ok := value.(json.Integer); ok {
+        value_as_int := int(value_as_int)
+        assert(value_as_int >= 0, "minContains should be positive")
+        schema.min_contains = value_as_int
+        return .None
+    } else {
+        return .Invalid_Integer_Type
+    }
+}
+
 parse_allof :: proc(
 	value: json.Value,
 	schema_idx: PoolIndex,
@@ -619,6 +655,7 @@ parse_then :: proc(
     return .None
 }
 
+@(private)
 parse_else :: proc(
 	value: json.Value,
 	schema_idx: PoolIndex,
@@ -631,6 +668,7 @@ parse_else :: proc(
     return .None
 }
 
+@(private)
 parse_not :: proc(
 	value: json.Value,
 	schema_idx: PoolIndex,
@@ -640,6 +678,19 @@ parse_not :: proc(
     schema := get_schema(schema_context, schema_idx)
     _, idx := parse_schema_from_json_value(value, schema_context, allocator) or_return
     schema.not = idx
+    return .None
+}
+
+@(private)
+parse_contains :: proc(
+	value: json.Value,
+	schema_idx: PoolIndex,
+	schema_context: ^Context,
+	allocator := context.allocator,
+) -> Error {
+    schema := get_schema(schema_context, schema_idx)
+    _, idx := parse_schema_from_json_value(value, schema_context, allocator) or_return
+    schema.contains = idx
     return .None
 }
 
@@ -1140,7 +1191,6 @@ validate_min_items :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Con
     return .None
 }
 
-
 @(private)
 validate_const :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context) -> Error {
 	// Basically a watered down version of validate_enum
@@ -1254,6 +1304,54 @@ validate_not :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context) 
     } else {
         return .Not_Validation_Failed
     }
+}
+
+// note(iyaan): Will also handle minContains and maxContains
+// Those keywords by themselves has no effect without
+// a `contain` applicator
+validate_contains :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context) -> Error {
+    schema_of_contains := get_schema(ctx, subschema.not)
+
+    min_contains_defined := SchemaKeywords.MinContains in subschema.validation_flags
+    max_contains_defined := SchemaKeywords.MaxContains in subschema.validation_flags
+    
+    contains_count := 0
+    if value_as_array, ok := json_value.(json.Array); ok {
+        for val in value_as_array {
+            err := validate_json_value_with_subschema(val, schema_of_contains, ctx)
+            if err == .None {
+                contains_count += 1
+
+                // Early exit for case when no max
+                // contraint defined
+                if min_contains_defined {
+                    is_min_satisfied := contains_count >= subschema.min_contains
+                    if !max_contains_defined && is_min_satisfied {
+                        break
+                    }
+                }
+            }
+        }
+
+        // Edge case min and max are set to zero. The data instance
+        // is an empty array
+
+        if min_contains_defined && contains_count < subschema.min_contains {
+            return .Min_Contains_Validation_Failed
+        }
+
+        if max_contains_defined && contains_count > subschema.max_contains {
+            return .Max_Contains_Validation_Failed
+        }
+
+        if !max_contains_defined && !min_contains_defined {
+            // If not min or max defined atleast one has
+            // to validate
+            return .Contains_Validation_Failed
+        }
+    }
+
+    return .None
 }
 
 
