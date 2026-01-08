@@ -457,6 +457,40 @@ parse_required :: proc(
 }
 
 @(private)
+parse_max_items :: proc(
+	value: json.Value,
+	schema_idx: PoolIndex,
+	schema_context: ^Context,
+	allocator := context.allocator,
+) -> Error {
+	schema := get_schema(schema_context, schema_idx)
+    if value_as_int, ok := value.(json.Integer); ok {
+        assert(value_as_int >= 0, "maxItems should be positive")
+        schema.max_items = int(value_as_int)
+        return .None
+    } else {
+        return .Invalid_Integer_Type
+    }
+}
+
+@(private)
+parse_min_items :: proc(
+	value: json.Value,
+	schema_idx: PoolIndex,
+	schema_context: ^Context,
+	allocator := context.allocator,
+) -> Error {
+	schema := get_schema(schema_context, schema_idx)
+    if value_as_int, ok := value.(json.Integer); ok {
+        assert(value_as_int >= 0, "minItems should be positive")
+        schema.min_items = int(value_as_int)
+        return .None
+    } else {
+        return .Invalid_Integer_Type
+    }
+}
+
+@(private)
 parse_max_properties :: proc(
 	value: json.Value,
 	schema_idx: PoolIndex,
@@ -1081,6 +1115,26 @@ validate_min_properties :: proc(json_value: json.Value, subschema: ^Schema, ctx:
 	if json_value_object, ok := json_value.(json.Object); ok {
         if len(json_value_object) < subschema.min_properties {
             return .Min_Properties_Validation_Failed
+        }
+	}
+    return .None
+}
+
+@(private)
+validate_max_items :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context) -> Error {
+	if json_value_array, ok := json_value.(json.Array); ok {
+        if len(json_value_array) > subschema.max_items {
+            return .Max_Items_Validation_Failed
+        }
+	}
+    return .None
+}
+
+@(private)
+validate_min_items :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context) -> Error {
+	if json_value_array, ok := json_value.(json.Array); ok {
+        if len(json_value_array) > subschema.min_items {
+            return .Min_Items_Validation_Failed
         }
 	}
     return .None

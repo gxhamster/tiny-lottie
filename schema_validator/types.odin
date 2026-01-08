@@ -49,8 +49,11 @@ Error :: enum {
     Not_Validation_Failed,
     Max_Properties_Validation_Failed,
     Min_Properties_Validation_Failed,
+    Max_Items_Validation_Failed,
+    Min_Items_Validation_Failed,
 
-	// Allocation Errors
+    
+    // Allocation Errors
 	Allocation_Error,
 
 	// Referencing Errors
@@ -135,8 +138,8 @@ keywords_parse_table := [?]KeywordParseInfo {
 	{"maxProperties", .MaxProperties, parse_max_properties},
 	{"minProperties", .MinProperties, parse_min_properties},
 	{"required", .Required, parse_required},
-	{"maxItems", .MaxItems, nil},
-	{"minItems", .MinItems, nil},
+	{"maxItems", .MaxItems, parse_max_items},
+	{"minItems", .MinItems, parse_min_items},
 	{"maxContains", .MaxContains, nil},
 	{"minContains", .MinContains, nil},
 	{"uniqueItems", .UniqueItems, nil},
@@ -200,8 +203,8 @@ keywords_validation_table := [?]KeywordValidationInfo {
 	{"maxProperties", .MaxProperties, validate_max_properties},
 	{"minProperties", .MinProperties, validate_min_properties},
 	{"required", .Required, validate_required},
-	{"maxItems", .MaxItems, nil},
-	{"minItems", .MinItems, nil},
+	{"maxItems", .MaxItems, validate_max_items},
+	{"minItems", .MinItems, validate_min_items},
 	{"maxContains", .MaxContains, nil},
 	{"minContains", .MinContains, nil},
 	{"uniqueItems", .UniqueItems, nil},
@@ -342,6 +345,8 @@ Schema :: struct {
 	minimum:             f64,
 	maximum:             f64,
 	required:            []string,
+    max_items:           int,
+    min_items:           int,
     max_properties:      int,
     min_properties:      int,
     
