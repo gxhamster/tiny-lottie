@@ -1,4 +1,3 @@
-
 package schema_validator
 
 import "core:encoding/json"
@@ -9,10 +8,10 @@ import "core:strings"
 import "core:testing"
 
 @(private = "file")
-TEST_FILE :: "tests/const.json"
+TEST_FILE :: "tests/type.json"
 
 @(test)
-const_test :: proc(t: ^testing.T) {
+type_test :: proc(t: ^testing.T) {
 	allocator := context.allocator
 	defer free_all()
 

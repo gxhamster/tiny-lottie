@@ -189,6 +189,7 @@ parse_schema_from_json_value :: proc(
 					schema_struct.validation_flags += {keyword_info.type}
 				} else {
 					// TODO: Remove this in time
+                    log.debugf("Could not parse (%v), returned (%v)", val, parse_err)
 					panic("Could not parse a validation keyword field")
 				}
 			}
