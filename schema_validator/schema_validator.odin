@@ -339,6 +339,12 @@ parse_min_length :: proc(
 	#partial switch type in value {
 	case json.Integer:
 		schema.min_length = int(value.(json.Integer))
+	case json.Float:
+		if can_float_be_int(value.(json.Float)) {
+			schema.min_length = int(value.(json.Float))
+		} else {
+			return .Invalid_Integer_Type
+		}
 	case:
 		return .Invalid_Integer_Type
 	}
@@ -356,6 +362,12 @@ parse_max_length :: proc(
 	#partial switch type in value {
 	case json.Integer:
 		schema.max_length = int(value.(json.Integer))
+	case json.Float:
+		if can_float_be_int(value.(json.Float)) {
+			schema.max_length = int(value.(json.Float))
+		} else {
+			return .Invalid_Integer_Type
+		}
 	case:
 		return .Invalid_Integer_Type
 	}
@@ -769,7 +781,7 @@ parse_schema_from_string :: proc(
 	pool_idx: PoolIndex,
 	err: Error,
 ) {
-	parsed_json, parsed_json_err := json.parse_string(schema)
+	parsed_json, parsed_json_err := json.parse_string(schema, json.DEFAULT_SPECIFICATION, true)
 	if parsed_json_err != .None {
 		log.debugf("json.parse_string returned error (%v)", parsed_json_err)
 		return schema_struct, pool_idx, .Json_Parse_Error
@@ -872,16 +884,18 @@ validate_json_value_with_subschema :: proc(
 	return .None
 }
 
+@(private = "file")
+can_float_be_int :: proc(f: f64) -> bool {
+	_, frac_part := math.modf_f64(f)
+	if frac_part == 0.0 {
+		return true
+	} else {
+		return false
+	}
+}
+
 @(private)
 validate_type :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context) -> Error {
-	can_float_be_int :: proc(f: f64) -> bool {
-		_, frac_part := math.modf_f64(f)
-		if frac_part == 0.0 {
-			return true
-		} else {
-			return false
-		}
-	}
 
 	check_against_type_val :: proc(value: json.Value, t: InstanceTypes) -> bool {
 		// Check if data value is compatible with a given type (t)
