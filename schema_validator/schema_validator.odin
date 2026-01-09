@@ -544,10 +544,16 @@ parse_max_properties :: proc(
 		value_as_int := int(value_as_int)
 		assert(value_as_int >= 0, "maxProperties should be positive (I think)")
 		schema.max_properties = value_as_int
-		return .None
+	} else if value_as_float, ok := value.(json.Float); ok {
+		if can_float_be_int(value.(json.Float)) {
+			schema.max_properties = int(value.(json.Float))
+		} else {
+			return .Invalid_Integer_Type
+		}
 	} else {
 		return .Invalid_Integer_Type
 	}
+	return .None
 }
 
 @(private)
@@ -562,10 +568,16 @@ parse_min_properties :: proc(
 		value_as_int := int(value_as_int)
 		assert(value_as_int >= 0, "minProperties should be positive (I think)")
 		schema.min_properties = value_as_int
-		return .None
+	} else if value_as_float, ok := value.(json.Float); ok {
+		if can_float_be_int(value.(json.Float)) {
+			schema.min_properties = int(value.(json.Float))
+		} else {
+			return .Invalid_Integer_Type
+		}
 	} else {
 		return .Invalid_Integer_Type
 	}
+	return .None
 }
 
 @(private)
@@ -580,10 +592,16 @@ parse_max_contains :: proc(
 		value_as_int := int(value_as_int)
 		assert(value_as_int >= 0, "maxContains should be positive")
 		schema.max_contains = value_as_int
-		return .None
+	} else if value_as_float, ok := value.(json.Float); ok {
+		if can_float_be_int(value.(json.Float)) {
+			schema.max_contains = int(value.(json.Float))
+		} else {
+			return .Invalid_Integer_Type
+		}
 	} else {
 		return .Invalid_Integer_Type
 	}
+	return .None
 }
 
 @(private)
@@ -598,10 +616,16 @@ parse_min_contains :: proc(
 		value_as_int := int(value_as_int)
 		assert(value_as_int >= 0, "minContains should be positive")
 		schema.min_contains = value_as_int
-		return .None
+	} else if value_as_float, ok := value.(json.Float); ok {
+		if can_float_be_int(value.(json.Float)) {
+			schema.min_contains = int(value.(json.Float))
+		} else {
+			return .Invalid_Integer_Type
+		}
 	} else {
 		return .Invalid_Integer_Type
 	}
+	return .None
 }
 
 parse_allof :: proc(

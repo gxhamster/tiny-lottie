@@ -61,3 +61,15 @@ multipleof_test :: proc(t: ^testing.T) {
 	TEST_FILE :: "tests/multipleOf.json"
 	run_test_in_spec_file(t, TEST_FILE)
 }
+
+@(test)
+max_properties_test :: proc(t: ^testing.T) {
+	TEST_FILE :: "tests/maxProperties.json"
+	run_test_in_spec_file(t, TEST_FILE)
+}
+
+@(test)
+min_properties_test :: proc(t: ^testing.T) {
+	TEST_FILE :: "tests/minProperties.json"
+	run_test_in_spec_file(t, TEST_FILE)
+}
