@@ -1429,7 +1429,7 @@ validate_allof :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context
 
 validate_anyof :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context) -> Error {
 	at_least_one_validated := false
-	for subschema_idx in subschema.allof {
+	for subschema_idx in subschema.anyof {
 		subschema := get_schema(ctx, subschema_idx)
 		if err := validate_json_value_with_subschema(json_value, subschema, ctx); err == .None {
 			at_least_one_validated = true
@@ -1444,7 +1444,7 @@ validate_anyof :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context
 
 validate_oneof :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context) -> Error {
 	validated_schema_count := 0
-	for subschema_idx in subschema.allof {
+	for subschema_idx in subschema.oneof {
 		subschema := get_schema(ctx, subschema_idx)
 		if err := validate_json_value_with_subschema(json_value, subschema, ctx); err == .None {
 			validated_schema_count += 1
@@ -1467,23 +1467,31 @@ validate_if_then_else :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^
 	if then_exists {
 		then_schema := get_schema(ctx, subschema.then)
 		then_err := validate_json_value_with_subschema(json_value, then_schema, ctx)
-		if if_err == .None && then_err == .None {
-			return .None
-		} else {
-			return .If_Then_Validation_Failed
-		}
+        // note(iyaan): Check then schema only if passes otherwise
+        // dont
+		if if_err == .None {
+            if then_err == .None {
+			    return .None
+            } else {
+			    return .If_Then_Validation_Failed
+            }
+		} 
 	}
 
 	if else_exists {
 		else_schema := get_schema(ctx, subschema._else)
 		else_err := validate_json_value_with_subschema(json_value, else_schema, ctx)
 
-		if if_err != .None && else_err == .None {
-			return .None
-		} else {
-			return .If_Else_Validation_Failed
+        // note(iyaan): Check then schema only if not passes otherwise
+        // dont
+		if if_err != .None {
+            if else_err == .None {
+                return .None
+            } else {
+			    return .If_Else_Validation_Failed
+            }
 		}
-	}
+    }
 
 	// note(iyaan): Case where `if` exists by itself
 	return .None
