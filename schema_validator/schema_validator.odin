@@ -1224,11 +1224,7 @@ validate_enum :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context)
 	// Check if the json_value is one of the values in subschema.enum
 	for enum_val in subschema.enums {
 		switch enum_type in enum_val {
-		case json.Integer:
-		case json.Float:
-		case json.Boolean:
-		case json.String:
-		case json.Null:
+		case json.Integer, json.Float, json.Boolean, json.String, json.Null:
 			if check_if_match_base(enum_val, json_value) {
 				return .None
 			}
