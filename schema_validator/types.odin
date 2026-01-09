@@ -7,8 +7,8 @@ CompositeTypes :: []InstanceTypes
 
 // Holding single types and combination of types
 InstanceType :: union {
-    InstanceTypes,
-    CompositeTypes,
+	InstanceTypes,
+	CompositeTypes,
 }
 
 InstanceTypes :: enum {
@@ -19,8 +19,7 @@ InstanceTypes :: enum {
 	Number,
 	Integer,
 	String,
-
-    Invalid,
+	Invalid,
 }
 
 Error :: enum {
@@ -37,7 +36,7 @@ Error :: enum {
 	Invalid_Object_Type,
 	Invalid_String_Type,
 	Invalid_Array_Type,
-    Expected_Array_Or_String,
+	Expected_Array_Or_String,
 
 	// Validation Errors
 	Type_Validation_Failed,
@@ -55,21 +54,22 @@ Error :: enum {
 	Allof_Validation_Failed,
 	Oneof_Validation_Failed,
 	Anyof_Validation_Failed,
-    If_Then_Validation_Failed,
-    If_Else_Validation_Failed,
-    Not_Validation_Failed,
-    Max_Properties_Validation_Failed,
-    Min_Properties_Validation_Failed,
-    Max_Items_Validation_Failed,
-    Min_Items_Validation_Failed,
-    Contains_Validation_Failed,
-    Max_Contains_Validation_Failed,
-    Min_Contains_Validation_Failed,
-    Items_Validation_Failed,
-    Prefix_Items_Validation_Failed,
+	If_Then_Validation_Failed,
+	If_Else_Validation_Failed,
+	Not_Validation_Failed,
+	Max_Properties_Validation_Failed,
+	Min_Properties_Validation_Failed,
+	Max_Items_Validation_Failed,
+	Min_Items_Validation_Failed,
+	Contains_Validation_Failed,
+	Max_Contains_Validation_Failed,
+	Min_Contains_Validation_Failed,
+	Items_Validation_Failed,
+	Prefix_Items_Validation_Failed,
+	Bool_Schema_False,
 
-    
-    // Allocation Errors
+
+	// Allocation Errors
 	Allocation_Error,
 
 	// Referencing Errors
@@ -190,7 +190,7 @@ keywords_validation_table := [?]KeywordValidationInfo {
 	{"anyOf", .AnyOf, validate_anyof},
 	{"oneOf", .OneOf, validate_oneof},
 	{"if", .If, validate_if_then_else},
-    // note(iyaan): Leave `then` and `else` empty
+	// note(iyaan): Leave `then` and `else` empty
 	{"then", .Then, nil},
 	{"else", .Else, nil},
 	{"not", .Not, validate_not},
@@ -200,8 +200,8 @@ keywords_validation_table := [?]KeywordValidationInfo {
 	{"dependentSchemas", .DependentSchemas, nil},
 	{"propertyNames", .PropertyNames, nil},
 	{"contains", .Contains, validate_contains},
-    // note(iyaan): `items` and `prefixItems` validated
-    // together. Keep `prefixItems` nil
+	// note(iyaan): `items` and `prefixItems` validated
+	// together. Keep `prefixItems` nil
 	{"items", .Items, validate_items},
 	{"prefixItems", .PrefixItems, nil},
 
@@ -223,8 +223,8 @@ keywords_validation_table := [?]KeywordValidationInfo {
 	{"required", .Required, validate_required},
 	{"maxItems", .MaxItems, validate_max_items},
 	{"minItems", .MinItems, validate_min_items},
-    // note(iyaan): Validated inside `contains` so leave
-    // `maxContains` and `minContains` empty
+	// note(iyaan): Validated inside `contains` so leave
+	// `maxContains` and `minContains` empty
 	{"maxContains", .MaxContains, nil},
 	{"minContains", .MinContains, nil},
 	{"uniqueItems", .UniqueItems, nil},
@@ -322,6 +322,8 @@ Schema :: struct {
 	// Internal stuff
 	// Used for holding the name of a property
 	name:                string,
+	is_bool_schema:      bool,
+	bool_schema_val:     bool,
 
 	// Used to denote whether this schema is used to just
 	// as a holder for another schema. Used by $ref when
@@ -336,17 +338,17 @@ Schema :: struct {
 	allof:               [dynamic]PoolIndex,
 	anyof:               [dynamic]PoolIndex,
 	oneof:               [dynamic]PoolIndex,
-    // note(iyaan): During validation probably we can just
-    // have a procedure just for if. `then` and `else` by themselves
-    // does not have meaning without the `if` condition schema. So checking
-    // of those fields could be done in the `if` validation proc..
-	_if:                  PoolIndex,
-	then:                 PoolIndex,
-	_else:                PoolIndex,
-    not:                  PoolIndex,
-    contains:             PoolIndex,
-    items:                PoolIndex,
-    prefix_items:         [dynamic]PoolIndex,
+	// note(iyaan): During validation probably we can just
+	// have a procedure just for if. `then` and `else` by themselves
+	// does not have meaning without the `if` condition schema. So checking
+	// of those fields could be done in the `if` validation proc..
+	_if:                 PoolIndex,
+	then:                PoolIndex,
+	_else:               PoolIndex,
+	not:                 PoolIndex,
+	contains:            PoolIndex,
+	items:               PoolIndex,
+	prefix_items:        [dynamic]PoolIndex,
 
 	// Validation keywords
 	// note(iyaan): We need a way to know whether a schema has defined
@@ -368,13 +370,12 @@ Schema :: struct {
 	minimum:             f64,
 	maximum:             f64,
 	required:            []string,
-    max_items:           int,
-    min_items:           int,
-    max_properties:      int,
-    min_properties:      int,
-    max_contains:        int,
-    min_contains:        int,
-    
+	max_items:           int,
+	min_items:           int,
+	max_properties:      int,
+	min_properties:      int,
+	max_contains:        int,
+	min_contains:        int,
 }
 
 // Just a neat little to hold store related stuff
