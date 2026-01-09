@@ -1064,7 +1064,15 @@ validate_max_length :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Co
 
 	#partial switch type in json_value {
 	case json.String:
-		if len(json_value.(json.String)) > subschema.max_length {
+		// note(iyaan): Spec expects strings to be utf-8
+		// encoded. Cannot just retreive the raw byte length
+		// of a string. Need logical length of graphemes
+		rune_len := 0
+		for r in json_value.(json.String) {
+			rune_len += 1
+		}
+
+		if rune_len > subschema.max_length {
 			return .Maxlength_Validation_Failed
 		} else {
 			return .None
@@ -1080,7 +1088,12 @@ validate_min_length :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Co
 
 	#partial switch type in json_value {
 	case json.String:
-		if len(json_value.(json.String)) < subschema.min_length {
+		rune_len := 0
+		for r in json_value.(json.String) {
+			rune_len += 1
+		}
+
+		if rune_len < subschema.min_length {
 			return .Minlength_Validation_Failed
 		} else {
 			return .None
