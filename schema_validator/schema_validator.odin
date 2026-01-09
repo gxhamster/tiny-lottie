@@ -188,9 +188,8 @@ parse_schema_from_json_value :: proc(
 					// to be validated
 					schema_struct.validation_flags += {keyword_info.type}
 				} else {
-					// TODO: Remove this in time
-                    log.debugf("Could not parse (%v), returned (%v)", val, parse_err)
-					panic("Could not parse a validation keyword field")
+					log.debugf("Could not parse (%v), returned (%v)", val, parse_err)
+					return schema_struct, schema_idx, parse_err
 				}
 			}
 		}
@@ -238,28 +237,58 @@ parse_type :: proc(
 	allocator := context.allocator,
 ) -> Error {
 	schema := get_schema(schema_context, schema_idx)
-	type, ok := value.(json.String)
-	if !ok {
-		return .Invalid_String_Type
+	// note(iyaan): type can be either a string or a value
+	// of strings that specify that an elem can be multiple types
+
+	get_type :: proc(type_str: string) -> InstanceTypes {
+		if strings.compare(type_str, "null") == 0 {
+			return .Null
+		} else if strings.compare(type_str, "boolean") == 0 {
+			return .Boolean
+		} else if strings.compare(type_str, "object") == 0 {
+			return .Object
+		} else if strings.compare(type_str, "array") == 0 {
+			return .Array
+		} else if strings.compare(type_str, "number") == 0 {
+			return .Number
+		} else if strings.compare(type_str, "integer") == 0 {
+			return .Integer
+		} else if strings.compare(type_str, "string") == 0 {
+			return .String
+		} else {
+			return .Invalid
+		}
+
 	}
 
-	if strings.compare(type, "null") == 0 {
-		schema.type = .Null
-	} else if strings.compare(type, "boolean") == 0 {
-		schema.type = .Boolean
-	} else if strings.compare(type, "object") == 0 {
-		schema.type = .Object
-	} else if strings.compare(type, "array") == 0 {
-		schema.type = .Array
-	} else if strings.compare(type, "number") == 0 {
-		schema.type = .Number
-	} else if strings.compare(type, "integer") == 0 {
-		schema.type = .Integer
-	} else if strings.compare(type, "string") == 0 {
-		schema.type = .String
+	if array_type, ok := value.(json.Array); ok {
+		types_slice := make(CompositeTypes, len(array_type), allocator)
+
+		for type_val_elem, idx in array_type {
+			if type_val_elem_str, ok := type_val_elem.(json.String); ok {
+				type_val := get_type(type_val_elem_str)
+				if type_val != .Invalid {
+					types_slice[idx] = type_val
+				} else {
+					return .Invalid_Instance_Type
+				}
+			} else {
+				return .Invalid_String_Type
+			}
+		}
+
+		schema.type = types_slice
+	} else if string_type, ok := value.(json.String); ok {
+		type_val := get_type(string_type)
+		if type_val != .Invalid {
+			schema.type = type_val
+		} else {
+			return .Invalid_Instance_Type
+		}
 	} else {
-		return .Invalid_Instance_Type
+		return .Expected_Array_Or_String
 	}
+
 
 	return .None
 }
@@ -465,13 +494,13 @@ parse_max_items :: proc(
 	allocator := context.allocator,
 ) -> Error {
 	schema := get_schema(schema_context, schema_idx)
-    if value_as_int, ok := value.(json.Integer); ok {
-        assert(value_as_int >= 0, "maxItems should be positive")
-        schema.max_items = int(value_as_int)
-        return .None
-    } else {
-        return .Invalid_Integer_Type
-    }
+	if value_as_int, ok := value.(json.Integer); ok {
+		assert(value_as_int >= 0, "maxItems should be positive")
+		schema.max_items = int(value_as_int)
+		return .None
+	} else {
+		return .Invalid_Integer_Type
+	}
 }
 
 @(private)
@@ -482,13 +511,13 @@ parse_min_items :: proc(
 	allocator := context.allocator,
 ) -> Error {
 	schema := get_schema(schema_context, schema_idx)
-    if value_as_int, ok := value.(json.Integer); ok {
-        assert(value_as_int >= 0, "minItems should be positive")
-        schema.min_items = int(value_as_int)
-        return .None
-    } else {
-        return .Invalid_Integer_Type
-    }
+	if value_as_int, ok := value.(json.Integer); ok {
+		assert(value_as_int >= 0, "minItems should be positive")
+		schema.min_items = int(value_as_int)
+		return .None
+	} else {
+		return .Invalid_Integer_Type
+	}
 }
 
 @(private)
@@ -499,14 +528,14 @@ parse_max_properties :: proc(
 	allocator := context.allocator,
 ) -> Error {
 	schema := get_schema(schema_context, schema_idx)
-    if value_as_int, ok := value.(json.Integer); ok {
-        value_as_int := int(value_as_int)
-        assert(value_as_int >= 0, "maxProperties should be positive (I think)")
-        schema.max_properties = value_as_int
-        return .None
-    } else {
-        return .Invalid_Integer_Type
-    }
+	if value_as_int, ok := value.(json.Integer); ok {
+		value_as_int := int(value_as_int)
+		assert(value_as_int >= 0, "maxProperties should be positive (I think)")
+		schema.max_properties = value_as_int
+		return .None
+	} else {
+		return .Invalid_Integer_Type
+	}
 }
 
 @(private)
@@ -517,14 +546,14 @@ parse_min_properties :: proc(
 	allocator := context.allocator,
 ) -> Error {
 	schema := get_schema(schema_context, schema_idx)
-    if value_as_int, ok := value.(json.Integer); ok {
-        value_as_int := int(value_as_int)
-        assert(value_as_int >= 0, "minProperties should be positive (I think)")
-        schema.min_properties = value_as_int
-        return .None
-    } else {
-        return .Invalid_Integer_Type
-    }
+	if value_as_int, ok := value.(json.Integer); ok {
+		value_as_int := int(value_as_int)
+		assert(value_as_int >= 0, "minProperties should be positive (I think)")
+		schema.min_properties = value_as_int
+		return .None
+	} else {
+		return .Invalid_Integer_Type
+	}
 }
 
 @(private)
@@ -535,14 +564,14 @@ parse_max_contains :: proc(
 	allocator := context.allocator,
 ) -> Error {
 	schema := get_schema(schema_context, schema_idx)
-    if value_as_int, ok := value.(json.Integer); ok {
-        value_as_int := int(value_as_int)
-        assert(value_as_int >= 0, "maxContains should be positive")
-        schema.max_contains = value_as_int
-        return .None
-    } else {
-        return .Invalid_Integer_Type
-    }
+	if value_as_int, ok := value.(json.Integer); ok {
+		value_as_int := int(value_as_int)
+		assert(value_as_int >= 0, "maxContains should be positive")
+		schema.max_contains = value_as_int
+		return .None
+	} else {
+		return .Invalid_Integer_Type
+	}
 }
 
 @(private)
@@ -553,14 +582,14 @@ parse_min_contains :: proc(
 	allocator := context.allocator,
 ) -> Error {
 	schema := get_schema(schema_context, schema_idx)
-    if value_as_int, ok := value.(json.Integer); ok {
-        value_as_int := int(value_as_int)
-        assert(value_as_int >= 0, "minContains should be positive")
-        schema.min_contains = value_as_int
-        return .None
-    } else {
-        return .Invalid_Integer_Type
-    }
+	if value_as_int, ok := value.(json.Integer); ok {
+		value_as_int := int(value_as_int)
+		assert(value_as_int >= 0, "minContains should be positive")
+		schema.min_contains = value_as_int
+		return .None
+	} else {
+		return .Invalid_Integer_Type
+	}
 }
 
 parse_allof :: proc(
@@ -638,10 +667,10 @@ parse_if :: proc(
 	schema_context: ^Context,
 	allocator := context.allocator,
 ) -> Error {
-    schema := get_schema(schema_context, schema_idx)
-    _, idx := parse_schema_from_json_value(value, schema_context, allocator) or_return
-    schema._if = idx
-    return .None
+	schema := get_schema(schema_context, schema_idx)
+	_, idx := parse_schema_from_json_value(value, schema_context, allocator) or_return
+	schema._if = idx
+	return .None
 }
 
 parse_then :: proc(
@@ -650,10 +679,10 @@ parse_then :: proc(
 	schema_context: ^Context,
 	allocator := context.allocator,
 ) -> Error {
-    schema := get_schema(schema_context, schema_idx)
-    _, idx := parse_schema_from_json_value(value, schema_context, allocator) or_return
-    schema.then = idx
-    return .None
+	schema := get_schema(schema_context, schema_idx)
+	_, idx := parse_schema_from_json_value(value, schema_context, allocator) or_return
+	schema.then = idx
+	return .None
 }
 
 @(private)
@@ -663,10 +692,10 @@ parse_else :: proc(
 	schema_context: ^Context,
 	allocator := context.allocator,
 ) -> Error {
-    schema := get_schema(schema_context, schema_idx)
-    _, idx := parse_schema_from_json_value(value, schema_context, allocator) or_return
-    schema._else = idx
-    return .None
+	schema := get_schema(schema_context, schema_idx)
+	_, idx := parse_schema_from_json_value(value, schema_context, allocator) or_return
+	schema._else = idx
+	return .None
 }
 
 @(private)
@@ -676,10 +705,10 @@ parse_not :: proc(
 	schema_context: ^Context,
 	allocator := context.allocator,
 ) -> Error {
-    schema := get_schema(schema_context, schema_idx)
-    _, idx := parse_schema_from_json_value(value, schema_context, allocator) or_return
-    schema.not = idx
-    return .None
+	schema := get_schema(schema_context, schema_idx)
+	_, idx := parse_schema_from_json_value(value, schema_context, allocator) or_return
+	schema.not = idx
+	return .None
 }
 
 @(private)
@@ -689,10 +718,10 @@ parse_contains :: proc(
 	schema_context: ^Context,
 	allocator := context.allocator,
 ) -> Error {
-    schema := get_schema(schema_context, schema_idx)
-    _, idx := parse_schema_from_json_value(value, schema_context, allocator) or_return
-    schema.contains = idx
-    return .None
+	schema := get_schema(schema_context, schema_idx)
+	_, idx := parse_schema_from_json_value(value, schema_context, allocator) or_return
+	schema.contains = idx
+	return .None
 }
 
 @(private)
@@ -702,10 +731,10 @@ parse_items :: proc(
 	schema_context: ^Context,
 	allocator := context.allocator,
 ) -> Error {
-    schema := get_schema(schema_context, schema_idx)
-    _, idx := parse_schema_from_json_value(value, schema_context, allocator) or_return
-    schema.items = idx
-    return .None
+	schema := get_schema(schema_context, schema_idx)
+	_, idx := parse_schema_from_json_value(value, schema_context, allocator) or_return
+	schema.items = idx
+	return .None
 }
 
 @(private)
@@ -715,16 +744,20 @@ parse_prefix_items :: proc(
 	schema_context: ^Context,
 	allocator := context.allocator,
 ) -> Error {
-    schema := get_schema(schema_context, schema_idx)
-    if value_as_array, ok := value.(json.Array); ok {
-        for schema_elem in value_as_array {
-            _, idx := parse_schema_from_json_value(schema_elem, schema_context, allocator) or_return
-            append(&schema.prefix_items, idx)
-        }
-        return .None
-    } else {
-        return .Invalid_Array_Type
-    }
+	schema := get_schema(schema_context, schema_idx)
+	if value_as_array, ok := value.(json.Array); ok {
+		for schema_elem in value_as_array {
+			_, idx := parse_schema_from_json_value(
+				schema_elem,
+				schema_context,
+				allocator,
+			) or_return
+			append(&schema.prefix_items, idx)
+		}
+		return .None
+	} else {
+		return .Invalid_Array_Type
+	}
 }
 
 parse_schema_from_string :: proc(
@@ -757,29 +790,6 @@ parse_schema_from_string :: proc(
 	}
 
 	return schema_struct, pool_idx, .None
-}
-
-@(private)
-json_schema_check_type_compatibility :: proc(
-	schema_type: InstanceTypes,
-	parsed_data_type: InstanceTypes,
-) -> bool {
-	// note(iyaan): Note that while the JSON grammar does not distinguish
-	// between integer and real numbers, JSON Schema provides the integer
-	// logical type that matches either integers (such as 2), or real numbers
-	// where the fractional part is zero (such as 2.0)
-	if parsed_data_type == .Integer {
-		if schema_type == .Number || schema_type == .Integer {
-			return true
-		} else {
-			return false
-		}
-	}
-	if parsed_data_type == schema_type {
-		return true
-	} else {
-		return false
-	}
 }
 
 validate_string_with_schema :: proc(
@@ -864,8 +874,80 @@ validate_json_value_with_subschema :: proc(
 
 @(private)
 validate_type :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context) -> Error {
-	parsed_json_base_type := get_json_value_type(json_value)
-	if ok := json_schema_check_type_compatibility(subschema.type, parsed_json_base_type); !ok {
+	can_float_be_int :: proc(f: f64) -> bool {
+		_, frac_part := math.modf_f64(f)
+		if frac_part == 0.0 {
+			return true
+		} else {
+			return false
+		}
+	}
+
+	check_against_type_val :: proc(value: json.Value, t: InstanceTypes) -> bool {
+		// Check if data value is compatible with a given type (t)
+		switch t {
+		case .Integer:
+			if int_json_val, ok := value.(json.Integer); ok {
+				return true
+			} else if float_json_val, ok := value.(json.Float); ok {
+				// Check if float value is an equivalent integer
+				return can_float_be_int(float_json_val)
+			}
+		case .Number:
+			if float_json_val, ok := value.(json.Float); ok {
+				return true
+			} else if int_json_val, ok := value.(json.Integer); ok {
+				// An integer is a valid expected data type
+				// for an type of number
+				return true
+			}
+		case .Boolean:
+			if _, ok := value.(json.Boolean); ok {
+				return true
+			}
+		case .String:
+			if _, ok := value.(json.String); ok {
+				return true
+			}
+		case .Null:
+			if _, ok := value.(json.Null); ok {
+				return true
+			}
+		case .Array:
+			if _, ok := value.(json.Array); ok {
+				return true
+			}
+		case .Object:
+			if _, ok := value.(json.Object); ok {
+				return true
+			}
+		case .Invalid:
+			return false
+		}
+		return false
+	}
+
+	switch t in subschema.type {
+	case InstanceTypes:
+		// Single type
+		ok := check_against_type_val(json_value, subschema.type.(InstanceTypes))
+		if !ok {
+			return .Type_Validation_Failed
+		}
+	case CompositeTypes:
+		// Multiple type possibilities to check. Only has to match
+		// one to pass
+		matched_once := false
+		for type in subschema.type.(CompositeTypes) {
+			if check_against_type_val(json_value, type) {
+				matched_once = true
+				break
+			}
+		}
+		if !matched_once {
+			return .Type_Validation_Failed
+		}
+	case:
 		return .Type_Validation_Failed
 	}
 
@@ -1185,43 +1267,51 @@ validate_required :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Cont
 }
 
 @(private)
-validate_max_properties :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context) -> Error {
+validate_max_properties :: proc(
+	json_value: json.Value,
+	subschema: ^Schema,
+	ctx: ^Context,
+) -> Error {
 	if json_value_object, ok := json_value.(json.Object); ok {
-        if len(json_value_object) > subschema.max_properties {
-            return .Max_Properties_Validation_Failed
-        }
+		if len(json_value_object) > subschema.max_properties {
+			return .Max_Properties_Validation_Failed
+		}
 	}
-    return .None
+	return .None
 }
 
 @(private)
-validate_min_properties :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context) -> Error {
+validate_min_properties :: proc(
+	json_value: json.Value,
+	subschema: ^Schema,
+	ctx: ^Context,
+) -> Error {
 	if json_value_object, ok := json_value.(json.Object); ok {
-        if len(json_value_object) < subschema.min_properties {
-            return .Min_Properties_Validation_Failed
-        }
+		if len(json_value_object) < subschema.min_properties {
+			return .Min_Properties_Validation_Failed
+		}
 	}
-    return .None
+	return .None
 }
 
 @(private)
 validate_max_items :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context) -> Error {
 	if json_value_array, ok := json_value.(json.Array); ok {
-        if len(json_value_array) > subschema.max_items {
-            return .Max_Items_Validation_Failed
-        }
+		if len(json_value_array) > subschema.max_items {
+			return .Max_Items_Validation_Failed
+		}
 	}
-    return .None
+	return .None
 }
 
 @(private)
 validate_min_items :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context) -> Error {
 	if json_value_array, ok := json_value.(json.Array); ok {
-        if len(json_value_array) > subschema.min_items {
-            return .Min_Items_Validation_Failed
-        }
+		if len(json_value_array) > subschema.min_items {
+			return .Min_Items_Validation_Failed
+		}
 	}
-    return .None
+	return .None
 }
 
 @(private)
@@ -1299,133 +1389,133 @@ validate_oneof :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context
 }
 
 validate_if_then_else :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context) -> Error {
-    // Will be checking the validity of the else and then schemas
-    // based on the value of the if schema
-    if_err := validate_json_value_with_subschema(json_value, subschema, ctx)
-    then_exists := SchemaKeywords.Then in subschema.validation_flags
-    else_exists := SchemaKeywords.Else in subschema.validation_flags
-    if then_exists {
-        then_schema := get_schema(ctx, subschema.then)
-        then_err := validate_json_value_with_subschema(json_value, then_schema, ctx)
-        if if_err == .None && then_err == .None {
-            return .None
-        } else {
-            return .If_Then_Validation_Failed
-        }
-    }
+	// Will be checking the validity of the else and then schemas
+	// based on the value of the if schema
+	if_err := validate_json_value_with_subschema(json_value, subschema, ctx)
+	then_exists := SchemaKeywords.Then in subschema.validation_flags
+	else_exists := SchemaKeywords.Else in subschema.validation_flags
+	if then_exists {
+		then_schema := get_schema(ctx, subschema.then)
+		then_err := validate_json_value_with_subschema(json_value, then_schema, ctx)
+		if if_err == .None && then_err == .None {
+			return .None
+		} else {
+			return .If_Then_Validation_Failed
+		}
+	}
 
-    if else_exists {
-        else_schema := get_schema(ctx, subschema.then)
-        else_err := validate_json_value_with_subschema(json_value, else_schema, ctx)
+	if else_exists {
+		else_schema := get_schema(ctx, subschema.then)
+		else_err := validate_json_value_with_subschema(json_value, else_schema, ctx)
 
-        if if_err != .None && else_err == .None {
-            return .None
-        } else {
-            return .If_Else_Validation_Failed
-        }
-    }
+		if if_err != .None && else_err == .None {
+			return .None
+		} else {
+			return .If_Else_Validation_Failed
+		}
+	}
 
-    // note(iyaan): Case where `if` exists by itself
-    return .None
+	// note(iyaan): Case where `if` exists by itself
+	return .None
 }
 
 validate_not :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context) -> Error {
-    not_schema := get_schema(ctx, subschema.not)
-    validation_err := validate_json_value_with_subschema(json_value, not_schema, ctx)
-    if validation_err != .None {
-        return .None
-    } else {
-        return .Not_Validation_Failed
-    }
+	not_schema := get_schema(ctx, subschema.not)
+	validation_err := validate_json_value_with_subschema(json_value, not_schema, ctx)
+	if validation_err != .None {
+		return .None
+	} else {
+		return .Not_Validation_Failed
+	}
 }
 
 // note(iyaan): Will also handle minContains and maxContains
 // Those keywords by themselves has no effect without
 // a `contain` applicator
 validate_contains :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context) -> Error {
-    schema_of_contains := get_schema(ctx, subschema.not)
+	schema_of_contains := get_schema(ctx, subschema.not)
 
-    min_contains_defined := SchemaKeywords.MinContains in subschema.validation_flags
-    max_contains_defined := SchemaKeywords.MaxContains in subschema.validation_flags
-    
-    contains_count := 0
-    if value_as_array, ok := json_value.(json.Array); ok {
-        for val in value_as_array {
-            err := validate_json_value_with_subschema(val, schema_of_contains, ctx)
-            if err == .None {
-                contains_count += 1
+	min_contains_defined := SchemaKeywords.MinContains in subschema.validation_flags
+	max_contains_defined := SchemaKeywords.MaxContains in subschema.validation_flags
 
-                // Early exit for case when no max
-                // contraint defined
-                if min_contains_defined {
-                    is_min_satisfied := contains_count >= subschema.min_contains
-                    if !max_contains_defined && is_min_satisfied {
-                        break
-                    }
-                }
-            }
-        }
+	contains_count := 0
+	if value_as_array, ok := json_value.(json.Array); ok {
+		for val in value_as_array {
+			err := validate_json_value_with_subschema(val, schema_of_contains, ctx)
+			if err == .None {
+				contains_count += 1
 
-        // Edge case min and max are set to zero. The data instance
-        // is an empty array
+				// Early exit for case when no max
+				// contraint defined
+				if min_contains_defined {
+					is_min_satisfied := contains_count >= subschema.min_contains
+					if !max_contains_defined && is_min_satisfied {
+						break
+					}
+				}
+			}
+		}
 
-        if min_contains_defined && contains_count < subschema.min_contains {
-            return .Min_Contains_Validation_Failed
-        }
+		// Edge case min and max are set to zero. The data instance
+		// is an empty array
 
-        if max_contains_defined && contains_count > subschema.max_contains {
-            return .Max_Contains_Validation_Failed
-        }
+		if min_contains_defined && contains_count < subschema.min_contains {
+			return .Min_Contains_Validation_Failed
+		}
 
-        if !max_contains_defined && !min_contains_defined {
-            // If not min or max defined atleast one has
-            // to validate
-            return .Contains_Validation_Failed
-        }
-    }
+		if max_contains_defined && contains_count > subschema.max_contains {
+			return .Max_Contains_Validation_Failed
+		}
 
-    return .None
+		if !max_contains_defined && !min_contains_defined {
+			// If not min or max defined atleast one has
+			// to validate
+			return .Contains_Validation_Failed
+		}
+	}
+
+	return .None
 }
 
 @(private)
 validate_items :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context) -> Error {
-    items_schema := get_schema(ctx, subschema.items)
-    // note(iyaan): Validate prefixItems first. Things covered by
-    // the prefixItems does need to have items schema validated against
-    // them
-    if json_value_array, ok := json_value.(json.Array); ok {
-        // How many values in the data array to skip to perform the
-        // items validation
-        rest_start_idx: int
-        if SchemaKeywords.PrefixItems in subschema.validation_flags {
-            for elem, idx in json_value_array {
-                if idx < len(subschema.prefix_items) {
-                    prefix_elem_schema := get_schema(ctx, PoolIndex(idx))
-                    err := validate_json_value_with_subschema(elem, prefix_elem_schema, ctx)
-                    if err != .None {
-                        return .Prefix_Items_Validation_Failed
-                    }
-                    rest_start_idx = idx
-                }
+	items_schema := get_schema(ctx, subschema.items)
+	// note(iyaan): Validate prefixItems first. Things covered by
+	// the prefixItems does need to have items schema validated against
+	// them
+	if json_value_array, ok := json_value.(json.Array); ok {
+		// How many values in the data array to skip to perform the
+		// items validation
+		rest_start_idx: int
+		if SchemaKeywords.PrefixItems in subschema.validation_flags {
+			for elem, idx in json_value_array {
+				if idx < len(subschema.prefix_items) {
+					prefix_elem_schema := get_schema(ctx, PoolIndex(idx))
+					err := validate_json_value_with_subschema(elem, prefix_elem_schema, ctx)
+					if err != .None {
+						return .Prefix_Items_Validation_Failed
+					}
+					rest_start_idx = idx
+				}
 
-            }
-        }
-        if rest_start_idx < len(json_value_array) - 1 {
-            // note(iyaan): Perform items validation here
-            for idx in rest_start_idx..<len(json_value_array) {
-                err := validate_json_value_with_subschema(json_value_array[idx], items_schema, ctx)
-                if err != .None {
-                    return .Items_Validation_Failed
-                }
+			}
+		}
+		if rest_start_idx < len(json_value_array) - 1 {
+			// note(iyaan): Perform items validation here
+			for idx in rest_start_idx ..< len(json_value_array) {
+				err := validate_json_value_with_subschema(json_value_array[idx], items_schema, ctx)
+				if err != .None {
+					return .Items_Validation_Failed
+				}
 
-            }
-        }
+			}
+		}
 
-        // note(iyaan): If the data has no more elems after checking
-        // prefixItems no need to care
-    }
+		// note(iyaan): If the data has no more elems after checking
+		// prefixItems no need to care
+	}
 
-    return .None
+	return .None
 }
 
 

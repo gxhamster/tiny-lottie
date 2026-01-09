@@ -3,6 +3,14 @@ package schema_validator
 import "base:runtime"
 import "core:encoding/json"
 
+CompositeTypes :: []InstanceTypes
+
+// Holding single types and combination of types
+InstanceType :: union {
+    InstanceTypes,
+    CompositeTypes,
+}
+
 InstanceTypes :: enum {
 	Null,
 	Boolean,
@@ -11,6 +19,8 @@ InstanceTypes :: enum {
 	Number,
 	Integer,
 	String,
+
+    Invalid,
 }
 
 Error :: enum {
@@ -27,6 +37,7 @@ Error :: enum {
 	Invalid_Object_Type,
 	Invalid_String_Type,
 	Invalid_Array_Type,
+    Expected_Array_Or_String,
 
 	// Validation Errors
 	Type_Validation_Failed,
@@ -346,7 +357,7 @@ Schema :: struct {
 	// that we want. We need a sort of flag set for each defined validation
 	// keyword
 	validation_flags:    bit_set[SchemaKeywords],
-	type:                InstanceTypes,
+	type:                InstanceType,
 	const:               json.Value,
 	min_length:          int,
 	max_length:          int,
