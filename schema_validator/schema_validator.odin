@@ -892,7 +892,6 @@ validate_properties :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Co
 		val := json_value_as_obj[prop_schema.name]
 		log.debug("Value:", val, ", Prop:", prop)
 		if val != nil {
-			val_type := get_json_value_type(val)
 			prop_valid_err := validate_json_value_with_subschema(val, prop_schema, ctx)
 			if prop_valid_err != .None {
 				return prop_valid_err
@@ -1584,39 +1583,6 @@ validate_items :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context
 	}
 
 	return .None
-}
-
-
-@(private)
-get_json_value_type :: proc(json_value: json.Value) -> InstanceTypes {
-	parsed_json_base_type: InstanceTypes
-	parsed_json := json_value
-	switch t in parsed_json {
-	case json.Object:
-		parsed_json := parsed_json.(json.Object)
-		parsed_json_base_type = .Object
-	case json.Float:
-		parsed_json := parsed_json.(json.Float)
-		parsed_json_base_type = .Number
-	case json.Integer:
-		parsed_json := parsed_json.(json.Integer)
-		parsed_json_base_type = .Integer
-	case json.Array:
-		parsed_json := parsed_json.(json.Array)
-		parsed_json_base_type = .Array
-	case json.Null:
-		parsed_json := parsed_json.(json.Null)
-		parsed_json_base_type = .Null
-	case json.Boolean:
-		parsed_json := parsed_json.(json.Boolean)
-		parsed_json_base_type = .Boolean
-	case json.String:
-		parsed_json := parsed_json.(json.String)
-		parsed_json_base_type = .String
-	case:
-		panic("Not a json type")
-	}
-	return parsed_json_base_type
 }
 
 // For now will only support finding
