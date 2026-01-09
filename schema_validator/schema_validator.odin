@@ -1108,14 +1108,12 @@ validate_min_length :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Co
 validate_multipleof :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context) -> Error {
 
 	float_is_multiple :: proc(n1: f64, n2: f64) -> Error {
-		// note(iyaan): This is a such a dumb way to overcome
-		// float precision errors when trying to find if mod
-		// is zero
-		MANTISSA_THRESHOLD :: 1e-15
-		mod := math.mod_f64(n1, n2)
-		if mod == 0 {
-			return .None
-		} else if mod < MANTISSA_THRESHOLD {
+		// note(iyaan): Perform the float division
+		// and then look at the fractional part of the result
+		// to determine if divisible
+		n := n1 / n2
+		_, frac := math.modf_f64(n)
+		if frac == 0.0 {
 			return .None
 		} else {
 			return .Multiple_Of_Validation_Failed

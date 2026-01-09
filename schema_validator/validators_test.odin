@@ -55,3 +55,9 @@ minimum_test :: proc(t: ^testing.T) {
 	TEST_FILE :: "tests/minimum.json"
 	run_test_in_spec_file(t, TEST_FILE)
 }
+
+@(test)
+multipleof_test :: proc(t: ^testing.T) {
+	TEST_FILE :: "tests/multipleOf.json"
+	run_test_in_spec_file(t, TEST_FILE)
+}
