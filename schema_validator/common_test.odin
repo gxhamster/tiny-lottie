@@ -26,7 +26,13 @@ run_test_in_spec_file :: proc(t: ^testing.T, test_file: string) {
 		test_object := test_object.(json.Object)
 		if schema_object, ok := test_object["schema"].(json.Object); ok {
 			schema_struct, idx, err := parse_schema_from_json_value(schema_object, &schema_context)
-			testing.expect(t, err == .None, "Error occured when parsing schema")
+			msg := fmt.tprintf(
+				"(file=%v, grp='%v') Error occured when parsing schema (%v)",
+				test_file,
+				test_object["description"].(json.String),
+				err,
+			)
+			testing.expect(t, err == .None, msg)
 
 			schema_tests := test_object["tests"].(json.Array)
 			for schema_test in schema_tests {
