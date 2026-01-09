@@ -1,8 +1,10 @@
 package schema_validator
 
+import "base:runtime"
 import "core:encoding/json"
 import "core:log"
 import "core:math"
+import "core:math/bits"
 import "core:path/slashpath"
 import "core:strings"
 
@@ -224,6 +226,20 @@ parse_schema_from_json_value :: proc(
 
 
 		return schema_struct, schema_idx, .None
+	} else if parsed_json, ok := value.(json.Boolean); ok {
+		// note(iyaan): Handle just boolean value schemas
+		append(&schema_context.schema_pool, Schema{})
+		schema_idx = PoolIndex(len(schema_context.schema_pool) - 1)
+		schema_struct = &schema_context.schema_pool[len(schema_context.schema_pool) - 1]
+		if parsed_json {
+			schema_struct.is_bool_schema = true
+			schema_struct.bool_schema_val = true
+			return schema_struct, schema_idx, .None
+		} else {
+			schema_struct.is_bool_schema = true
+			schema_struct.bool_schema_val = false
+			return schema_struct, schema_idx, .None
+		}
 	} else {
 		return schema_struct, schema_idx, .Invalid_Object_Type
 	}
@@ -509,10 +525,16 @@ parse_max_items :: proc(
 	if value_as_int, ok := value.(json.Integer); ok {
 		assert(value_as_int >= 0, "maxItems should be positive")
 		schema.max_items = int(value_as_int)
-		return .None
+	} else if value_as_float, ok := value.(json.Float); ok {
+		if can_float_be_int(value_as_float) {
+			schema.max_items = int(value.(json.Float))
+		} else {
+			return .Invalid_Integer_Type
+		}
 	} else {
 		return .Invalid_Integer_Type
 	}
+	return .None
 }
 
 @(private)
@@ -526,10 +548,16 @@ parse_min_items :: proc(
 	if value_as_int, ok := value.(json.Integer); ok {
 		assert(value_as_int >= 0, "minItems should be positive")
 		schema.min_items = int(value_as_int)
-		return .None
+	} else if value_as_float, ok := value.(json.Float); ok {
+		if can_float_be_int(value_as_float) {
+			schema.min_items = int(value.(json.Float))
+		} else {
+			return .Invalid_Integer_Type
+		}
 	} else {
 		return .Invalid_Integer_Type
 	}
+	return .None
 }
 
 @(private)
@@ -821,10 +849,6 @@ parse_schema_from_string :: proc(
 		panic("Returned an error")
 	}
 
-	for v in schema_context.refs_to_resolve {
-		log.debugf("Resolving ref (%v)\n", v.ref)
-	}
-
 	return schema_struct, pool_idx, .None
 }
 
@@ -878,13 +902,14 @@ validate_properties :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Co
 	return .None
 }
 
-@(private)
 validate_json_value_with_subschema :: proc(
 	json_value: json.Value,
 	subschema: ^Schema,
 	ctx: ^Context,
 ) -> Error {
-	subschema_copy := subschema
+	if subschema.is_bool_schema {
+		return subschema.bool_schema_val ? .None : .Bool_Schema_False
+	}
 
 	for validation_keyword in subschema.validation_flags {
 		log.debugf("Performing validation (%v) on (%v)", validation_keyword, json_value)
@@ -1436,7 +1461,8 @@ validate_oneof :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context
 validate_if_then_else :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context) -> Error {
 	// Will be checking the validity of the else and then schemas
 	// based on the value of the if schema
-	if_err := validate_json_value_with_subschema(json_value, subschema, ctx)
+	if_schema := get_schema(ctx, subschema._if)
+	if_err := validate_json_value_with_subschema(json_value, if_schema, ctx)
 	then_exists := SchemaKeywords.Then in subschema.validation_flags
 	else_exists := SchemaKeywords.Else in subschema.validation_flags
 	if then_exists {
@@ -1450,7 +1476,7 @@ validate_if_then_else :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^
 	}
 
 	if else_exists {
-		else_schema := get_schema(ctx, subschema.then)
+		else_schema := get_schema(ctx, subschema._else)
 		else_err := validate_json_value_with_subschema(json_value, else_schema, ctx)
 
 		if if_err != .None && else_err == .None {
@@ -1478,10 +1504,13 @@ validate_not :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context) 
 // Those keywords by themselves has no effect without
 // a `contain` applicator
 validate_contains :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context) -> Error {
-	schema_of_contains := get_schema(ctx, subschema.not)
+	schema_of_contains := get_schema(ctx, subschema.contains)
 
 	min_contains_defined := SchemaKeywords.MinContains in subschema.validation_flags
 	max_contains_defined := SchemaKeywords.MaxContains in subschema.validation_flags
+
+	min := min_contains_defined ? subschema.min_contains : 1
+	max := max_contains_defined ? subschema.max_contains : bits.INT_MAX
 
 	contains_count := 0
 	if value_as_array, ok := json_value.(json.Array); ok {
@@ -1504,18 +1533,12 @@ validate_contains :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Cont
 		// Edge case min and max are set to zero. The data instance
 		// is an empty array
 
-		if min_contains_defined && contains_count < subschema.min_contains {
+		if contains_count < min {
 			return .Min_Contains_Validation_Failed
 		}
 
-		if max_contains_defined && contains_count > subschema.max_contains {
+		if contains_count > max {
 			return .Max_Contains_Validation_Failed
-		}
-
-		if !max_contains_defined && !min_contains_defined {
-			// If not min or max defined atleast one has
-			// to validate
-			return .Contains_Validation_Failed
 		}
 	}
 
