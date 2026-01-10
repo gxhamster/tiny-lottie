@@ -73,3 +73,21 @@ min_properties_test :: proc(t: ^testing.T) {
 	TEST_FILE :: "tests/minProperties.json"
 	run_test_in_spec_file(t, TEST_FILE)
 }
+
+@(test)
+required_test :: proc(t: ^testing.T) {
+	TEST_FILE :: "tests/required.json"
+	run_test_in_spec_file(t, TEST_FILE)
+}
+
+@(test)
+max_contains_test :: proc(t: ^testing.T) {
+	TEST_FILE :: "tests/maxContains.json"
+	run_test_in_spec_file(t, TEST_FILE)
+}
+
+@(test)
+min_contains_test :: proc(t: ^testing.T) {
+	TEST_FILE :: "tests/minContains.json"
+	run_test_in_spec_file(t, TEST_FILE)
+}
