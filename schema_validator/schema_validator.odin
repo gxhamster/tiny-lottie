@@ -1713,7 +1713,7 @@ validate_items :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context
 
 			}
 		}
-		if rest_start_idx < len(json_value_array) - 1 {
+		if rest_start_idx < len(json_value_array) {
 			// note(iyaan): Perform items validation here
 			for idx in rest_start_idx ..< len(json_value_array) {
 				err := validate_json_value_with_subschema(json_value_array[idx], items_schema, ctx)
