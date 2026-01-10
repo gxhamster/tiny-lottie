@@ -135,7 +135,7 @@ keywords_parse_table := [?]KeywordParseInfo {
 	{"else", .Else, parse_else},
 	{"not", .Not, parse_not},
 	{"properties", .Properties, parse_properties},
-	{"additionalProperties", .AdditionalProperties, nil},
+	{"additionalProperties", .AdditionalProperties, parse_additional_properties},
 	{"patternProperties", .PatternProperties, parse_pattern_properties},
 	{"dependentSchemas", .DependentSchemas, nil},
 	{"propertyNames", .PropertyNames, nil},
@@ -173,12 +173,17 @@ keywords_parse_table := [?]KeywordParseInfo {
 	{"examples", .Examples, nil},
 	{"readOnly", .ReadOnly, nil},
 	{"writeOnly", .WriteOnly, nil},
+
+	// Unevaluated
+	{"unevaluatedItems", .UnevaluatedItems, nil},
+	{"unevaluatedProperties", .UnevaluatedProperties, nil},
 }
 
 // TODO: Implement validation procedure for each of the keywords -_-
 @(private)
 keywords_validation_table := [?]KeywordValidationInfo {
-	// Core vocabulary. These do not have any validation
+	// Core vocabulary //
+	// These do not have any validation
 	// to do. Just here to preserve the order of the enums
 	{"$id", .Id, nil},
 	{"$schema", .Schema, nil},
@@ -190,7 +195,7 @@ keywords_validation_table := [?]KeywordValidationInfo {
 	{"$dynamicRef", .DynamicRef, nil},
 	{"$vocabulary", .Vocabulary, nil},
 
-	// Applicators
+	// Applicators //
 	{"allOf", .AllOf, validate_allof},
 	{"anyOf", .AnyOf, validate_anyof},
 	{"oneOf", .OneOf, validate_oneof},
@@ -200,7 +205,7 @@ keywords_validation_table := [?]KeywordValidationInfo {
 	{"else", .Else, nil},
 	{"not", .Not, validate_not},
 	{"properties", .Properties, validate_properties},
-	{"additionalProperties", .AdditionalProperties, nil},
+	{"additionalProperties", .AdditionalProperties, validate_additional_properties},
 	{"patternProperties", .PatternProperties, validate_pattern_properties},
 	{"dependentSchemas", .DependentSchemas, nil},
 	{"propertyNames", .PropertyNames, nil},
@@ -210,7 +215,7 @@ keywords_validation_table := [?]KeywordValidationInfo {
 	{"items", .Items, validate_items},
 	{"prefixItems", .PrefixItems, nil},
 
-	// Validators
+	// Validators //
 	{"type", .Type, validate_type},
 	{"enum", .Enum, validate_enum},
 	{"const", .Const, validate_const},
@@ -234,7 +239,7 @@ keywords_validation_table := [?]KeywordValidationInfo {
 	{"minContains", .MinContains, nil},
 	{"uniqueItems", .UniqueItems, nil},
 
-	// Metadata
+	// Metadata //
 	{"title", .Title, nil},
 	{"description", .Description, nil},
 	{"default", .Default, nil},
@@ -242,6 +247,10 @@ keywords_validation_table := [?]KeywordValidationInfo {
 	{"examples", .Examples, nil},
 	{"readOnly", .ReadOnly, nil},
 	{"writeOnly", .WriteOnly, nil},
+
+	// Unevaluated //
+	{"unevaluatedItems", .UnevaluatedItems, nil},
+	{"unevaluatedProperties", .UnevaluatedProperties, nil},
 }
 
 // note(iyaan): Values of this enum will be used to
@@ -311,6 +320,10 @@ SchemaKeywords :: enum {
 	ReadOnly,
 	WriteOnly,
 
+	// Unevaluated
+	UnevaluatedItems,
+	UnevaluatedProperties,
+
 	// TODO: Add all other keywords in schema specfification
 }
 
@@ -342,6 +355,7 @@ Schema :: struct {
 	// Applicator keywords
 	properties_children: [dynamic]PoolIndex,
 	items_children:      [dynamic]PoolIndex,
+    additional_properties: PoolIndex, 
 	allof:               [dynamic]PoolIndex,
 	anyof:               [dynamic]PoolIndex,
 	oneof:               [dynamic]PoolIndex,

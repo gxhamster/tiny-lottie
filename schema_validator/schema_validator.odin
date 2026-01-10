@@ -91,14 +91,19 @@ parse_pattern_properties :: proc(
 				properties_as_object[prop_field],
 				schema_context,
 			)
+            prop_sub_schema.name = prop_field
 			if err != .None {
-				log.debugf("Parsing prefix properties failed (field=%v) : %v", prop_field, err)
-				panic("Could not parse prefix properties schema")
+				log.infof("Parsing prefix properties failed (field=%v) : %v", prop_field, err)
+                return err
 			}
 			prop_sub_schema.name = prop_field
 			r_regex, regex_create_err := regex.create(
 				prop_field,
-				{regex_common.Flag.No_Capture},
+                // note(iyaan): I have seen some spec tests like
+                // in additionalProperties.json where the pattern
+                // had non-ascii characters, so i am adding the unicode
+                // flag here
+				{regex_common.Flag.No_Capture, regex_common.Flag.Unicode},
 				allocator,
 			)
 
@@ -128,6 +133,19 @@ parse_pattern_properties :: proc(
 		return .Invalid_Object_Type
 	}
 
+	return .None
+}
+
+parse_additional_properties :: proc (
+	value: json.Value,
+	schema_idx: PoolIndex,
+	schema_context: ^Context,
+	allocator := context.allocator,
+    
+) -> Error {
+	schema := get_schema(schema_context, schema_idx)
+	_, idx := parse_schema_from_json_value(value, schema_context, allocator) or_return
+	schema.additional_properties = idx
 	return .None
 }
 
@@ -280,7 +298,7 @@ parse_schema_from_json_value :: proc(
 					// to be validated
 					schema_struct.validation_flags += {keyword_info.type}
 				} else {
-					log.debugf("Could not parse (%v), returned (%v)", val, parse_err)
+					log.infof("Could not parse (%v), returned (%v)", val, parse_err)
 					return schema_struct, schema_idx, parse_err
 				}
 			}
@@ -288,7 +306,7 @@ parse_schema_from_json_value :: proc(
 			// note(iyaan): Keeping this until all keywords
 			// have been properly implemented
 			if val != nil && parse_proc == nil {
-				log.fatalf("(%v) cannot parse yet", keyword_info.keyword)
+				log.errorf("(%v) cannot parse yet", keyword_info.keyword)
 			}
 		}
 
@@ -931,7 +949,7 @@ parse_schema_from_string :: proc(
 ) {
 	parsed_json, parsed_json_err := json.parse_string(schema, json.DEFAULT_SPECIFICATION, true)
 	if parsed_json_err != .None {
-		log.fatalf("json.parse_string returned error (%v)", parsed_json_err)
+		log.infof("json.parse_string returned error (%v)", parsed_json_err)
 		return schema_struct, pool_idx, .Json_Parse_Error
 	}
 
@@ -941,7 +959,7 @@ parse_schema_from_string :: proc(
 		allocator,
 	)
 	if err != (.None) {
-		log.fatalf("_parse_from_json_value() returned %v\n", err)
+		log.infof("_parse_from_json_value() returned %v\n", err)
 		return schema_struct, pool_idx, err
 	}
 
@@ -982,11 +1000,9 @@ validate_properties :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Co
 		return .None
 	}
 	json_value_as_obj := json_value.(json.Object)
-	log.debug("JSON Value:", json_value_as_obj)
 	for prop in subschema.properties_children {
 		prop_schema := &ctx.schema_pool[prop]
 		val := json_value_as_obj[prop_schema.name]
-		log.debug("Value:", val, ", Prop:", prop)
 		if val != nil {
 			prop_valid_err := validate_json_value_with_subschema(val, prop_schema, ctx)
 			if prop_valid_err != .None {
@@ -1033,6 +1049,64 @@ validate_pattern_properties :: proc(
 				}
 			}
 		}
+	}
+
+	return .None
+}
+
+@(private)
+// Validation succeeds if the schema validates
+// against each value not matched by other object
+// applicators in this vocabulary.
+validate_additional_properties :: proc(
+	json_value: json.Value,
+	subschema: ^Schema,
+	ctx: ^Context,
+) -> Error {
+	if _, ok := json_value.(json.Object); !ok {
+		return .None
+	}
+	json_value_as_obj := json_value.(json.Object)
+
+	for obj_prop in json_value_as_obj {
+        // note(iyaan): Check if the property matches
+        // against any `properties`
+        matches_properties := false
+        for prop_idx in subschema.properties_children {
+            prop_schema := get_schema(ctx, prop_idx)
+            assert(prop_schema.name != "", "Property name not set in schema")
+            if strings.compare(obj_prop, prop_schema.name) == 0 {
+                matches_properties = true
+            }
+        }
+
+        // note(iyaan): Check if the property matches against
+        // any `patternProperties`
+        matches_pattern_properties := false
+        for prop_idx, _idx in subschema.pattern_properties {
+            prop_schema := get_schema(ctx, prop_idx)
+            prop_regex := subschema.pattern_regex[_idx]
+            assert(prop_schema.name != "", "Property name not set in schema")
+            
+			capture, ok := regex.match_and_allocate_capture(prop_regex, obj_prop)
+            // TODO: Too much allocation in a loop for my taste
+			regex.destroy_capture(capture)
+
+            if ok {
+                matches_pattern_properties = true
+            }
+        }
+
+        if !matches_properties && !matches_pattern_properties {
+            val := json_value_as_obj[obj_prop]
+            additional_properties_schema := get_schema(ctx, subschema.additional_properties)
+            additional_prop_err := validate_json_value_with_subschema(val, additional_properties_schema, ctx)
+            if additional_prop_err != .None {
+                log.infof("additional_properties validation failed (%v)", additional_prop_err)
+                return additional_prop_err
+            }
+        }
+        
 	}
 
 	return .None
@@ -1778,7 +1852,6 @@ get_schema_from_ref_path :: proc(
 			}
 			return cur_schema, .None
 		}
-		// log.fatalf("Path (%v) not in $defs (%v)", path, root_schema)
 		return target_schema, .Ref_Path_Not_Found_In_Defs
 	}
 
@@ -1824,7 +1897,7 @@ resolve_refs_to_schemas :: proc(
 		)
 
 		if err != .None {
-			log.fatalf("Could not resolve ref (%v) : %v", ref_info.ref, err)
+			log.infof("Could not resolve ref (%v) : %v", ref_info.ref, err)
 			return err
 		} else {
 			// note(iyaan): Replace the schema in which $ref field was in
