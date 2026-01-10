@@ -2,6 +2,7 @@ package schema_validator
 
 import "base:runtime"
 import "core:encoding/json"
+import "core:text/regex"
 
 CompositeTypes :: []InstanceTypes
 
@@ -37,6 +38,10 @@ Error :: enum {
 	Invalid_String_Type,
 	Invalid_Array_Type,
 	Expected_Array_Or_String,
+	Regex_Creation_Failed,
+	Regex_Parser_Error,
+	Regex_Compiler_Error,
+
 
 	// Validation Errors
 	Type_Validation_Failed,
@@ -131,7 +136,7 @@ keywords_parse_table := [?]KeywordParseInfo {
 	{"not", .Not, parse_not},
 	{"properties", .Properties, parse_properties},
 	{"additionalProperties", .AdditionalProperties, nil},
-	{"patternProperties", .PatternProperties, nil},
+	{"patternProperties", .PatternProperties, parse_pattern_properties},
 	{"dependentSchemas", .DependentSchemas, nil},
 	{"propertyNames", .PropertyNames, nil},
 	{"contains", .Contains, parse_contains},
@@ -196,7 +201,7 @@ keywords_validation_table := [?]KeywordValidationInfo {
 	{"not", .Not, validate_not},
 	{"properties", .Properties, validate_properties},
 	{"additionalProperties", .AdditionalProperties, nil},
-	{"patternProperties", .PatternProperties, nil},
+	{"patternProperties", .PatternProperties, validate_pattern_properties},
 	{"dependentSchemas", .DependentSchemas, nil},
 	{"propertyNames", .PropertyNames, nil},
 	{"contains", .Contains, validate_contains},
@@ -340,6 +345,11 @@ Schema :: struct {
 	allof:               [dynamic]PoolIndex,
 	anyof:               [dynamic]PoolIndex,
 	oneof:               [dynamic]PoolIndex,
+	// note(iyaan): Regular_Expression allocates things
+	// Each refex in `pattern_regex` corresponds to a
+	// property in `pattern_properties`
+	pattern_regex:       [dynamic]regex.Regular_Expression,
+	pattern_properties:  [dynamic]PoolIndex,
 	// note(iyaan): During validation probably we can just
 	// have a procedure just for if. `then` and `else` by themselves
 	// does not have meaning without the `if` condition schema. So checking
@@ -351,6 +361,7 @@ Schema :: struct {
 	contains:            PoolIndex,
 	items:               PoolIndex,
 	prefix_items:        [dynamic]PoolIndex,
+
 
 	// Validation keywords
 	// note(iyaan): We need a way to know whether a schema has defined

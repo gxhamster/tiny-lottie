@@ -7,6 +7,10 @@ import "core:math"
 import "core:math/bits"
 import "core:path/slashpath"
 import "core:strings"
+import "core:text/regex"
+import regex_common "core:text/regex/common"
+import regex_compiler "core:text/regex/compiler"
+import regex_parser "core:text/regex/parser"
 
 
 @(private)
@@ -57,6 +61,68 @@ parse_properties :: proc(
 				prop_sub_schema.name = prop_field
 				append(&schema.properties_children, schema_idx)
 			}
+		}
+	} else {
+		return .Invalid_Object_Type
+	}
+
+	return .None
+}
+
+@(private)
+parse_pattern_properties :: proc(
+	value: json.Value,
+	schema_idx: PoolIndex,
+	schema_context: ^Context,
+	allocator := context.allocator,
+) -> Error {
+
+	if properties_as_object, ok := value.(json.Object); ok {
+		schema := get_schema(schema_context, schema_idx)
+		// note(iyaan): Allocate for the regular expressions
+		no_of_properties := len(properties_as_object)
+		schema.pattern_regex = make([dynamic]regex.Regular_Expression, 0, allocator)
+		schema.pattern_properties = make([dynamic]PoolIndex, 0, allocator)
+		reserve(&schema.pattern_properties, no_of_properties)
+		reserve(&schema.pattern_regex, no_of_properties)
+
+		for prop_field in properties_as_object {
+			prop_sub_schema, schema_idx, err := parse_schema_from_json_value(
+				properties_as_object[prop_field],
+				schema_context,
+			)
+			if err != .None {
+				log.debugf("Parsing prefix properties failed (field=%v) : %v", prop_field, err)
+				panic("Could not parse prefix properties schema")
+			}
+			prop_sub_schema.name = prop_field
+			r_regex, regex_create_err := regex.create(
+				prop_field,
+				{regex_common.Flag.No_Capture},
+				allocator,
+			)
+
+			switch error_type in regex_create_err {
+			case regex_parser.Error:
+				log.debugf("Regex parser error (%v)", regex_create_err.(regex_parser.Error))
+				return .Regex_Parser_Error
+			case regex_compiler.Error:
+				if val, ok := regex_create_err.(regex_compiler.Error); val != .None {
+					return .Regex_Compiler_Error
+				}
+			case regex.Creation_Error:
+				if val, ok := regex_create_err.(regex.Creation_Error); val != .None {
+					log.debugf("Regex creation for pattern failed (%v)", regex_create_err)
+					return .Regex_Creation_Failed
+				}
+			}
+
+			append(&schema.pattern_regex, r_regex)
+			append(&schema.pattern_properties, schema_idx)
+			assert(
+				len(schema.pattern_regex) == len(schema.pattern_properties),
+				"Regex and properties array mismatch",
+			)
 		}
 	} else {
 		return .Invalid_Object_Type
@@ -219,11 +285,11 @@ parse_schema_from_json_value :: proc(
 				}
 			}
 
-            // note(iyaan): Keeping this until all keywords
-            // have been properly implemented
-            if val != nil && parse_proc == nil {
-                log.fatalf("(%v) cannot parse yet", keyword_info.keyword)
-            }
+			// note(iyaan): Keeping this until all keywords
+			// have been properly implemented
+			if val != nil && parse_proc == nil {
+				log.fatalf("(%v) cannot parse yet", keyword_info.keyword)
+			}
 		}
 
 
@@ -931,6 +997,47 @@ validate_properties :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Co
 	return .None
 }
 
+@(private)
+// json_value is the parent object which contains the
+// properties, not the actual property value itself
+// patternProperties: {
+// }
+validate_pattern_properties :: proc(
+	json_value: json.Value,
+	subschema: ^Schema,
+	ctx: ^Context,
+) -> Error {
+	if _, ok := json_value.(json.Object); !ok {
+		return .None
+	}
+	json_value_as_obj := json_value.(json.Object)
+	for obj_prop in json_value_as_obj {
+		for prop_schema_idx, _idx in subschema.pattern_properties {
+			// note(iyaan): Check if the current property name matches
+			// any of the patterns stored in the schema
+			prop_regex := subschema.pattern_regex[_idx]
+			prop_schema := get_schema(ctx, prop_schema_idx)
+			val := json_value_as_obj[obj_prop]
+
+			capture, ok := regex.match_and_allocate_capture(prop_regex, obj_prop)
+			// note(iyaan): This constant allocation and deallocation is bad. Fix
+			// this later
+			regex.destroy_capture(capture)
+
+			// If the property of the object is match with
+			// the regex in the schema
+			if ok && val != nil {
+				prop_valid_err := validate_json_value_with_subschema(val, prop_schema, ctx)
+				if prop_valid_err != .None {
+					return prop_valid_err
+				}
+			}
+		}
+	}
+
+	return .None
+}
+
 validate_json_value_with_subschema :: proc(
 	json_value: json.Value,
 	subschema: ^Schema,
@@ -1497,31 +1604,31 @@ validate_if_then_else :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^
 	if then_exists {
 		then_schema := get_schema(ctx, subschema.then)
 		then_err := validate_json_value_with_subschema(json_value, then_schema, ctx)
-        // note(iyaan): Check then schema only if passes otherwise
-        // dont
+		// note(iyaan): Check then schema only if passes otherwise
+		// dont
 		if if_err == .None {
-            if then_err == .None {
-			    return .None
-            } else {
-			    return .If_Then_Validation_Failed
-            }
-		} 
+			if then_err == .None {
+				return .None
+			} else {
+				return .If_Then_Validation_Failed
+			}
+		}
 	}
 
 	if else_exists {
 		else_schema := get_schema(ctx, subschema._else)
 		else_err := validate_json_value_with_subschema(json_value, else_schema, ctx)
 
-        // note(iyaan): Check then schema only if not passes otherwise
-        // dont
+		// note(iyaan): Check then schema only if not passes otherwise
+		// dont
 		if if_err != .None {
-            if else_err == .None {
-                return .None
-            } else {
-			    return .If_Else_Validation_Failed
-            }
+			if else_err == .None {
+				return .None
+			} else {
+				return .If_Else_Validation_Failed
+			}
 		}
-    }
+	}
 
 	// note(iyaan): Case where `if` exists by itself
 	return .None
