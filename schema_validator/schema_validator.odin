@@ -1513,7 +1513,7 @@ validate_max_items :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Con
 @(private)
 validate_min_items :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context) -> Error {
 	if json_value_array, ok := json_value.(json.Array); ok {
-		if len(json_value_array) > subschema.min_items {
+		if len(json_value_array) < subschema.min_items {
 			return .Min_Items_Validation_Failed
 		}
 	}
