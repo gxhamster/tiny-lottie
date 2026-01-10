@@ -1703,21 +1703,23 @@ validate_items :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context
 			for elem, idx in json_value_array {
 				if idx < len(subschema.prefix_items) {
 					prefix_elem_schema := get_schema(ctx, PoolIndex(subschema.prefix_items[idx]))
+					rest_start_idx = idx
 					err := validate_json_value_with_subschema(elem, prefix_elem_schema, ctx)
 					if err != .None {
-						log.fatalf("prefix item schema failed (%v)", err)
+						log.infof("prefix item schema failed (%v)", err)
 						return .Prefix_Items_Validation_Failed
 					}
-					rest_start_idx = idx
 				}
 
 			}
+			rest_start_idx += 1
 		}
 		if rest_start_idx < len(json_value_array) {
 			// note(iyaan): Perform items validation here
 			for idx in rest_start_idx ..< len(json_value_array) {
 				err := validate_json_value_with_subschema(json_value_array[idx], items_schema, ctx)
 				if err != .None {
+					log.infof("item schema failed (%v)", err)
 					return .Items_Validation_Failed
 				}
 
