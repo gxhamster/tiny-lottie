@@ -931,7 +931,7 @@ parse_schema_from_string :: proc(
 ) {
 	parsed_json, parsed_json_err := json.parse_string(schema, json.DEFAULT_SPECIFICATION, true)
 	if parsed_json_err != .None {
-		log.debugf("json.parse_string returned error (%v)", parsed_json_err)
+		log.fatalf("json.parse_string returned error (%v)", parsed_json_err)
 		return schema_struct, pool_idx, .Json_Parse_Error
 	}
 
@@ -941,8 +941,8 @@ parse_schema_from_string :: proc(
 		allocator,
 	)
 	if err != (.None) {
-		log.debugf("_parse_from_json_value() returned %v\n", err)
-		panic("Returned an error")
+		log.fatalf("_parse_from_json_value() returned %v\n", err)
+		return schema_struct, pool_idx, err
 	}
 
 	return schema_struct, pool_idx, .None
@@ -1698,13 +1698,14 @@ validate_items :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context
 	if json_value_array, ok := json_value.(json.Array); ok {
 		// How many values in the data array to skip to perform the
 		// items validation
-		rest_start_idx: int
+		rest_start_idx: int = 0
 		if SchemaKeywords.PrefixItems in subschema.validation_flags {
 			for elem, idx in json_value_array {
 				if idx < len(subschema.prefix_items) {
-					prefix_elem_schema := get_schema(ctx, PoolIndex(idx))
+					prefix_elem_schema := get_schema(ctx, PoolIndex(subschema.prefix_items[idx]))
 					err := validate_json_value_with_subschema(elem, prefix_elem_schema, ctx)
 					if err != .None {
+						log.fatalf("prefix item schema failed (%v)", err)
 						return .Prefix_Items_Validation_Failed
 					}
 					rest_start_idx = idx
@@ -1750,6 +1751,7 @@ get_schema_from_ref_path :: proc(
 	// e.g: Given a full path like this
 	// $defs/personal/address -> personal/address
 	search_defs :: proc(
+		root_schema: ^Schema,
 		defs: ^map[string]PoolIndex,
 		path: []string,
 		ctx: ^Context,
@@ -1774,7 +1776,7 @@ get_schema_from_ref_path :: proc(
 			}
 			return cur_schema, .None
 		}
-
+		// log.fatalf("Path (%v) not in $defs (%v)", path, root_schema)
 		return target_schema, .Ref_Path_Not_Found_In_Defs
 	}
 
@@ -1788,7 +1790,12 @@ get_schema_from_ref_path :: proc(
 				return schema, .Ref_Non_Schema
 			} else {
 				// Go down the $defs route
-				target_schema := search_defs(&cur_schema.defs, paths[2:], ctx) or_return
+				target_schema := search_defs(
+					cur_schema,
+					&cur_schema.defs,
+					paths[2:],
+					ctx,
+				) or_return
 				return target_schema, .None
 			}
 		} else {
@@ -1815,7 +1822,7 @@ resolve_refs_to_schemas :: proc(
 		)
 
 		if err != .None {
-			log.debugf("Could not resolve ref (%v) : %v", ref_info.ref, err)
+			log.fatalf("Could not resolve ref (%v) : %v", ref_info.ref, err)
 			return err
 		} else {
 			// note(iyaan): Replace the schema in which $ref field was in
