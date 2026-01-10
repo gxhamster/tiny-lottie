@@ -3,6 +3,7 @@ package schema_validator
 
 import "core:encoding/json"
 import "core:log"
+import "core:math"
 import "core:testing"
 
 

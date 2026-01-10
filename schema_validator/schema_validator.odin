@@ -101,6 +101,30 @@ parse_id :: proc(
 	return .None
 }
 
+@(private)
+parse_comment :: proc(
+	value: json.Value,
+	schema_idx: PoolIndex,
+	schema_context: ^Context,
+	allocator := context.allocator,
+) -> Error {
+	schema := get_schema(schema_context, schema_idx)
+	schema.comment = json_parse_string(value) or_return
+	return .None
+}
+
+@(private)
+parse_description :: proc(
+	value: json.Value,
+	schema_idx: PoolIndex,
+	schema_context: ^Context,
+	allocator := context.allocator,
+) -> Error {
+	schema := get_schema(schema_context, schema_idx)
+	schema.description = json_parse_string(value) or_return
+	return .None
+}
+
 parse_ref :: proc(
 	value: json.Value,
 	schema_idx: PoolIndex,
@@ -194,6 +218,12 @@ parse_schema_from_json_value :: proc(
 					return schema_struct, schema_idx, parse_err
 				}
 			}
+
+            // note(iyaan): Keeping this until all keywords
+            // have been properly implemented
+            if val != nil && parse_proc == nil {
+                log.fatalf("(%v) cannot parse yet", keyword_info.keyword)
+            }
 		}
 
 

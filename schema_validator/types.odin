@@ -114,7 +114,7 @@ keywords_parse_table := [?]KeywordParseInfo {
 	{"$id", .Id, parse_id},
 	{"$schema", .Schema, parse_schema_field},
 	{"$ref", .Ref, parse_ref},
-	{"$comment", .Comment, nil},
+	{"$comment", .Comment, parse_comment},
 	{"$defs", .Defs, parse_defs},
 	{"$anchor", .Anchor, nil},
 	{"$dynamicAnchor", .DynamicAnchor, nil},
@@ -162,7 +162,7 @@ keywords_parse_table := [?]KeywordParseInfo {
 
 	// Metadata
 	{"title", .Title, parse_title},
-	{"description", .Description, nil},
+	{"description", .Description, parse_description},
 	{"default", .Default, nil},
 	{"deprecated", .Deprecated, nil},
 	{"examples", .Examples, nil},
@@ -314,6 +314,8 @@ Schema :: struct {
 	schema:              string,
 	id:                  string,
 	title:               string,
+	comment:             string,
+	description:         string,
 	// note(iyaan): I dont know whether I will be able to implement
 	// fully URI path support for refs
 	ref:                 string,
