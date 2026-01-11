@@ -49,3 +49,9 @@ items_test :: proc(t: ^testing.T) {
 	TEST_FILE :: "tests/items.json"
 	run_test_in_spec_file(t, TEST_FILE)
 }
+
+@(test)
+additional_properties_test :: proc(t: ^testing.T) {
+	TEST_FILE :: "tests/additionalProperties.json"
+	run_test_in_spec_file(t, TEST_FILE)
+}
