@@ -55,7 +55,7 @@ parse_properties :: proc(
 					schema_context,
 				)
 				if err != .None {
-					log.debugf("Parsing properties failed (field=%v) : %v", prop_field, err)
+					log.infof("Parsing properties failed (field=%v) : %v", prop_field, err)
 					panic("Could not parse properties schema")
 				}
 				prop_sub_schema.name = prop_field
@@ -109,7 +109,7 @@ parse_pattern_properties :: proc(
 
 			switch error_type in regex_create_err {
 			case regex_parser.Error:
-				log.debugf("Regex parser error (%v)", regex_create_err.(regex_parser.Error))
+				log.infof("Regex parser error (%v)", regex_create_err.(regex_parser.Error))
 				return .Regex_Parser_Error
 			case regex_compiler.Error:
 				if val, ok := regex_create_err.(regex_compiler.Error); val != .None {
@@ -117,7 +117,7 @@ parse_pattern_properties :: proc(
 				}
 			case regex.Creation_Error:
 				if val, ok := regex_create_err.(regex.Creation_Error); val != .None {
-					log.debugf("Regex creation for pattern failed (%v)", regex_create_err)
+					log.infof("Regex creation for pattern failed (%v)", regex_create_err)
 					return .Regex_Creation_Failed
 				}
 			}
@@ -146,6 +146,20 @@ parse_additional_properties :: proc (
 	schema := get_schema(schema_context, schema_idx)
 	_, idx := parse_schema_from_json_value(value, schema_context, allocator) or_return
 	schema.additional_properties = idx
+	return .None
+}
+
+@(private)
+parse_property_names :: proc (
+	value: json.Value,
+	schema_idx: PoolIndex,
+	schema_context: ^Context,
+	allocator := context.allocator,
+    
+) -> Error {
+	schema := get_schema(schema_context, schema_idx)
+	_, idx := parse_schema_from_json_value(value, schema_context, allocator) or_return
+	schema.property_names = idx
 	return .None
 }
 
@@ -981,7 +995,7 @@ validate_string_with_schema :: proc(
 		parse_integers = true,
 	)
 	if ok != .None {
-		log.debugf("json.parse_string returned error (%v)", ok)
+		log.infof("json.parse_string returned error (%v)", ok)
 		return .Json_Parse_Error
 	}
 
@@ -1112,6 +1126,38 @@ validate_additional_properties :: proc(
 	return .None
 }
 
+@(private)
+// Validation succeeds if the schema validates
+// against every property name in the instance.
+validate_property_names :: proc(
+	json_value: json.Value,
+	subschema: ^Schema,
+	ctx: ^Context,
+) -> Error {
+	if _, ok := json_value.(json.Object); !ok {
+		return .None
+	}
+	json_value_as_obj := json_value.(json.Object)
+    property_name_schema := get_schema(ctx, subschema.property_names)
+	for prop_name in json_value_as_obj {
+        // note(iyaan): Validate the property name
+        // not the contents
+        prop_name_err := validate_json_value_with_subschema(
+            prop_name,
+            property_name_schema,
+            ctx
+        )
+        if prop_name_err != .None {
+            log.infof("propertyNames validation failed (%v)",
+                      prop_name_err
+                     )
+            return prop_name_err
+        }
+    }
+
+    return .None
+}
+
 validate_json_value_with_subschema :: proc(
 	json_value: json.Value,
 	subschema: ^Schema,
@@ -1128,7 +1174,7 @@ validate_json_value_with_subschema :: proc(
 		if validation_proc != nil {
 			validation_err := validation_proc(json_value, subschema, ctx)
 			if validation_err != .None {
-				log.debugf(
+				log.infof(
 					"Validation (%v) failed with error (%v)",
 					validation_keyword,
 					validation_err,

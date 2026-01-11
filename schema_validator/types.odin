@@ -138,7 +138,7 @@ keywords_parse_table := [?]KeywordParseInfo {
 	{"additionalProperties", .AdditionalProperties, parse_additional_properties},
 	{"patternProperties", .PatternProperties, parse_pattern_properties},
 	{"dependentSchemas", .DependentSchemas, nil},
-	{"propertyNames", .PropertyNames, nil},
+	{"propertyNames", .PropertyNames, parse_property_names},
 	{"contains", .Contains, parse_contains},
 	{"items", .Items, parse_items},
 	{"prefixItems", .PrefixItems, parse_prefix_items},
@@ -208,7 +208,7 @@ keywords_validation_table := [?]KeywordValidationInfo {
 	{"additionalProperties", .AdditionalProperties, validate_additional_properties},
 	{"patternProperties", .PatternProperties, validate_pattern_properties},
 	{"dependentSchemas", .DependentSchemas, nil},
-	{"propertyNames", .PropertyNames, nil},
+	{"propertyNames", .PropertyNames, validate_property_names},
 	{"contains", .Contains, validate_contains},
 	// note(iyaan): `items` and `prefixItems` validated
 	// together. Keep `prefixItems` nil
@@ -356,6 +356,7 @@ Schema :: struct {
 	properties_children: [dynamic]PoolIndex,
 	items_children:      [dynamic]PoolIndex,
     additional_properties: PoolIndex, 
+    property_names:        PoolIndex, 
 	allof:               [dynamic]PoolIndex,
 	anyof:               [dynamic]PoolIndex,
 	oneof:               [dynamic]PoolIndex,
