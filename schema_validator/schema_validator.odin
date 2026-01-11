@@ -495,6 +495,54 @@ parse_min_length :: proc(
 	return .None
 }
 
+@(private = "file")
+// Just output project related errors from
+// the union type error of the regex package
+get_regex_err :: proc(regex_err: regex.Error) -> Error {
+    switch error_type in regex_err {
+    case regex_parser.Error:
+        log.infof("regex parser error (%v)", regex_err.(regex_parser.Error))
+        return .Regex_Parser_Error
+    case regex_compiler.Error:
+        if val, ok := regex_err.(regex_compiler.Error); val != .None {
+            log.infof("regex compiler (%v)", regex_err)
+            return .Regex_Compiler_Error
+        }
+    case regex.Creation_Error:
+        if val, ok := regex_err.(regex.Creation_Error); val != .None {
+            log.infof("regex creation for pattern failed (%v)", regex_err)
+            return .Regex_Creation_Failed
+        }
+    }
+    return .None
+}
+
+@(private)
+parse_pattern :: proc(
+	value: json.Value,
+	schema_idx: PoolIndex,
+	schema_context: ^Context,
+	allocator := context.allocator,
+) -> Error {
+	schema := get_schema(schema_context, schema_idx)
+	#partial switch type in value {
+	case json.String:
+        // note(iyaan): Compile the string
+        // pattern to a regex
+        r_regex, regex_create_err := regex.create(
+            value.(json.String),
+            {regex_common.Flag.No_Capture, regex_common.Flag.Unicode},
+            allocator,
+        )
+        get_regex_err(regex_create_err) or_return
+
+        schema.pattern = r_regex
+	case:
+		return .Invalid_String_Type
+	}
+	return .None
+}
+
 @(private)
 parse_max_length :: proc(
 	value: json.Value,
@@ -1407,6 +1455,25 @@ validate_min_length :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Co
 		// A non-string value is valid
 		return .None
 	}
+}
+
+@(private)
+validate_pattern :: proc (json_value: json.Value, subschema: ^Schema, ctx: ^Context) -> Error {
+    if str_value, ok := json_value.(json.String); ok {
+        re := subschema.pattern
+        capture, ok := regex.match_and_allocate_capture(re, str_value)
+        regex.destroy_capture(capture)
+
+        if ok {
+            return .None
+        } else {
+            return .Pattern_Validation_Failed
+        }
+
+    } else {
+        // Does not apply to non-strings
+        return .None
+    }
 }
 
 @(private)

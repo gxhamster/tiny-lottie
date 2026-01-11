@@ -71,6 +71,7 @@ Error :: enum {
 	Min_Contains_Validation_Failed,
 	Items_Validation_Failed,
 	Prefix_Items_Validation_Failed,
+    Pattern_Validation_Failed,
 	Bool_Schema_False,
 
 
@@ -149,7 +150,7 @@ keywords_parse_table := [?]KeywordParseInfo {
 	{"const", .Const, parse_const},
 	{"maxLength", .MaxLength, parse_max_length},
 	{"minLength", .MinLength, parse_min_length},
-	{"pattern", .Pattern, nil},
+	{"pattern", .Pattern, parse_pattern},
 	{"exclusiveMaximum", .ExclusiveMaximum, parse_exclusive_max},
 	{"exclusiveMinimum", .ExclusiveMinimum, parse_exclusive_min},
 	{"maximum", .Maximum, parse_maximum},
@@ -221,7 +222,7 @@ keywords_validation_table := [?]KeywordValidationInfo {
 	{"const", .Const, validate_const},
 	{"maxLength", .MaxLength, validate_max_length},
 	{"minLength", .MinLength, validate_min_length},
-	{"pattern", .Pattern, nil},
+	{"pattern", .Pattern, validate_pattern},
 	{"exclusiveMaximum", .ExclusiveMaximum, validate_exclusive_max},
 	{"exclusiveMinimum", .ExclusiveMinimum, validate_exclusive_min},
 	{"maximum", .Maximum, validate_maximum},
@@ -391,6 +392,7 @@ Schema :: struct {
 	const:               json.Value,
 	min_length:          int,
 	max_length:          int,
+    pattern:             regex.Regular_Expression,
 	exclusive_max:       f64,
 	exclusive_min:       f64,
 	multipleof:          f64,
