@@ -84,6 +84,9 @@ Error :: enum {
 	Ref_Path_Not_Found_In_Defs,
 }
 
+// note(iyaan): Here we are forcing a convention
+// to all the validation and parsing procedures
+
 // Takes a pointer to the schema to set the correct parameter
 // to the parsed value
 @(private)
@@ -93,165 +96,90 @@ ParseProc :: proc(
 	schema_context: ^Context,
 	allocator := context.allocator,
 ) -> Error
+
 // No need to take a pointer since it does not need to set any
 // state in the schema. It just needs to read in the correct
 // field in the schema struct
 @(private)
 ValidationProc :: proc(value: json.Value, schema: ^Schema, ctx: ^Context) -> Error
 
-@(private)
-KeywordValidationInfo :: struct {
-	keyword:         string,
-	type:            SchemaKeywords,
-	validation_proc: ValidationProc,
-}
-
-@(private)
-KeywordParseInfo :: struct {
+KeywordsTblEntry :: struct {
 	keyword:    string,
 	type:       SchemaKeywords,
 	parse_proc: ParseProc,
+	validation_proc: ValidationProc,
 }
 
-// TODO: Implement parsing procedure for each of the keywords -_-
-@(private)
-keywords_parse_table := [?]KeywordParseInfo {
+// TODO: Add validation and parsing procedures to missing keywords
+// here. Leave it nil if it does need or is not implemented yet
+keywords_table := [?]KeywordsTblEntry {
 	// Core vocabulary
-	{"$id", .Id, parse_id},
-	{"$schema", .Schema, parse_schema_field},
-	{"$ref", .Ref, parse_ref},
-	{"$comment", .Comment, parse_comment},
-	{"$defs", .Defs, parse_defs},
-	{"$anchor", .Anchor, nil},
-	{"$dynamicAnchor", .DynamicAnchor, nil},
-	{"$dynamicRef", .DynamicRef, nil},
-	{"$vocabulary", .Vocabulary, nil},
+	{"$id", .Id, parse_id, nil},
+	{"$schema", .Schema, parse_schema_field, nil},
+	{"$ref", .Ref, parse_ref, nil},
+	{"$comment", .Comment, parse_comment, nil},
+	{"$defs", .Defs, parse_defs, nil},
+	{"$anchor", .Anchor, nil, nil},
+	{"$dynamicAnchor", .DynamicAnchor, nil, nil},
+	{"$dynamicRef", .DynamicRef, nil, nil},
+	{"$vocabulary", .Vocabulary, nil, nil},
 
 	// Applicators
-	{"allOf", .AllOf, parse_allof},
-	{"anyOf", .AnyOf, parse_anyof},
-	{"oneOf", .OneOf, parse_oneof},
-	{"if", .If, parse_if},
-	{"then", .Then, parse_then},
-	{"else", .Else, parse_else},
-	{"not", .Not, parse_not},
-	{"properties", .Properties, parse_properties},
-	{"additionalProperties", .AdditionalProperties, parse_additional_properties},
-	{"patternProperties", .PatternProperties, parse_pattern_properties},
-	{"dependentSchemas", .DependentSchemas, nil},
-	{"propertyNames", .PropertyNames, parse_property_names},
-	{"contains", .Contains, parse_contains},
-	{"items", .Items, parse_items},
-	{"prefixItems", .PrefixItems, parse_prefix_items},
-
-	// Validators
-	{"type", .Type, parse_type},
-	{"enum", .Enum, parse_enum},
-	{"const", .Const, parse_const},
-	{"maxLength", .MaxLength, parse_max_length},
-	{"minLength", .MinLength, parse_min_length},
-	{"pattern", .Pattern, parse_pattern},
-	{"exclusiveMaximum", .ExclusiveMaximum, parse_exclusive_max},
-	{"exclusiveMinimum", .ExclusiveMinimum, parse_exclusive_min},
-	{"maximum", .Maximum, parse_maximum},
-	{"minimum", .Minimum, parse_minimum},
-	{"multipleOf", .MultipleOf, parse_multipleof},
-	{"dependentRequired", .DependentRequired, nil},
-	{"maxProperties", .MaxProperties, parse_max_properties},
-	{"minProperties", .MinProperties, parse_min_properties},
-	{"required", .Required, parse_required},
-	{"maxItems", .MaxItems, parse_max_items},
-	{"minItems", .MinItems, parse_min_items},
-	{"maxContains", .MaxContains, parse_max_contains},
-	{"minContains", .MinContains, parse_min_contains},
-	{"uniqueItems", .UniqueItems, nil},
-
-	// Metadata
-	{"title", .Title, parse_title},
-	{"description", .Description, parse_description},
-	{"default", .Default, nil},
-	{"deprecated", .Deprecated, nil},
-	{"examples", .Examples, nil},
-	{"readOnly", .ReadOnly, nil},
-	{"writeOnly", .WriteOnly, nil},
-
-	// Unevaluated
-	{"unevaluatedItems", .UnevaluatedItems, nil},
-	{"unevaluatedProperties", .UnevaluatedProperties, nil},
-}
-
-// TODO: Implement validation procedure for each of the keywords -_-
-@(private)
-keywords_validation_table := [?]KeywordValidationInfo {
-	// Core vocabulary //
-	// These do not have any validation
-	// to do. Just here to preserve the order of the enums
-	{"$id", .Id, nil},
-	{"$schema", .Schema, nil},
-	{"$ref", .Ref, nil},
-	{"$comment", .Comment, nil},
-	{"$defs", .Defs, nil},
-	{"$anchor", .Anchor, nil},
-	{"$dynamicAnchor", .DynamicAnchor, nil},
-	{"$dynamicRef", .DynamicRef, nil},
-	{"$vocabulary", .Vocabulary, nil},
-
-	// Applicators //
-	{"allOf", .AllOf, validate_allof},
-	{"anyOf", .AnyOf, validate_anyof},
-	{"oneOf", .OneOf, validate_oneof},
-	{"if", .If, validate_if_then_else},
-	// note(iyaan): Leave `then` and `else` empty
-	{"then", .Then, nil},
-	{"else", .Else, nil},
-	{"not", .Not, validate_not},
-	{"properties", .Properties, validate_properties},
-	{"additionalProperties", .AdditionalProperties, validate_additional_properties},
-	{"patternProperties", .PatternProperties, validate_pattern_properties},
-	{"dependentSchemas", .DependentSchemas, nil},
-	{"propertyNames", .PropertyNames, validate_property_names},
-	{"contains", .Contains, validate_contains},
+	{"allOf", .AllOf, parse_allof, validate_allof},
+	{"anyOf", .AnyOf, parse_anyof, validate_anyof},
+	{"oneOf", .OneOf, parse_oneof, validate_oneof},
+	{"if", .If, parse_if, validate_if_then_else},
+    // note(iyaan): Then and Else validated together
+    // with If
+	{"then", .Then, parse_then, nil},
+	{"else", .Else, parse_else, nil},
+	{"not", .Not, parse_not, validate_not},
+	{"properties", .Properties, parse_properties, validate_properties},
+	{"additionalProperties", .AdditionalProperties, parse_additional_properties, validate_additional_properties},
+	{"patternProperties", .PatternProperties, parse_pattern_properties, validate_pattern_properties},
+	{"dependentSchemas", .DependentSchemas, nil, nil},
+	{"propertyNames", .PropertyNames, parse_property_names, validate_property_names},
+	{"contains", .Contains, parse_contains, validate_contains},
 	// note(iyaan): `items` and `prefixItems` validated
 	// together. Keep `prefixItems` nil
-	{"items", .Items, validate_items},
-	{"prefixItems", .PrefixItems, nil},
+	{"items", .Items, parse_items, validate_items},
+	{"prefixItems", .PrefixItems, parse_prefix_items, nil},
 
-	// Validators //
-	{"type", .Type, validate_type},
-	{"enum", .Enum, validate_enum},
-	{"const", .Const, validate_const},
-	{"maxLength", .MaxLength, validate_max_length},
-	{"minLength", .MinLength, validate_min_length},
-	{"pattern", .Pattern, validate_pattern},
-	{"exclusiveMaximum", .ExclusiveMaximum, validate_exclusive_max},
-	{"exclusiveMinimum", .ExclusiveMinimum, validate_exclusive_min},
-	{"maximum", .Maximum, validate_maximum},
-	{"minimum", .Minimum, validate_minimum},
-	{"multipleOf", .MultipleOf, validate_multipleof},
-	{"dependentRequired", .DependentRequired, nil},
-	{"maxProperties", .MaxProperties, validate_max_properties},
-	{"minProperties", .MinProperties, validate_min_properties},
-	{"required", .Required, validate_required},
-	{"maxItems", .MaxItems, validate_max_items},
-	{"minItems", .MinItems, validate_min_items},
-	// note(iyaan): Validated inside `contains` so leave
-	// `maxContains` and `minContains` empty
-	{"maxContains", .MaxContains, nil},
-	{"minContains", .MinContains, nil},
-	{"uniqueItems", .UniqueItems, nil},
+	// Validators
+	{"type", .Type, parse_type, validate_type},
+	{"enum", .Enum, parse_enum, validate_enum},
+	{"const", .Const, parse_const, validate_const},
+	{"maxLength", .MaxLength, parse_max_length, validate_max_length},
+	{"minLength", .MinLength, parse_min_length, validate_min_length},
+	{"pattern", .Pattern, parse_pattern, validate_pattern},
+	{"exclusiveMaximum", .ExclusiveMaximum, parse_exclusive_max, validate_exclusive_max},
+	{"exclusiveMinimum", .ExclusiveMinimum, parse_exclusive_min, validate_exclusive_min},
+	{"maximum", .Maximum, parse_maximum, validate_maximum},
+	{"minimum", .Minimum, parse_minimum, validate_minimum},
+	{"multipleOf", .MultipleOf, parse_multipleof, validate_multipleof},
+	{"dependentRequired", .DependentRequired, nil, nil},
+	{"maxProperties", .MaxProperties, parse_max_properties, validate_max_properties},
+	{"minProperties", .MinProperties, parse_min_properties, validate_min_properties},
+	{"required", .Required, parse_required, validate_required},
+	{"maxItems", .MaxItems, parse_max_items, validate_max_items},
+	{"minItems", .MinItems, parse_min_items, validate_min_items},
+	// note(iyaan): MaxContains and MinContains handled in Contains
+	{"maxContains", .MaxContains, parse_max_contains, nil},
+	{"minContains", .MinContains, parse_min_contains, nil},
+	{"uniqueItems", .UniqueItems, nil, nil},
 
-	// Metadata //
-	{"title", .Title, nil},
-	{"description", .Description, nil},
-	{"default", .Default, nil},
-	{"deprecated", .Deprecated, nil},
-	{"examples", .Examples, nil},
-	{"readOnly", .ReadOnly, nil},
-	{"writeOnly", .WriteOnly, nil},
+	// Metadata
+	{"title", .Title, parse_title, nil},
+	{"description", .Description, parse_description, nil},
+	{"default", .Default, nil, nil},
+	{"deprecated", .Deprecated, nil, nil},
+	{"examples", .Examples, nil, nil},
+	{"readOnly", .ReadOnly, nil, nil},
+	{"writeOnly", .WriteOnly, nil, nil},
 
-	// Unevaluated //
-	{"unevaluatedItems", .UnevaluatedItems, nil},
-	{"unevaluatedProperties", .UnevaluatedProperties, nil},
+	// Unevaluated
+	{"unevaluatedItems", .UnevaluatedItems, nil, nil},
+	{"unevaluatedProperties", .UnevaluatedProperties, nil, nil},
 }
 
 // note(iyaan): Values of this enum will be used to

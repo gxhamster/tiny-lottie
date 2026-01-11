@@ -237,7 +237,6 @@ parse_ref :: proc(
 		ref           = schema.ref,
 		source_schema = schema_idx,
 	}
-	log.debug("Appending ref info:", ref_info)
 	append(&schema_context.refs_to_resolve, ref_info)
 
 	return .None
@@ -301,7 +300,7 @@ parse_schema_from_json_value :: proc(
 		// flags for the validation stage. Will parse both
 		// the applicators and the valiators keywords
 		any_keywords_existed := false
-		for keyword_info, idx in keywords_parse_table {
+		for keyword_info, idx in keywords_table {
 			val := parsed_json[keyword_info.keyword]
 			parse_proc := keyword_info.parse_proc
 			if val != nil && parse_proc != nil {
@@ -335,7 +334,7 @@ parse_schema_from_json_value :: proc(
 		// any of the other keywords. This needs to be recursive.
 		for key in parsed_json {
 			is_key_vocabulary := false
-			for info in keywords_parse_table {
+			for info in keywords_table {
 				if strings.compare(info.keyword, key) == 0 {
 					is_key_vocabulary = true
 				}
@@ -1217,7 +1216,7 @@ validate_json_value_with_subschema :: proc(
 
 	for validation_keyword in subschema.validation_flags {
 		log.debugf("Performing validation (%v) on (%v)", validation_keyword, json_value)
-		validation_keyword_info := keywords_validation_table[validation_keyword]
+		validation_keyword_info := keywords_table[validation_keyword]
 		validation_proc := validation_keyword_info.validation_proc
 		if validation_proc != nil {
 			validation_err := validation_proc(json_value, subschema, ctx)
