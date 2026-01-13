@@ -151,7 +151,7 @@ keywords_table := [?]KeywordsTblEntry {
         parse_pattern_properties,
         validate_pattern_properties,
     },
-    {"dependentSchemas", .DependentSchemas, nil, nil},
+    {"dependentSchemas", .DependentSchemas, parse_dependent_schemas, nil},
     {
         "propertyNames",
         .PropertyNames,
@@ -321,7 +321,11 @@ Schema :: struct {
 
 
     // Applicator keywords
+    // TODO: Change all these dynamic arrays into slices
+    // None of these elements will change after the initial
+    // parse
     properties_children:   [dynamic]PoolIndex,
+    dependent_schemas:     []PoolIndex,
     items_children:        [dynamic]PoolIndex,
     additional_properties: PoolIndex,
     property_names:        PoolIndex,

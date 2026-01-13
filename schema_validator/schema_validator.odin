@@ -70,6 +70,45 @@ parse_properties :: proc(
 }
 
 @(private)
+parse_dependent_schemas :: proc(
+    value: json.Value,
+    schema_idx: PoolIndex,
+    schema_context: ^Context,
+    allocator := context.allocator,
+) -> Error {
+
+    if properties_as_object, ok := value.(json.Object); ok {
+        schema := get_schema(schema_context, schema_idx)
+        no_of_properties := len(properties_as_object)
+        // note(iyaan): Hmm. Is a map better? A slice is so much easier to reason
+        // with and handle.
+        schema.dependent_schemas = make_slice([]PoolIndex, no_of_properties, allocator)
+
+        if no_of_properties > 0 {
+            schema.type = .Object
+            _idx := 0
+            for prop_field in properties_as_object {
+                prop_sub_schema, schema_idx, err := parse_schema_from_json_value(
+                    properties_as_object[prop_field],
+                    schema_context,
+                )
+                if err != .None {
+                    log.infof("parsing a dependent schema failed (field=%v) : %v", prop_field, err)
+                    return err
+                }
+                prop_sub_schema.name = prop_field
+                schema.dependent_schemas[_idx] = schema_idx
+                _idx += 1
+            }
+        }
+    } else {
+        return .Invalid_Object_Type
+    }
+
+    return .None
+}
+
+@(private)
 parse_pattern_properties :: proc(
     value: json.Value,
     schema_idx: PoolIndex,
@@ -107,6 +146,7 @@ parse_pattern_properties :: proc(
                 allocator,
             )
 
+            // TODO: use the get_regex_err function here to extract the error
             switch error_type in regex_create_err {
             case regex_parser.Error:
                 log.infof("Regex parser error (%v)", regex_create_err.(regex_parser.Error))
@@ -1068,6 +1108,33 @@ validate_properties :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Co
             prop_valid_err := validate_json_value_with_subschema(val, prop_schema, ctx)
             if prop_valid_err != .None {
                 return prop_valid_err
+            }
+        }
+    }
+    return .None
+}
+
+@(private)
+// This keyword specifies subschemas that are evaluated if
+// the instance is an object and contains a certain property.
+validate_dependent_schemas :: proc(json_value: json.Value, subschema: ^Schema, ctx: ^Context) -> Error {
+    if _, ok := json_value.(json.Object); !ok {
+        return .None
+    }
+    json_value_as_obj := json_value.(json.Object)
+    // note(iyaan): Looks for the keys in the dependentSchemas, if
+    // found then the schema for that property in the schema is applied to
+    // the current schema that is being validated. The schema is not applied
+    // to the property of that current schema.
+    for prop_idx in subschema.dependent_schemas {
+        prop_schema := get_schema(ctx, prop_idx)
+        assert(prop_schema.name != "", "Name not defined for dependentSchema property")
+        dependent_prop_exists := prop_schema.name in json_value_as_obj
+        if dependent_prop_exists {
+            dependent_schema_err := validate_json_value_with_subschema(json_value_as_obj, prop_schema, ctx)
+            if dependent_schema_err != .None {
+                log.infof("dependentSchemas validation failed (%v)", dependent_schema_err)
+                return dependent_schema_err
             }
         }
     }
