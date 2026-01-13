@@ -151,7 +151,7 @@ keywords_table := [?]KeywordsTblEntry {
         parse_pattern_properties,
         validate_pattern_properties,
     },
-    {"dependentSchemas", .DependentSchemas, parse_dependent_schemas, nil},
+    {"dependentSchemas", .DependentSchemas, parse_dependent_schemas, validate_dependent_schemas},
     {
         "propertyNames",
         .PropertyNames,
