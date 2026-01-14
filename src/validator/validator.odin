@@ -1,4 +1,4 @@
-package schema_validator
+package validator
 
 import "base:runtime"
 import "core:encoding/json"

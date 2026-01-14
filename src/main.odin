@@ -7,9 +7,6 @@ import "core:log"
 import "core:mem"
 import vmem "core:mem/virtual"
 import "core:os"
-import "core:reflect"
-
-import sv "schema_validator"
 
 
 JsonLottie_Error :: enum {

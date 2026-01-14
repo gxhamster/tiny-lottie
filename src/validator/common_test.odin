@@ -1,4 +1,4 @@
-package schema_validator
+package validator
 
 import "core:encoding/json"
 import "core:fmt"
