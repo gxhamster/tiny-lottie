@@ -15,7 +15,7 @@ json_lottie_unmarshal_test :: proc(t: ^testing.T) {
     sid: string,
     a:   bool,
     k:   []f64,
-    j:   JsonLottie_Prop_Keyframe_Easing_Scalar,
+    j:   PropKeyframeEasingScalar,
     v:   Vec3,
   }
 
@@ -35,21 +35,21 @@ json_lottie_unmarshal_test :: proc(t: ^testing.T) {
     k = {1.1, 1.2, 1.3},
   }
 
-  json_lottie_unmarshal_value(m["sid"], t1.sid)
+  unmarshal_value(m["sid"], t1.sid)
   testing.expect(t, t1.sid == "1234", "Unmarshal value correctly")
 
 
-  json_lottie_unmarshal_object(m, t1)
+  unmarshal_object(m, t1)
   testing.expect_value(t, t1.sid, "1234")
   testing.expect_value(t, t1.a, true)
   for elem, idx in a {
     testing.expect_value(t, t1.k[idx], elem.(json.Float))
   }
-  testing.expect_value(t, t1.j, JsonLottie_Prop_Keyframe_Easing_Scalar{1, 2})
+  testing.expect_value(t, t1.j, PropKeyframeEasingScalar{1, 2})
   testing.expect_value(t, t1.v, Vec3{5, 5, 6})
 
   test_struct2 :: struct {
-    j: []JsonLottie_Prop_Keyframe_Easing_Scalar,
+    j: []PropKeyframeEasingScalar,
   }
   t2 := test_struct2{}
 
@@ -59,17 +59,17 @@ json_lottie_unmarshal_test :: proc(t: ^testing.T) {
       json.Object{"x" = 3, "y" = 4},
     },
   }
-  json_lottie_unmarshal_object(m1, t2)
+  unmarshal_object(m1, t2)
   testing.expect(t, len(t2.j) == 2, "Length should be 2")
   testing.expect_value(
     t,
     t2.j[0],
-    JsonLottie_Prop_Keyframe_Easing_Scalar{1, 2},
+    PropKeyframeEasingScalar{1, 2},
   )
   testing.expect_value(
     t,
     t2.j[1],
-    JsonLottie_Prop_Keyframe_Easing_Scalar{3, 4},
+    PropKeyframeEasingScalar{3, 4},
   )
 }
 
@@ -91,7 +91,7 @@ json_lottie_gradient_test :: proc(t: ^testing.T) {
   }
   defer free_all()
   p: Gradient
-  json_lottie_unmarshal_array(json_arr, p)
+  unmarshal_array(json_arr, p)
 
   testing.expect(t, len(json_arr) == len(p), "Both lengths should be same")
 
@@ -127,7 +127,7 @@ json_lottie_bezier_shape_test :: proc(t: ^testing.T) {
   }
   defer free_all()
   p := BezierShapeValue{}
-  if err := json_lottie_unmarshal_object(json_obj, p); err != .None {
+  if err := unmarshal_object(json_obj, p); err != .None {
     err_str := fmt.tprintf("Unmarshal returned an error: %v", err)
     testing.expect(t, err == .None, err_str)
   }

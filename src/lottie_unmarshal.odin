@@ -9,31 +9,31 @@ import "core:reflect"
 // to take json values and convert them or unmarshal
 // them into lottie structs as best as possible
 
-json_lottie_unmarshal_value :: proc(
+unmarshal_value :: proc(
   val: json.Value,
   p: any,
   allocator := context.allocator,
 ) -> (
-  err: JsonLottie_Error,
+  err: JL_Error,
 ) {
   type_info := reflect.type_info_base(type_info_of(p.id))
   ptr := p.data
 
   #partial switch t in type_info.variant {
   case runtime.Type_Info_String:
-    val := json_lottie_parse_string(val) or_return
+    val := parse_string(val) or_return
     field_val_ptr := transmute(^string)ptr
     field_val_ptr^ = val
   case runtime.Type_Info_Boolean:
-    val := json_lottie_parse_bool(val) or_return
+    val := parse_bool(val) or_return
     field_val_ptr := transmute(^bool)ptr
     field_val_ptr^ = val
   case runtime.Type_Info_Float:
-    val := json_lottie_parse_number(val) or_return
+    val := parse_number(val) or_return
     field_val_ptr := transmute(^f64)ptr
     field_val_ptr^ = val
   case runtime.Type_Info_Integer:
-    val := json_lottie_parse_integer(val) or_return
+    val := parse_integer(val) or_return
     field_val_ptr := transmute(^i64)ptr
     field_val_ptr^ = val
   case:
@@ -42,12 +42,12 @@ json_lottie_unmarshal_value :: proc(
   return .None
 }
 
-json_lottie_unmarshal_array :: proc(
+unmarshal_array :: proc(
   val: json.Value,
   p: any,
   allocator := context.allocator,
 ) -> (
-  err: JsonLottie_Error,
+  err: JL_Error,
 ) {
   type_info := reflect.type_info_base(type_info_of(p.id))
   ptr := p.data
@@ -91,14 +91,14 @@ json_lottie_unmarshal_array :: proc(
 
         #partial switch base_t in elem_type_base.variant {
         case runtime.Type_Info_Struct, runtime.Type_Info_Union:
-          json_lottie_unmarshal_object(elem, elem_any) or_return
+          unmarshal_object(elem, elem_any) or_return
         case runtime.Type_Info_Integer,
              runtime.Type_Info_Float,
              runtime.Type_Info_Boolean,
              runtime.Type_Info_String:
-          json_lottie_unmarshal_value(elem, elem_any) or_return
+          unmarshal_value(elem, elem_any) or_return
         case runtime.Type_Info_Slice, runtime.Type_Info_Array:
-          json_lottie_unmarshal_array(elem, elem_any) or_return
+          unmarshal_array(elem, elem_any) or_return
         case:
           if err := delete(data); err != .None {
             return .Unmarshal_Deallocation_Error
@@ -117,7 +117,7 @@ json_lottie_unmarshal_array :: proc(
             uintptr(p.data) + uintptr(idx) * uintptr(internal_elem_size),
           )
           elem_any := any{elem_ptr, internal_elem_type_info.id}
-          json_lottie_unmarshal_value(elem, elem_any) or_return
+          unmarshal_value(elem, elem_any) or_return
         }
       } else {
         return .Too_Large_Vector
@@ -133,12 +133,12 @@ json_lottie_unmarshal_array :: proc(
   return .None
 }
 
-json_lottie_unmarshal_object :: proc(
+unmarshal_object :: proc(
   val: json.Value,
   p: any,
   allocator := context.allocator,
 ) -> (
-  err: JsonLottie_Error,
+  err: JL_Error,
 ) {
   type_info := reflect.type_info_base(type_info_of(p.id))
   ptr := p.data
@@ -159,7 +159,7 @@ json_lottie_unmarshal_object :: proc(
              runtime.Type_Info_String,
              runtime.Type_Info_Boolean:
           field_value_any := any{field_ptr, field.type.id}
-          json_lottie_unmarshal_value(
+          unmarshal_value(
             json_obj[field.name],
             field_value_any,
           ) or_return
@@ -167,13 +167,13 @@ json_lottie_unmarshal_object :: proc(
              runtime.Type_Info_Slice,
              runtime.Type_Info_Dynamic_Array:
           field_value_any := any{field_ptr, field.type.id}
-          json_lottie_unmarshal_array(
+          unmarshal_array(
             json_obj[field.name],
             field_value_any,
           ) or_return
         case runtime.Type_Info_Struct:
           field_value_any := any{field_ptr, field.type.id}
-          json_lottie_unmarshal_object(
+          unmarshal_object(
             json_obj[field.name],
             field_value_any,
           ) or_return
@@ -181,40 +181,40 @@ json_lottie_unmarshal_object :: proc(
           // TODO(iyaan): Handle some obvious unions (eg: JsonLottie_Prop_Position)
           // Finding a generic way to handle all cases of unions would be too much
           switch field.type.id {
-          case JsonLottie_Prop_Position:
-            pos_val := json_lottie_parse_position(
+          case PropPosition:
+            pos_val := parse_position(
               json_obj[field.name],
             ) or_return
             field_ptr_offset := uintptr(ptr) + field.offset
-            field_val_ptr := transmute(^JsonLottie_Prop_Position)field_ptr_offset
+            field_val_ptr := transmute(^PropPosition)field_ptr_offset
             field_val_ptr^ = pos_val
-          case JsonLottie_Prop_Scalar:
-            scalar_val := json_lottie_parse_prop_scalar(
+          case PropScalar:
+            scalar_val := parse_prop_scalar(
               json_obj[field.name],
             ) or_return
             field_ptr_offset := uintptr(ptr) + field.offset
-            field_val_ptr := transmute(^JsonLottie_Prop_Scalar)field_ptr_offset
+            field_val_ptr := transmute(^PropScalar)field_ptr_offset
             field_val_ptr^ = scalar_val
-          case JsonLottie_Prop_Vector:
-            vector_val := json_lottie_parse_prop_vector(
+          case PropVector:
+            vector_val := parse_prop_vector(
               json_obj[field.name],
             ) or_return
             field_ptr_offset := uintptr(ptr) + field.offset
-            field_val_ptr := transmute(^JsonLottie_Prop_Vector)field_ptr_offset
+            field_val_ptr := transmute(^PropVector)field_ptr_offset
             field_val_ptr^ = vector_val
-          case JsonLottie_Prop_Bezier:
-            bezier_val := json_lottie_parse_prop_bezier(
+          case PropBezier:
+            bezier_val := parse_prop_bezier(
               json_obj[field.name],
             ) or_return
             field_ptr_offset := uintptr(ptr) + field.offset
-            field_val_ptr := transmute(^JsonLottie_Prop_Bezier)field_ptr_offset
+            field_val_ptr := transmute(^PropBezier)field_ptr_offset
             field_val_ptr^ = bezier_val
-          case JsonLottie_Prop_Color:
-            color_val := json_lottie_parse_prop_color(
+          case PropColor:
+            color_val := parse_prop_color(
               json_obj[field.name],
             ) or_return
             field_ptr_offset := uintptr(ptr) + field.offset
-            field_val_ptr := transmute(^JsonLottie_Prop_Color)field_ptr_offset
+            field_val_ptr := transmute(^PropColor)field_ptr_offset
             field_val_ptr^ = color_val
           case:
             return .Unmarshal_Unknown_Union_Field_Type
