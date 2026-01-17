@@ -28,6 +28,10 @@ Error :: enum {
 
   // JSON Errors
   Json_Parse_Error,
+  Json_Tokenization_Error,
+  Json_Allocation_Error,
+  Json_Eof,
+  Json_Unknown_Error,
 
   // Parsing Errors
   Invalid_Instance_Type,

@@ -1118,6 +1118,26 @@ parse_prefix_items :: proc(
   }
 }
 
+@(private)
+json_error_to_error :: proc(json_err: json.Error) -> Error {
+  #partial switch json_err {
+  case .Out_Of_Memory, .Invalid_Allocator:
+    return .Json_Allocation_Error
+  case .Unexpected_Token,
+  .Expected_String_For_Object_Key,
+  .Duplicate_Object_Key,
+  .Expected_Colon_After_Key:
+    return .Json_Parse_Error
+  case .Illegal_Character,
+  .Invalid_Number,
+  .String_Not_Terminated,
+  .Invalid_String:
+    return .Json_Tokenization_Error
+  case:
+    return .Json_Unknown_Error
+  }
+}
+
 parse_schema_from_string :: proc(
   schema: string,
   schema_context: ^Context,
@@ -1133,9 +1153,10 @@ parse_schema_from_string :: proc(
     true,
     allocator,
   )
-  if parsed_json_err != .None {
+  if parsed_json_err != .None && parsed_json_err != .EOF {
     log.infof("json.parse_string returned error (%v)", parsed_json_err)
-    return schema_struct, pool_idx, .Json_Parse_Error
+    err = json_error_to_error(parsed_json_err)
+    return
   }
 
   schema_struct, pool_idx, err = parse_schema_from_json_value(
@@ -1164,10 +1185,11 @@ validate_string_with_schema :: proc(
     data,
     spec = json.Specification.JSON5,
     parse_integers = true,
+    allocator = allocator,
   )
   if ok != .None {
     log.infof("json.parse_string returned error (%v)", ok)
-    return .Json_Parse_Error
+    return json_error_to_error(ok)
   }
 
   validate_json_value_with_subschema(parsed_json, schema, ctx) or_return
