@@ -381,7 +381,7 @@ parse_prop_scalar :: proc(
       }
     }
   case:
-    return not_required_or_error(
+    return req_or_err(
       required,
       scalar,
       .Incompatible_Prop_Scalar_Type,
@@ -442,7 +442,7 @@ parse_prop_vector :: proc(
     }
 
   case:
-    return not_required_or_error(
+    return req_or_err(
       required,
       vector_prop,
       .Incompatible_Object_Type,
@@ -461,7 +461,7 @@ parse_color_keyframe :: proc(
 ) {
 
   if err := unmarshal_object(value, color_keyframe); err != .None {
-    return not_required_or_error(required, color_keyframe, err)
+    return req_or_err(required, color_keyframe, err)
   } else {
     return color_keyframe, .None
   }
@@ -513,21 +513,21 @@ parse_prop_color :: proc(
         anim_color_prop.k = keyframes[:]
         return anim_color_prop, .None
       case:
-        return not_required_or_error(
+        return req_or_err(
           required,
           color_prop,
           .Incompatible_Array_Type,
         )
       }
     } else {
-      return not_required_or_error(
+      return req_or_err(
         required,
         color_prop,
         .Incompatible_Boolean_Type,
       )
     }
   case:
-    return not_required_or_error(
+    return req_or_err(
       required,
       color_prop,
       .Incompatible_Object_Type,
@@ -547,7 +547,7 @@ parse_bezier_keyframe :: proc(
 
   if err := unmarshal_object(value, bezier_keyframe);
      err != .None {
-    return not_required_or_error(required, bezier_keyframe, err)
+    return req_or_err(required, bezier_keyframe, err)
   } else {
     return bezier_keyframe, .None
   }
@@ -596,21 +596,21 @@ parse_prop_bezier :: proc(
         anim_vector.k = keyframes[:]
         return anim_vector, .None
       case:
-        return not_required_or_error(
+        return req_or_err(
           required,
           bezier_prop,
           .Incompatible_Array_Type,
         )
       }
     } else {
-      return not_required_or_error(
+      return req_or_err(
         required,
         bezier_prop,
         .Incompatible_Boolean_Type,
       )
     }
   case:
-    return not_required_or_error(
+    return req_or_err(
       required,
       bezier_prop,
       .Incompatible_Object_Type,
@@ -633,7 +633,7 @@ parse_value_vector :: proc(
     vec: Vec3
     value_as_arr := value.(json.Array)
     if len(value_as_arr) > len(vec) {
-      return not_required_or_error(required, Vec3{}, .Too_Large_Vector)
+      return req_or_err(required, Vec3{}, .Too_Large_Vector)
     }
 
     for idx in 0 ..< len(value_as_arr) {
@@ -643,7 +643,7 @@ parse_value_vector :: proc(
 
     return vec, .None
   case:
-    return not_required_or_error(required, Vec3{}, .Incompatible_Vector_Type)
+    return req_or_err(required, Vec3{}, .Incompatible_Vector_Type)
   }
 
 }
@@ -661,7 +661,7 @@ parse_string :: proc(
   case json.String:
     return value.(json.String), .None
   case:
-    return not_required_or_error(required, "", .Incompatible_String_Type)
+    return req_or_err(required, "", .Incompatible_String_Type)
   }
 }
 
@@ -681,7 +681,7 @@ try_float :: proc(
   case json.Integer:
     return f64(value.(json.Integer)), .None
   case:
-    return not_required_or_error(required, f64(0), .Incompatible_Number_Type)
+    return req_or_err(required, f64(0), .Incompatible_Number_Type)
   }
 }
 
@@ -702,14 +702,14 @@ parse_integer :: proc(
   case json.Integer:
     return i64(value.(json.Integer)), .None
   case:
-    return not_required_or_error(required, i64(0), .Incompatible_Integer_Type)
+    return req_or_err(required, i64(0), .Incompatible_Integer_Type)
   }
 }
 
 // Some conveninent syntax to allow to use or_return
 // The calling function will not return the error value
 // if the callee function is called as non-required
-not_required_or_error :: #force_inline proc(
+req_or_err :: #force_inline proc(
   required: bool,
   ret_value: $T,
   error_type: JL_Error,
@@ -755,7 +755,7 @@ parse_bool :: proc(
     }
 
   case:
-    return not_required_or_error(required, false, .Incompatible_Boolean_Type)
+    return req_or_err(required, false, .Incompatible_Boolean_Type)
   }
 }
 
@@ -785,7 +785,7 @@ parse_keyframe_easing_vec :: proc(
     return easing_vec, .None
 
   case:
-    return not_required_or_error(
+    return req_or_err(
       required,
       easing_vec,
       .Incompatible_Object_Type,
@@ -880,7 +880,7 @@ parse_split_position :: proc(
       return pos, .None
     }
   case:
-    return not_required_or_error(required, pos, .Incompatible_Position_Type)
+    return req_or_err(required, pos, .Incompatible_Position_Type)
   }
 }
 
@@ -910,7 +910,7 @@ parse_scalar_keyframe :: proc(
     return scalar_keyframe, .None
 
   case:
-    return not_required_or_error(
+    return req_or_err(
       required,
       scalar_keyframe,
       .Incompatible_Object_Type,
@@ -945,7 +945,7 @@ parse_vector_keyframe :: proc(
     return vec_keyframe, .None
 
   case:
-    return not_required_or_error(
+    return req_or_err(
       required,
       vec_keyframe,
       .Incompatible_Object_Type,
@@ -981,7 +981,7 @@ parse_position_keyframe :: proc(
     return pos_keyframe, .None
 
   case:
-    return not_required_or_error(
+    return req_or_err(
       required,
       pos_keyframe,
       .Incompatible_Object_Type,
@@ -1155,6 +1155,7 @@ main :: proc() {
     context.allocator = tracking_allocator
 
     logger := log.create_console_logger(allocator = tracking_allocator)
+    log.
     context.logger = logger
 
     defer {
