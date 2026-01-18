@@ -61,16 +61,8 @@ json_lottie_unmarshal_test :: proc(t: ^testing.T) {
   }
   unmarshal_object(m1, t2)
   testing.expect(t, len(t2.j) == 2, "Length should be 2")
-  testing.expect_value(
-    t,
-    t2.j[0],
-    PropKeyframeEasingScalar{1, 2},
-  )
-  testing.expect_value(
-    t,
-    t2.j[1],
-    PropKeyframeEasingScalar{3, 4},
-  )
+  testing.expect_value(t, t2.j[0], PropKeyframeEasingScalar{1, 2})
+  testing.expect_value(t, t2.j[1], PropKeyframeEasingScalar{3, 4})
 }
 
 @(test)
@@ -141,4 +133,35 @@ json_lottie_bezier_shape_test :: proc(t: ^testing.T) {
   }
 
   log.destroy_console_logger(logger)
+}
+
+@(test)
+lottie_enum_unmarshal_test :: proc(t: ^testing.T) {
+  m := json.Object {
+    "sid" = "2",
+    "id"  = 2,
+    "id1" = 5,
+  }
+
+  defer free_all()
+
+  mm: MatteMode
+
+  testing.expect(
+    t,
+    unmarshal_value(m["sid"], mm) == JL_Error.Incompatible_Integer_Type,
+    "Cannot convert non-integer value to enum",
+  )
+  testing.expect(
+    t,
+    unmarshal_value(m["id"], mm) == JL_Error.None,
+    "Corrrect value for MatteMode enum",
+  )
+  testing.expect(
+    t,
+    unmarshal_value(m["id1"], mm) ==
+    JL_Error.Unmarshal_Out_Of_Bound_Enum_Value,
+    "An integer value that is not an enumeration for MatteMode",
+  )
+
 }

@@ -30,10 +30,12 @@ JL_Error :: enum {
   Too_Small_Vector,
   Unmarshal_Unknown_Value_Type,
   Unmarshal_Unknown_Array_Type,
+  Unmarshal_Unsupported_Array_Type,
   Unmarshal_Unknown_Object_Type,
   Unmarshal_Unknown_Array_Inner_Type,
   Unmarshal_Unknown_Struct_Field_Type,
   Unmarshal_Unknown_Union_Field_Type,
+  Unmarshal_Out_Of_Bound_Enum_Value,
   Unmarshal_Allocation_Error,
   Unmarshal_Deallocation_Error,
 }
@@ -76,6 +78,17 @@ BezierShapeValue :: struct {
   o: []Vec3,
   v: []Vec3,
 }
+
+
+// Enumerations
+MatteMode :: enum {
+  Normal,
+  Alpha,
+  InvertedAlpha,
+  Luma,
+  InvertedLuma,
+}
+
 
 // Properties
 PropKeyframeEasingVec :: struct {
@@ -326,11 +339,6 @@ parse_layers :: proc(
   p := (layer_json_array[0].(json.Object)["ks"])
 
   transform, err := parse_transform(p)
-  // if err != .None {
-  //      fmt.println(err)
-  // } else {
-  //      fmt.println(transform)
-  // }
   return .None
 }
 
@@ -1155,7 +1163,6 @@ main :: proc() {
     context.allocator = tracking_allocator
 
     logger := log.create_console_logger(allocator = tracking_allocator)
-    log.
     context.logger = logger
 
     defer {
@@ -1197,7 +1204,7 @@ main :: proc() {
 
 
   lottie_struct, err := read_file_name(
-    "./data/Fire.json",
+    "../data/Fire.json",
     context.allocator,
   )
   if err != nil && err != JL_Error.None {

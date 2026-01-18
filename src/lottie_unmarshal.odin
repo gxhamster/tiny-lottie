@@ -2,6 +2,7 @@ package main
 
 import "base:runtime"
 import "core:encoding/json"
+import "core:log"
 import "core:mem"
 import "core:reflect"
 
@@ -9,6 +10,10 @@ import "core:reflect"
 // to take json values and convert them or unmarshal
 // them into lottie structs as best as possible
 
+
+// Takes a json value and try to convert it into
+// a primitive type given in p. Can support converting
+// arbitary values into enum values if possible
 unmarshal_value :: proc(
   val: json.Value,
   p: any,
@@ -36,6 +41,24 @@ unmarshal_value :: proc(
     val := parse_integer(val) or_return
     field_val_ptr := transmute(^i64)ptr
     field_val_ptr^ = val
+  case runtime.Type_Info_Enum:
+    // note(iyaan): Internally odin treats the enum value
+    // as an i64 by default. The internal backing type can
+    // be found from Type_Info_Enum (t) t.base. Ofcourse have
+    // to make sure whatever json value we are receiving does
+    // not exceed the size limits of the backing type
+    val := parse_integer(val, true) or_return
+    val_in_enum := false
+    for enum_val in t.values {
+      if val == i64(enum_val) {
+        mem.copy(ptr, &val, t.base.size)
+        val_in_enum = true
+      }
+    }
+
+    if !val_in_enum {
+      return .Unmarshal_Out_Of_Bound_Enum_Value
+    }
   case:
     return .Unmarshal_Unknown_Value_Type
   }
@@ -52,9 +75,7 @@ unmarshal_array :: proc(
   type_info := reflect.type_info_base(type_info_of(p.id))
   ptr := p.data
 
-  #partial switch t in val {
-  case json.Array:
-    json_array := val.(json.Array)
+  if json_array, ok := val.(json.Array); ok {
     json_array_len := len(json_array)
 
     #partial switch array_type in type_info.variant {
@@ -95,7 +116,8 @@ unmarshal_array :: proc(
         case runtime.Type_Info_Integer,
              runtime.Type_Info_Float,
              runtime.Type_Info_Boolean,
-             runtime.Type_Info_String:
+             runtime.Type_Info_String,
+             runtime.Type_Info_Enum:
           unmarshal_value(elem, elem_any) or_return
         case runtime.Type_Info_Slice, runtime.Type_Info_Array:
           unmarshal_array(elem, elem_any) or_return
@@ -123,11 +145,11 @@ unmarshal_array :: proc(
         return .Too_Large_Vector
       }
     case runtime.Type_Info_Dynamic_Array:
-      return .Unmarshal_Unknown_Array_Type
+      return .Unmarshal_Unsupported_Array_Type
     case:
       return .Unmarshal_Unknown_Array_Type
     }
-  case:
+  } else {
     return .Incompatible_Array_Type
   }
   return .None
@@ -156,62 +178,44 @@ unmarshal_object :: proc(
         case runtime.Type_Info_Integer,
              runtime.Type_Info_Float,
              runtime.Type_Info_String,
-             runtime.Type_Info_Boolean:
+             runtime.Type_Info_Boolean,
+             runtime.Type_Info_Enum:
           field_value_any := any{field_ptr, field.type.id}
-          unmarshal_value(
-            json_obj[field.name],
-            field_value_any,
-          ) or_return
+          unmarshal_value(json_obj[field.name], field_value_any) or_return
         case runtime.Type_Info_Array,
              runtime.Type_Info_Slice,
              runtime.Type_Info_Dynamic_Array:
           field_value_any := any{field_ptr, field.type.id}
-          unmarshal_array(
-            json_obj[field.name],
-            field_value_any,
-          ) or_return
+          unmarshal_array(json_obj[field.name], field_value_any) or_return
         case runtime.Type_Info_Struct:
           field_value_any := any{field_ptr, field.type.id}
-          unmarshal_object(
-            json_obj[field.name],
-            field_value_any,
-          ) or_return
+          unmarshal_object(json_obj[field.name], field_value_any) or_return
         case runtime.Type_Info_Union:
           // TODO(iyaan): Handle some obvious unions (eg: JsonLottie_Prop_Position)
           // Finding a generic way to handle all cases of unions would be too much
           switch field.type.id {
           case PropPosition:
-            pos_val := parse_position(
-              json_obj[field.name],
-            ) or_return
+            pos_val := parse_position(json_obj[field.name]) or_return
             field_ptr_offset := uintptr(ptr) + field.offset
             field_val_ptr := transmute(^PropPosition)field_ptr_offset
             field_val_ptr^ = pos_val
           case PropScalar:
-            scalar_val := parse_prop_scalar(
-              json_obj[field.name],
-            ) or_return
+            scalar_val := parse_prop_scalar(json_obj[field.name]) or_return
             field_ptr_offset := uintptr(ptr) + field.offset
             field_val_ptr := transmute(^PropScalar)field_ptr_offset
             field_val_ptr^ = scalar_val
           case PropVector:
-            vector_val := parse_prop_vector(
-              json_obj[field.name],
-            ) or_return
+            vector_val := parse_prop_vector(json_obj[field.name]) or_return
             field_ptr_offset := uintptr(ptr) + field.offset
             field_val_ptr := transmute(^PropVector)field_ptr_offset
             field_val_ptr^ = vector_val
           case PropBezier:
-            bezier_val := parse_prop_bezier(
-              json_obj[field.name],
-            ) or_return
+            bezier_val := parse_prop_bezier(json_obj[field.name]) or_return
             field_ptr_offset := uintptr(ptr) + field.offset
             field_val_ptr := transmute(^PropBezier)field_ptr_offset
             field_val_ptr^ = bezier_val
           case PropColor:
-            color_val := parse_prop_color(
-              json_obj[field.name],
-            ) or_return
+            color_val := parse_prop_color(json_obj[field.name]) or_return
             field_ptr_offset := uintptr(ptr) + field.offset
             field_val_ptr := transmute(^PropColor)field_ptr_offset
             field_val_ptr^ = color_val
