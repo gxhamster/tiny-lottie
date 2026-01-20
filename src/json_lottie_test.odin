@@ -4,10 +4,7 @@ package main
 import "core:encoding/json"
 import "core:fmt"
 import "core:log"
-import "core:os"
-import "core:strings"
 import "core:testing"
-
 
 @(test)
 json_lottie_unmarshal_test :: proc(t: ^testing.T) {
@@ -164,4 +161,28 @@ lottie_enum_unmarshal_test :: proc(t: ^testing.T) {
     "An integer value that is not an enumeration for MatteMode",
   )
 
+}
+
+@(test)
+json_lottie_test_prop_position_keyframe :: proc(t: ^testing.T) {
+  m := json.Object{
+    "t" = 23,
+    "h" = 2,
+    "i" = json.Object{
+        "x" = json.Array{1, 2, 3},
+        "y" = json.Array{1, 2, 3}
+    },
+    "o" = json.Object{
+        "x" = json.Array{2, 3, 4},
+        "y" = json.Array{2, 3, 4}
+    },
+    "s"  = json.Array{5, 6},
+    "ti" = json.Array{8, 9, 10},
+    "to" = json.Array{11, 12, 13},
+  }
+
+  defer free_all()
+  keyframe := PropPositionKeyframe{}
+  err := unmarshal_object(m, keyframe)
+  log.debug(keyframe)
 }
