@@ -143,8 +143,7 @@ json_lottie_unmarshal_object :: proc(
   type_info := reflect.type_info_base(type_info_of(p.id))
   ptr := p.data
 
-  #partial switch t in type_info.variant {
-  case reflect.Type_Info_Struct:
+	if _, ok := type_info.variant.(reflect.Type_Info_Struct); ok {
     fields := reflect.struct_fields_zipped(p.id)
 
     #partial switch tval in val {
@@ -228,7 +227,7 @@ json_lottie_unmarshal_object :: proc(
     case:
       return .Incompatible_Object_Type
     }
-  case:
+  } else {
     return .Incompatible_Object_Type
-  }
+	}
 }

@@ -21,11 +21,10 @@ run_test_in_spec_file :: proc(
   defer free_all()
 
   fd, open_err := os.open(test_file, os.O_RDONLY, 0)
-  testing.expect(
-    t,
-    open_err == os.General_Error.None,
-    "os.open returned error",
-  )
+  if open_err != os.General_Error.None {
+		log.fatalf("os.open returned (%v)", open_err)
+	}
+
   defer os.close(fd)
   data_bytes, ok := os.read_entire_file_from_handle(fd, allocator)
   testing.expect(t, ok == true, "Can read the test file")
