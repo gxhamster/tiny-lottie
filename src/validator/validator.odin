@@ -410,11 +410,25 @@ parse_schema_from_json_value :: proc(
       }
 
       if !is_key_vocabulary {
-        bogus_schema, schema_idx := parse_schema_from_json_value(
+        // note(iyaan): It is likely that a schema file
+        // might have keywords that does not neccesarily are
+        // not container objects but contain prmitive values
+        // Eg: $version: 1001
+        // A valid container keywords should always be an object
+        // that can hold other keywords
+        bogus_schema, schema_idx, bogus_schema_err := parse_schema_from_json_value(
           parsed_json[key],
           schema_context,
           allocator,
-        ) or_return
+        )
+
+        if bogus_schema_err != .None {
+          log.infof("trying to parse container (%v) failed error=(%v)", key, bogus_schema_err)
+          // If you cannot parse a container keywords
+          // it cannot be regarded as a fatal error.
+          continue
+        }
+
         bogus_schema.name = key
         schema_struct.other_keys[key] = schema_idx
       }
@@ -1104,6 +1118,26 @@ parse_prefix_items :: proc(
   }
 }
 
+@(private)
+json_error_to_error :: proc(json_err: json.Error) -> Error {
+  #partial switch json_err {
+  case .Out_Of_Memory, .Invalid_Allocator:
+    return .Json_Allocation_Error
+  case .Unexpected_Token,
+  .Expected_String_For_Object_Key,
+  .Duplicate_Object_Key,
+  .Expected_Colon_After_Key:
+    return .Json_Parse_Error
+  case .Illegal_Character,
+  .Invalid_Number,
+  .String_Not_Terminated,
+  .Invalid_String:
+    return .Json_Tokenization_Error
+  case:
+    return .Json_Unknown_Error
+  }
+}
+
 parse_schema_from_string :: proc(
   schema: string,
   schema_context: ^Context,
@@ -1117,10 +1151,12 @@ parse_schema_from_string :: proc(
     schema,
     json.DEFAULT_SPECIFICATION,
     true,
+    allocator,
   )
-  if parsed_json_err != .None {
+  if parsed_json_err != .None && parsed_json_err != .EOF {
     log.infof("json.parse_string returned error (%v)", parsed_json_err)
-    return schema_struct, pool_idx, .Json_Parse_Error
+    err = json_error_to_error(parsed_json_err)
+    return
   }
 
   schema_struct, pool_idx, err = parse_schema_from_json_value(
@@ -1149,13 +1185,42 @@ validate_string_with_schema :: proc(
     data,
     spec = json.Specification.JSON5,
     parse_integers = true,
+    allocator = allocator,
   )
   if ok != .None {
     log.infof("json.parse_string returned error (%v)", ok)
-    return .Json_Parse_Error
+    return json_error_to_error(ok)
   }
 
   validate_json_value_with_subschema(parsed_json, schema, ctx) or_return
+
+  return .None
+}
+
+@(private)
+validate_ref :: proc(
+  json_value: json.Value,
+  subschema: ^Schema,
+  ctx: ^Context,
+) -> Error {
+  root_schema := get_schema(ctx, ctx.root_schema)
+  resolved_schema, resolve_err := get_schema_from_ref_path(
+    subschema.ref,
+    root_schema,
+    ctx,
+    // TODO: Not sure what to do with the allocator here yet
+    context.allocator
+  )
+  if resolve_err != .None {
+    log.infof("cannot resolve %v, returned %v", subschema.ref, resolve_err)
+    return resolve_err
+  }
+
+  err := validate_json_value_with_subschema(json_value, resolved_schema, ctx)
+  if err != .None {
+    log.infof("validation of $ref schema failed, (%v)", err)
+    return err
+  }
 
   return .None
 }
@@ -1386,9 +1451,8 @@ validate_json_value_with_subschema :: proc(
 
   for validation_keyword in subschema.validation_flags {
     log.debugf(
-      "Performing validation (%v) on (%v)",
-      validation_keyword,
-      json_value,
+      "Performing validation (%v)",
+      validation_keyword
     )
     validation_keyword_info := keywords_table[validation_keyword]
     validation_proc := validation_keyword_info.validation_proc
@@ -1396,13 +1460,13 @@ validate_json_value_with_subschema :: proc(
       validation_err := validation_proc(json_value, subschema, ctx)
       if validation_err != .None {
         log.infof(
-          "Validation (%v) failed with error (%v)",
+          "validation (%v) failed with error (%v)",
           validation_keyword,
           validation_err,
         )
         return validation_err
       } else {
-        log.debugf("Validation (%v) succesful", validation_keyword)
+        log.debugf("validation (%v) succesful", validation_keyword)
       }
     }
   }
@@ -2261,6 +2325,8 @@ get_schema_from_ref_path :: proc(
           if pt in cur_schema.other_keys {
             cur_schema = get_schema(ctx, cur_schema.other_keys[pt])
           } else {
+            log.debugf("cannot find path segment (%v)\n", pt)
+            log.debug(cur_schema.other_keys)
             return target_schema, .Ref_Schema_Not_Found
           }
         }
@@ -2272,6 +2338,7 @@ get_schema_from_ref_path :: proc(
 
   target_schema_path := ref_path
   cur_schema: ^Schema = root_schema
+  log.debugf("Path: %v\n", ref_path)
   paths := slashpath.split_elements(target_schema_path, allocator)
   assert(paths[0] == "#", "Ref path needs a relative fragment path")
   if len(paths[1:]) > 0 {
@@ -2294,33 +2361,4 @@ get_schema_from_ref_path :: proc(
   }
 
   return cur_schema, .None
-}
-
-// note(iyaan): Make sure that this is called
-// before validation has been called
-resolve_refs_to_schemas :: proc(
-  root_schema: ^Schema,
-  schema_context: ^Context,
-  allocator := context.allocator,
-) -> Error {
-  for ref_info in schema_context.refs_to_resolve {
-    target_schema, err := get_schema_from_ref_path(
-      ref_info.ref,
-      root_schema,
-      schema_context,
-      allocator,
-    )
-
-    if err != .None {
-      log.infof("Could not resolve ref (%v) : %v", ref_info.ref, err)
-      return err
-    } else {
-      // note(iyaan): Replace the schema in which $ref field was in
-      // with the resolved schema
-      // ref_info.source_schema^ = target_schema^
-      source_schema := get_schema(schema_context, ref_info.source_schema)
-      source_schema^ = target_schema^
-    }
-  }
-  return .None
 }

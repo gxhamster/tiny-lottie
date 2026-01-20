@@ -28,6 +28,10 @@ Error :: enum {
 
   // JSON Errors
   Json_Parse_Error,
+  Json_Tokenization_Error,
+  Json_Allocation_Error,
+  Json_Eof,
+  Json_Unknown_Error,
 
   // Parsing Errors
   Invalid_Instance_Type,
@@ -120,7 +124,7 @@ keywords_table := [?]KeywordsTblEntry {
   // Core vocabulary
   {"$id", .Id, parse_id, nil},
   {"$schema", .Schema, parse_schema_field, nil},
-  {"$ref", .Ref, parse_ref, nil},
+  {"$ref", .Ref, parse_ref, validate_ref},
   {"$comment", .Comment, parse_comment, nil},
   {"$defs", .Defs, parse_defs, nil},
   {"$anchor", .Anchor, nil, nil},
@@ -406,6 +410,11 @@ Context :: struct {
   // still all the internal strigs and maps are still
   // dependent on whatever allocator is used
   schema_pool:     [dynamic]Schema,
+  // Will contain the most top-level schema
+  // This is required when resolving $ref
+  // as it will start resolving paths from this schema
+  // as the starting point
+  root_schema:     PoolIndex
 }
 
 POOL_INIT_CAPACITY :: 128

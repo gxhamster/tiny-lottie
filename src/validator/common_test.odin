@@ -75,8 +75,8 @@ run_test_in_spec_file :: proc(
       )
       testing.expect(t, err == .None, msg)
 
-      resolve_err := resolve_refs_to_schemas(schema_struct, &schema_context)
-      testing.expect(t, resolve_err == .None, "Resolving $refs failed")
+      // Set the root_schema in the ctx
+      schema_context.root_schema = idx
 
       schema_tests := test_object["tests"].(json.Array)
       for schema_test in schema_tests {

@@ -353,5 +353,4 @@ ref_path_test :: proc(t: ^testing.T) {
   init_context(&ctx, 100, context.allocator)
   data0, idx, err := parse_schema_from_string(test_schema0, &ctx)
   log.debug(data0)
-  resolve_refs_to_schemas(data0, &ctx)
 }
