@@ -165,11 +165,8 @@ unmarshal_object :: proc(
   type_info := reflect.type_info_base(type_info_of(p.id))
   ptr := p.data
 
-<<<<<<< HEAD
-	if _, ok := type_info.variant.(reflect.Type_Info_Struct); ok {
-=======
+
   if t, ok := type_info.variant.(reflect.Type_Info_Struct); ok {
->>>>>>> 07ed3e7 (Test: enum tests (partial))
     fields := reflect.struct_fields_zipped(p.id)
 
     #partial switch tval in val {
