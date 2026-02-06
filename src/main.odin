@@ -61,6 +61,7 @@ Animation :: struct {
 }
 
 // Values
+Vec4 :: distinct [4]f64
 Vec3 :: distinct [3]f64
 Vec2 :: distinct [2]f64
 
@@ -68,7 +69,7 @@ Vec2 :: distinct [2]f64
 // with 4 components (the 4th being alpha) but most
 // players ignore the last component.
 Color3 :: Vec3
-Color4 :: distinct [4]f64
+Color4 :: Vec4
 HexColor :: distinct string
 Gradient :: distinct []f64
 
@@ -181,12 +182,14 @@ PropVector :: union {
 }
 
 PropVectorSingle :: struct {
+  flags: u64,
   sid: string,
   a:   bool,
   k:   Vec3,
 }
 
 PropVectorKeyframe :: struct {
+  flags: u64,
   t: f64,
   h: i64,
   i: PropKeyframeEasingVec,
@@ -195,6 +198,7 @@ PropVectorKeyframe :: struct {
 }
 
 PropVectorAnim :: struct {
+  flags: u64,
   sid: string,
   a:   bool,
   k:   []PropVectorKeyframe,
@@ -232,6 +236,7 @@ PropSplitPosition :: struct {
 
 // Helpers
 Transform :: struct {
+  flags: u64,
   a:  PropPosition,
   p:  PropPosition,
   r:  PropScalar,
