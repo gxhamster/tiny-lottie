@@ -1,0 +1,108 @@
+=== General Notes ===
+
+This document contains my thoughts on different architectural approaches
+to designing the library and stuff..
+
+write_layer :: proc(writer: TinyLottieWriter, layer: ^Layer) {
+  // How do I inject optimization code
+  // for layer.nm where it takes the string `nm`
+  // and decides that it is better to store a single number
+  // instead of storing a long name. Where should this logic be
+  // in that case the normal write_string(nm) should be skipped
+
+  // This is one way to have it a little easier
+  // for changing the encoding behaviour
+  layer_schema := {
+    "nm",     .String,
+    "hd",     .Bool,
+    "ty",     .Int64,
+    "ind",    .Int64,
+    "parent", .Int64, 
+    "ip",     .Float64,
+    "op",     .Float64, 
+    // A table means it becomes easy for barely
+    // evolving schema
+  }
+  
+  layer_opt_flags :: enum {
+    
+  }
+
+  for field in layer_schema {
+    switch field.type {
+    case .String:
+      ...
+    case .Float64:
+      // do the encoding
+    } 
+  }
+
+How do we know the different way to
+read the data after an optimization has
+been done in the encode stage. Some optimizations
+can affect the way that the data will be read at the
+decode stage. For example with the `nm` example after
+we encode it as an uint8, we can't really read it back as
+a string. What do we do then?
+The most obvious thing that comes to mind is to have a flags
+fields which store the optimizations done on a struct. Doing the
+decode stage we can observe that and make the changes accordingly to
+decoding.
+
+
+
+  write_string(writer, layer.nm);
+  if len(layer.nm) > 1 {
+    optimize_name_to_uint8 :: proc() {
+      work()    
+    }
+  }
+
+
+
+  write_bool(writer, layer.hd);
+  // Some fields from `layer` not given
+  // ty, ind, parent
+  write_float64(writer, layer.ip);
+  write_float64(writer, layer.op);
+}
+
+If we hardcode the reading and writing of fields
+how do we attempt to handle different versions
+of lottie schema. (Original, LottieFiles Inc. version)
+It does not need to be a fully generic solution as that
+is thing we are trying to avoid. We want a more targeted
+file format rather than one size fits all.
+Do we have to change the read/write procedures for each
+property that changes between the two schemas. Or can we find
+a way to code-gen those stuff
+What about stuff logic that needs to persist between the
+two schema versions. Like optimizations of how we store
+certain fields based on context.
+
+read_layer :: proc(reader: Reader, layer: ^Layer) {
+  0 = No optional fields
+  1 = 
+  read_string(writer, layer.nm);
+  read_bool(writer, layer.hd);
+  // Some fields from `layer` not given
+  // ty, ind, parent
+  // ty, ip, op are required
+  read_int64(writer, layer.ty);
+  read_int64(writer, layer.ind);
+  read_int64(writer, layer.parent);
+
+  read_float64(writer, layer.ip);
+  read_float64(writer, layer.op);
+}
+
+
+
+I dont want to include reflection code in the encoding
+systems. I beleive putting reflection code into a core part
+of the system that is most likely to get linked from other
+libraries is not a clean design. Make the code replicatable
+from any other language
+
+If we are passing a struct it becomes a little difficult to 
+know what fields are set and what are not?
