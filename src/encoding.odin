@@ -124,7 +124,7 @@ write_enum :: proc(writer: ^TinyLottieWriter, e: u8) {
 
 write_bool :: proc(writer: ^TinyLottieWriter, b: bool) {
   b := transmute(u8)b
-  write_uint8(b)
+  write_uint8(writer, b)
 }
 
 write_array :: proc(writer: ^TinyLottieWriter, array: []$T) {
@@ -132,21 +132,21 @@ write_array :: proc(writer: ^TinyLottieWriter, array: []$T) {
 }
 
 write_vector4 :: proc(writer: ^TinyLottieWriter, vec: Vec4) {
-  write_float32(vec[0])
-  write_float32(vec[1])
-  write_float32(vec[2])
-  write_float32(vec[3])
+  write_float32(writer, vec[0])
+  write_float32(writer, vec[1])
+  write_float32(writer, vec[2])
+  write_float32(writer, vec[3])
 }
 
 write_vector3 :: proc(writer: ^TinyLottieWriter, vec: Vec3) {
-  write_float32(vec[0])
-  write_float32(vec[1])
-  write_float32(vec[2])
+  write_float32(writer, vec[0])
+  write_float32(writer, vec[1])
+  write_float32(writer, vec[2])
 }
 
 write_vector2 :: proc(writer: ^TinyLottieWriter, vec: Vec2) {
-  write_float32(vec[0])
-  write_float32(vec[1])
+  write_float32(writer, vec[0])
+  write_float32(writer, vec[1])
 }
 
 // note(iyaan): HexColor will also contain the preliminary # character
@@ -182,7 +182,7 @@ write_hexcolor :: proc(writer: ^TinyLottieWriter, hex_color: HexColor) {
       r := (hex_color_bytes[0] << 8) | hex_color_bytes[1]
       value = {r, g, b}
       return value
-    } else len(hex_color) == HEX_SHORTHAND_LEN {
+    } else if len(hex_color) == HEX_SHORTHAND_LEN {
       // #0f0
       value: [3]byte
       hex_color_bytes: [3]byte
@@ -200,6 +200,9 @@ write_hexcolor :: proc(writer: ^TinyLottieWriter, hex_color: HexColor) {
       r := (hex_color_bytes[0] << 8) | hex_color_bytes[0]
       value = {r, g, b}
       return value
+    } else {
+      assert(false, "incorrect hex color length")
+      return {0, 0, 0}
     }
   }
 
@@ -212,16 +215,22 @@ write_hexcolor :: proc(writer: ^TinyLottieWriter, hex_color: HexColor) {
 
 write_color3 :: proc(writer: ^TinyLottieWriter, color3: Color3) {
   color3_vec := transmute(Vec3)color3
-  write_vec3(color3_vec)
+  write_vec3(writer, color3_vec)
 }
 
 write_color4 :: proc(writer: ^TinyLottieWriter, color4: Color4) {
   color4_vec := transmute(Vec4)color4
-  write_vec4(color4_vec)
+  write_vec4(writer, color4_vec)
 }
 
-write_gradient :: proc(writer: ^TinyLottieWriter, vector: Vec3) {
-
+write_gradient :: proc(writer: ^TinyLottieWriter, gradient: Gradient) {
+  // note(iyaan): offset1, r, g, b, offset2, r, g, b ... alpha_stops
+  // Just dump the floats as u8
+  for (stop in gradient) {
+    normalized_255 := u64(math.floor(stop * 255))
+    assert(normalized_255 <= 255, "gradeient stop large than 1.0 probably")
+    write_uint8(writer, u8(normalized_255))
+  }
 }
 
 write_bezier :: proc(writer: ^TinyLottieWriter, vector: Vec3) {
@@ -244,8 +253,6 @@ write_prop_vector :: proc(writer: ^TinyLottieWriter, vector: PropVector) {
   } else if vector_anim, ok := vector.(PropVectorAnim); ok {
 
   }
-
-
 }
 
 
