@@ -2,6 +2,7 @@ package main
 
 import "core:bytes"
 import "core:encoding/varint"
+import "core:math"
 
 // To keep track of writes to the byte buffer
 DebugInfo :: struct {
@@ -20,6 +21,11 @@ TinyLottieWriter :: struct {
   // handles the resizing of the underlying dynamic array as well.
   data:             bytes.Buffer,
   debug_info_trace: [dynamic]DebugInfo,
+}
+
+writer_write_raw_ptr_with_size :: proc(writer: ^TinyLottieWriter, ptr: rawptr, size: int) {
+  written, io_err := bytes.buffer_write_ptr(&writer.data, ptr, size)
+  assert(written == size)
 }
 
 writer_write_bytes :: proc(writer: ^TinyLottieWriter, buf: []byte) {
@@ -93,6 +99,8 @@ write_uint64 :: proc(writer: ^TinyLottieWriter, i: u64) {
   writer_write_bytes(writer, buf[:])
 }
 
+// Variable-byte encoding
+
 encode_zigzag :: proc(x: i128) -> u128 {
   return u128((2 * x) ~ (x >> (size_of(i128) * 8 - 1)));
 } 
@@ -128,25 +136,27 @@ write_bool :: proc(writer: ^TinyLottieWriter, b: bool) {
 }
 
 write_array :: proc(writer: ^TinyLottieWriter, array: []$T) {
-
+  write_varint(writer, i128(len(array)))
+  raw := raw_data(array)
+  writer_write_raw_ptr_with_size(writer, raw, len(array))
 }
 
 write_vector4 :: proc(writer: ^TinyLottieWriter, vec: Vec4) {
-  write_float32(writer, vec[0])
-  write_float32(writer, vec[1])
-  write_float32(writer, vec[2])
-  write_float32(writer, vec[3])
+  write_float32(writer, f32(vec[0]))
+  write_float32(writer, f32(vec[1]))
+  write_float32(writer, f32(vec[2]))
+  write_float32(writer, f32(vec[3]))
 }
 
 write_vector3 :: proc(writer: ^TinyLottieWriter, vec: Vec3) {
-  write_float32(writer, vec[0])
-  write_float32(writer, vec[1])
-  write_float32(writer, vec[2])
+  write_float32(writer, f32(vec[0]))
+  write_float32(writer, f32(vec[1]))
+  write_float32(writer, f32(vec[2]))
 }
 
 write_vector2 :: proc(writer: ^TinyLottieWriter, vec: Vec2) {
-  write_float32(writer, vec[0])
-  write_float32(writer, vec[1])
+  write_float32(writer, f32(vec[0]))
+  write_float32(writer, f32(vec[1]))
 }
 
 // note(iyaan): HexColor will also contain the preliminary # character
@@ -215,26 +225,92 @@ write_hexcolor :: proc(writer: ^TinyLottieWriter, hex_color: HexColor) {
 
 write_color3 :: proc(writer: ^TinyLottieWriter, color3: Color3) {
   color3_vec := transmute(Vec3)color3
-  write_vec3(writer, color3_vec)
+  write_vector3(writer, color3_vec)
 }
 
 write_color4 :: proc(writer: ^TinyLottieWriter, color4: Color4) {
   color4_vec := transmute(Vec4)color4
-  write_vec4(writer, color4_vec)
+  write_vector4(writer, color4_vec)
 }
 
 write_gradient :: proc(writer: ^TinyLottieWriter, gradient: Gradient) {
   // note(iyaan): offset1, r, g, b, offset2, r, g, b ... alpha_stops
   // Just dump the floats as u8
-  for (stop in gradient) {
+  for stop in gradient {
     normalized_255 := u64(math.floor(stop * 255))
     assert(normalized_255 <= 255, "gradeient stop large than 1.0 probably")
     write_uint8(writer, u8(normalized_255))
   }
 }
 
-write_bezier :: proc(writer: ^TinyLottieWriter, vector: Vec3) {
+BezierShapeFlags :: enum u8 {
+  Closed_Loop,
+  As_Float32,  // Encode all vector values as f32
+  As_Float16,
+  As_Varint,   // Will truncate floating point values
+  Use_Vec2,    // Use Vec2 instead of Vec3
+}
 
+write_bezier :: proc(writer: ^TinyLottieWriter,
+                     bezier_shape: BezierShapeValue,
+                     flags: bit_set[BezierShapeFlags; u8]) {
+  #assert(size_of(flags) == size_of(u8), "flags should be an u8")
+  write_uint8(writer, transmute(u8)flags)
+  // note(iyaan): The vector fileds are supposed to have the same length
+  expected_len := len(bezier_shape.i)
+  assert(len(bezier_shape.o) == expected_len, "mismatched i and o in bezier shape")
+  assert(len(bezier_shape.v) == expected_len, "mismatched i and v in bezier shape")
+
+
+  conv_arr_vec3_intern_type :: proc($T: typeid, comp: []Vec3) -> [][3]T {
+    vec_array := make_slice([][3]T, len(comp), context.temp_allocator)
+
+    for i in 0..<len(comp) {
+      vec := [3]T{
+        T(comp[i].x),
+        T(comp[i].y),
+        T(comp[i].z),
+      }
+      vec_array[i] = vec
+    }
+
+    return vec_array
+  }
+
+  gather_as_vec2_from_vec3_array :: proc($T: typeid, vec3_array: [][3]T) -> [][2]T {
+    vec2_array := make_slice([][2]T, len(vec3_array), context.temp_allocator)
+    for i in 0..<len(vec3_array) {
+      vec2_array[i] = vec3_array[i].xy
+    }
+    return vec2_array
+  }
+
+  if .As_Float16 in flags {
+    f16_i_vecs := conv_arr_vec3_intern_type(f16, bezier_shape.i)
+    f16_o_vecs := conv_arr_vec3_intern_type(f16, bezier_shape.o)
+    f16_v_vecs := conv_arr_vec3_intern_type(f16, bezier_shape.v)
+
+    if .Use_Vec2 in flags {
+      f16_i_vec2s := gather_as_vec2_from_vec3_array(f16, f16_i_vecs)
+      write_array(writer, f16_i_vec2s)
+
+      f16_o_vec2s := gather_as_vec2_from_vec3_array(f16, f16_o_vecs)
+      write_array(writer, f16_i_vec2s)
+
+      f16_v_vec2s := gather_as_vec2_from_vec3_array(f16, f16_v_vecs)
+      write_array(writer, f16_i_vec2s)
+    } else {
+      write_array(writer, f16_i_vecs)
+      write_array(writer, f16_o_vecs)
+      write_array(writer, f16_v_vecs)
+    }
+  } else if .As_Varint in flags {
+
+  } else {
+
+  }
+
+  free_all(context.temp_allocator)
 }
 
 get_flag :: #force_inline proc(flags: u64, bit: u64) -> u8 {
@@ -245,15 +321,15 @@ is_set :: #force_inline proc(flags: u64, bit: u64) -> bool {
   return get_flag(flags, bit) == 1
 }
 
-write_prop_vector :: proc(writer: ^TinyLottieWriter, vector: PropVector) {
-  if vector_single, ok := vector.(PropVectorSingle); ok {
-    if is_set(vector_single.mask, 0) {write_string(writer, vector_single.sid)} 
-    if is_set(vector_single.mask, 1) {write_bool(writer, vector_single.a)} 
-    if is_set(vector_single.mask, 2) {write_vec3(writer, vector_single.k)} 
-  } else if vector_anim, ok := vector.(PropVectorAnim); ok {
-
-  }
-}
+// write_prop_vector :: proc(writer: ^TinyLottieWriter, vector: PropVector) {
+//   if vector_single, ok := vector.(PropVectorSingle); ok {
+//     if is_set(vector_single.mask, 0) {write_string(writer, vector_single.sid)}
+//     if is_set(vector_single.mask, 1) {write_bool(writer, vector_single.a)}
+//     if is_set(vector_single.mask, 2) {write_vec3(writer, vector_single.k)}
+//   } else if vector_anim, ok := vector.(PropVectorAnim); ok {
+//
+//   }
+// }
 
 
 write_transform :: proc(writer: TinyLottieWriter, transform: Transform) {
