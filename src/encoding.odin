@@ -1,8 +1,8 @@
 package main
 
-import "core:bytes"
 import "core:encoding/varint"
 import "core:math"
+import "core:mem"
 
 // To keep track of writes to the byte buffer
 DebugInfo :: struct {
@@ -12,156 +12,159 @@ DebugInfo :: struct {
 
 Writer :: struct {
   data: []byte,
-  offset: u64,
+  offset: int,
 }
 
-TinyLottieWriter :: struct {
-  // TODO(iyaan): Create my own byte buffer. It seems write calls to bytes.Buffer
-  // have some complexity behind them by looking at the assembly. It
-  // handles the resizing of the underlying dynamic array as well.
-  data:             bytes.Buffer,
-  debug_info_trace: [dynamic]DebugInfo,
+// Will serialize any sequence of data. Does not write
+// the length
+writer_write_array :: proc(writer: ^Writer, array: []$T) {
+  remaining := len(writer.data) - writer.offset
+  assert(size_of(T)*len(array) <= remaining)
+  ptr := raw_data(writer.data[writer.offset:])
+  dst := mem.slice_ptr((^T)(ptr), len(array))
+  copy(dst, array)
+  writer.offset += size_of(T) * len(array)
 }
 
-writer_write_raw_ptr_with_size :: proc(writer: ^TinyLottieWriter, ptr: rawptr, size: int) {
-  written, io_err := bytes.buffer_write_ptr(&writer.data, ptr, size)
-  assert(written == size)
+writer_write_string :: proc(writer: ^Writer, str: string) {
+  remaining := len(writer.data) - writer.offset
+  assert(size_of(byte)*len(str) <= remaining)
+  ptr := raw_data(writer.data[writer.offset:])
+  dst := mem.slice_ptr((^byte)(ptr), len(str))
+  copy(dst, str)
+  writer.offset += size_of(byte) * len(str)
 }
 
-writer_write_bytes :: proc(writer: ^TinyLottieWriter, buf: []byte) {
-  written, io_err := bytes.buffer_write(&writer.data, buf)
-  assert(written == len(buf))
+writer_write_value :: proc(writer: ^Writer, value: $T) {
+  remaining := len(writer.data) - writer.offset
+  assert(size_of(T) <= remaining)
+  ptr := raw_data(writer.data[writer.offset:])
+  (^T)(ptr)^ = value
+  writer.offset += size_of(T)
 }
 
-writer_write_string :: proc(writer: ^TinyLottieWriter, str: string) {
-  written, io_err := bytes.buffer_write_string(&writer.data, str)
-  assert(written == len(str))
+writer_write_bytes :: proc(writer: ^Writer, buf: []byte) {
+  writer_write_array(writer, buf)
 }
 
-// Fixed IEEE-754 floats
+// Fixed IEEE-754 floats (Helpers around the writer interface)
 
-write_float64 :: proc(writer: ^TinyLottieWriter, f: f64) {
-  buf := transmute([8]byte)f
-  writer_write_bytes(writer, buf[:])
+write_float64 :: proc(writer: ^Writer, f: f64) {
+  writer_write_value(writer, f)
 }
 
-write_float32 :: proc(writer: ^TinyLottieWriter, f: f32) {
-  buf := transmute([4]byte)f
-  writer_write_bytes(writer, buf[:])
+write_float32 :: proc(writer: ^Writer, f: f32) {
+  writer_write_value(writer, f)
 }
 
-write_float16 :: proc(writer: ^TinyLottieWriter, f: f16) {
-  buf := transmute([2]byte)f
-  writer_write_bytes(writer, buf[:])
+write_float16 :: proc(writer: ^Writer, f: f16) {
+  writer_write_value(writer, f)
 }
 
-write_int8 :: proc(writer: ^TinyLottieWriter, i: i8) {
-  buf := transmute([1]byte)i
-  writer_write_bytes(writer, buf[:])
+write_int8 :: proc(writer: ^Writer, i: i8) {
+  writer_write_value(writer, i)
 }
 
 // Fixed signed interger variants
 
-write_int16 :: proc(writer: ^TinyLottieWriter, i: i16) {
-  buf := transmute([2]byte)i
-  writer_write_bytes(writer, buf[:])
+write_int16 :: proc(writer: ^Writer, i: i16) {
+  writer_write_value(writer, i)
 }
 
-write_int32 :: proc(writer: ^TinyLottieWriter, i: i32) {
-  buf := transmute([4]byte)i
-  writer_write_bytes(writer, buf[:])
+write_int32 :: proc(writer: ^Writer, i: i32) {
+  writer_write_value(writer, i)
 }
 
-write_int64 :: proc(writer: ^TinyLottieWriter, i: i64) {
-  buf := transmute([8]byte)i
-  writer_write_bytes(writer, buf[:])
+write_int64 :: proc(writer: ^Writer, i: i64) {
+  writer_write_value(writer, i)
 }
 
 // Fixed unsigned interger variants
 
-write_uint8 :: proc(writer: ^TinyLottieWriter, i: u8) {
-  buf := transmute([1]byte)i
-  writer_write_bytes(writer, buf[:])
+write_uint8 :: proc(writer: ^Writer, i: u8) {
+  writer_write_value(writer, i)
 }
 
-write_uint16 :: proc(writer: ^TinyLottieWriter, i: u16) {
-  buf := transmute([2]byte)i
-  writer_write_bytes(writer, buf[:])
+write_uint16 :: proc(writer: ^Writer, i: u16) {
+  writer_write_value(writer, i)
 }
 
-write_uint32 :: proc(writer: ^TinyLottieWriter, i: u32) {
-  buf := transmute([4]byte)i
-  writer_write_bytes(writer, buf[:])
+write_uint32 :: proc(writer: ^Writer, i: u32) {
+  writer_write_value(writer, i)
 }
 
-write_uint64 :: proc(writer: ^TinyLottieWriter, i: u64) {
-  buf := transmute([8]byte)i
-  writer_write_bytes(writer, buf[:])
+write_uint64 :: proc(writer: ^Writer, i: u64) {
+  writer_write_value(writer, i)
 }
 
 // Variable-byte encoding
 
 encode_zigzag :: proc(x: i128) -> u128 {
   return u128((2 * x) ~ (x >> (size_of(i128) * 8 - 1)));
-} 
+}
 
 decode_zigzag :: proc(x: u128) -> i128 {
   return i128((x >> 1) ~ (-(x & 1)));
 }
 
+@(private = "file")
+conv_to_varint :: proc(i: i128) -> (int, [varint.LEB128_MAX_BYTES]byte) {
+  buffer: [varint.LEB128_MAX_BYTES]byte
+  zigzag_int := encode_zigzag(i)
+  size, err := varint.encode_uleb128(buffer[:], zigzag_int)
+  assert(err == .None, "varint.encode_uleb128 failed with error")
+  return size, buffer
+}
+
 // LEB-128 (zig-zag encoded)
 // note(iyaan): Need to make this very optimized. Add SIMD
 // support
-write_varint :: proc(writer: ^TinyLottieWriter, i: i128) -> [varint.LEB128_MAX_BYTES]byte {
-  buffer: [varint.LEB128_MAX_BYTES]byte
-  zigzag_int := encode_zigzag(i)
-  varint.encode_uleb128(buffer[:], zigzag_int)
-  return buffer
+write_varint :: proc(writer: ^Writer, i: i128) {
+  size, buffer := conv_to_varint(i)
+  writer_write_bytes(writer, buffer[:size])
 }
 
-write_string :: proc(writer: ^TinyLottieWriter, s: string) {
+write_string :: proc(writer: ^Writer, s: string) {
   write_varint(writer, i128(len(s)))
   writer_write_string(writer, s)
 }
 
-write_enum :: proc(writer: ^TinyLottieWriter, e: u8) {
+write_enum :: proc(writer: ^Writer, e: u8) {
   // note(iyaan): Lottie does not have any enums that requires
   // more than 1 byte of storage.
   write_uint8(writer, u8(e))  
 }
 
-write_bool :: proc(writer: ^TinyLottieWriter, b: bool) {
-  b := transmute(u8)b
-  write_uint8(writer, b)
+write_bool :: proc(writer: ^Writer, b: bool) {
+  writer_write_value(writer, b)
 }
 
-write_array :: proc(writer: ^TinyLottieWriter, array: []$T) {
+write_array :: proc(writer: ^Writer, array: []$T) {
   write_varint(writer, i128(len(array)))
-  raw := raw_data(array)
-  writer_write_raw_ptr_with_size(writer, raw, len(array))
+  writer_write_array(writer, array)
 }
 
-write_vector4 :: proc(writer: ^TinyLottieWriter, vec: Vec4) {
+write_vector4 :: proc(writer: ^Writer, vec: Vec4) {
   write_float32(writer, f32(vec[0]))
   write_float32(writer, f32(vec[1]))
   write_float32(writer, f32(vec[2]))
   write_float32(writer, f32(vec[3]))
 }
 
-write_vector3 :: proc(writer: ^TinyLottieWriter, vec: Vec3) {
+write_vector3 :: proc(writer: ^Writer, vec: Vec3) {
   write_float32(writer, f32(vec[0]))
   write_float32(writer, f32(vec[1]))
   write_float32(writer, f32(vec[2]))
 }
 
-write_vector2 :: proc(writer: ^TinyLottieWriter, vec: Vec2) {
+write_vector2 :: proc(writer: ^Writer, vec: Vec2) {
   write_float32(writer, f32(vec[0]))
   write_float32(writer, f32(vec[1]))
 }
 
 // note(iyaan): HexColor will also contain the preliminary # character
 // as well
-write_hexcolor :: proc(writer: ^TinyLottieWriter, hex_color: HexColor) {
+write_hexcolor :: proc(writer: ^Writer, hex_color: HexColor) {
   hex_digit :: proc(char: byte) -> (u8, bool) {
     switch char {
     case '0'..='9': return char - '0', true
@@ -175,7 +178,6 @@ write_hexcolor :: proc(writer: ^TinyLottieWriter, hex_color: HexColor) {
     HEX_STR_MAX_LEN :: 6
     HEX_SHORTHAND_LEN :: 3
     if len(hex_color) == HEX_STR_MAX_LEN {
-      // #00ff00
       value: [3]byte
       hex_color_bytes: [6]byte
       for idx in 0..<len(hex_color) {
@@ -193,7 +195,6 @@ write_hexcolor :: proc(writer: ^TinyLottieWriter, hex_color: HexColor) {
       value = {r, g, b}
       return value
     } else if len(hex_color) == HEX_SHORTHAND_LEN {
-      // #0f0
       value: [3]byte
       hex_color_bytes: [3]byte
       for idx in 0..<len(hex_color) {
@@ -223,17 +224,17 @@ write_hexcolor :: proc(writer: ^TinyLottieWriter, hex_color: HexColor) {
   writer_write_bytes(writer, rgb[:])
 }
 
-write_color3 :: proc(writer: ^TinyLottieWriter, color3: Color3) {
+write_color3 :: proc(writer: ^Writer, color3: Color3) {
   color3_vec := transmute(Vec3)color3
   write_vector3(writer, color3_vec)
 }
 
-write_color4 :: proc(writer: ^TinyLottieWriter, color4: Color4) {
+write_color4 :: proc(writer: ^Writer, color4: Color4) {
   color4_vec := transmute(Vec4)color4
   write_vector4(writer, color4_vec)
 }
 
-write_gradient :: proc(writer: ^TinyLottieWriter, gradient: Gradient) {
+write_gradient :: proc(writer: ^Writer, gradient: Gradient) {
   // note(iyaan): offset1, r, g, b, offset2, r, g, b ... alpha_stops
   // Just dump the floats as u8
   for stop in gradient {
@@ -251,7 +252,7 @@ BezierShapeFlags :: enum u8 {
   Use_Vec2,    // Use Vec2 instead of Vec3
 }
 
-write_bezier :: proc(writer: ^TinyLottieWriter,
+write_bezier :: proc(writer: ^Writer,
                      bezier_shape: BezierShapeValue,
                      flags: bit_set[BezierShapeFlags; u8]) {
   #assert(size_of(flags) == size_of(u8), "flags should be an u8")
@@ -292,12 +293,10 @@ write_bezier :: proc(writer: ^TinyLottieWriter,
 
     if .Use_Vec2 in flags {
       f16_i_vec2s := gather_as_vec2_from_vec3_array(f16, f16_i_vecs)
-      write_array(writer, f16_i_vec2s)
-
       f16_o_vec2s := gather_as_vec2_from_vec3_array(f16, f16_o_vecs)
-      write_array(writer, f16_i_vec2s)
-
       f16_v_vec2s := gather_as_vec2_from_vec3_array(f16, f16_v_vecs)
+      write_array(writer, f16_i_vec2s)
+      write_array(writer, f16_i_vec2s)
       write_array(writer, f16_i_vec2s)
     } else {
       write_array(writer, f16_i_vecs)
@@ -305,9 +304,52 @@ write_bezier :: proc(writer: ^TinyLottieWriter,
       write_array(writer, f16_v_vecs)
     }
   } else if .As_Varint in flags {
+    // note(iyaan): Force truncate floats to varints. You will lose the
+    // float precision
+    varint_i_vecs := conv_arr_vec3_intern_type(i128, bezier_shape.i)
+    varint_o_vecs := conv_arr_vec3_intern_type(i128, bezier_shape.o)
+    varint_v_vecs := conv_arr_vec3_intern_type(i128, bezier_shape.v)
 
+    if .Use_Vec2 in flags {
+      varint_i_vec2s := gather_as_vec2_from_vec3_array(i128, varint_i_vecs)
+      varint_o_vec2s := gather_as_vec2_from_vec3_array(i128, varint_o_vecs)
+      varint_v_vec2s := gather_as_vec2_from_vec3_array(i128, varint_v_vecs)
+    
+      write_varint(writer, i128(len(varint_i_vec2s)))
+      for varint_i_vec in varint_i_vec2s {
+        write_varint(writer, varint_i_vec.x)
+        write_varint(writer, varint_i_vec.y)
+      }
+      write_varint(writer, i128(len(varint_o_vec2s)))
+      for varint_o_vec in varint_o_vec2s {
+        write_varint(writer, varint_o_vec.x)
+        write_varint(writer, varint_o_vec.y)
+      }
+      write_varint(writer, i128(len(varint_v_vec2s)))
+      for varint_v_vec in varint_v_vec2s {
+        write_varint(writer, varint_v_vec.x)
+        write_varint(writer, varint_v_vec.y)
+      }
+    } else {
+      
+    }
   } else {
+    f32_i_vecs := conv_arr_vec3_intern_type(f32, bezier_shape.i)
+    f32_o_vecs := conv_arr_vec3_intern_type(f32, bezier_shape.o)
+    f32_v_vecs := conv_arr_vec3_intern_type(f32, bezier_shape.v)
 
+    if .Use_Vec2 in flags {
+      f32_i_vec2s := gather_as_vec2_from_vec3_array(f32, f32_i_vecs)
+      f32_o_vec2s := gather_as_vec2_from_vec3_array(f32, f32_o_vecs)
+      f32_v_vec2s := gather_as_vec2_from_vec3_array(f32, f32_v_vecs)
+      write_array(writer, f32_i_vec2s)
+      write_array(writer, f32_i_vec2s)
+      write_array(writer, f32_i_vec2s)
+    } else {
+      write_array(writer, f32_i_vecs)
+      write_array(writer, f32_o_vecs)
+      write_array(writer, f32_v_vecs)
+    }
   }
 
   free_all(context.temp_allocator)
@@ -332,6 +374,6 @@ is_set :: #force_inline proc(flags: u64, bit: u64) -> bool {
 // }
 
 
-write_transform :: proc(writer: TinyLottieWriter, transform: Transform) {
+write_transform :: proc(writer: Writer, transform: Transform) {
   
 }
