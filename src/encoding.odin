@@ -310,28 +310,44 @@ write_bezier :: proc(writer: ^Writer,
     varint_o_vecs := conv_arr_vec3_intern_type(i128, bezier_shape.o)
     varint_v_vecs := conv_arr_vec3_intern_type(i128, bezier_shape.v)
 
+    VarintResult :: struct {
+      buffer: [varint.LEB128_MAX_BYTES]byte,
+      size: int
+    }
+
+    conv_intern_to_varint :: proc(vec_type_slice: [][$T]i128) -> [][T]VarintResult {
+      #assert(T <= 3, "Why is your vector size un-natural???")
+      r_array := make_slice([][T]VarintResult, len(vec_type_slice), context.temp_allocator)
+      for i in 0..<len(vec_type_slice) {
+        vec := vec_type_slice[i]
+        r_struct := [T]VarintResult{}
+        for j in 0..<T {
+          size, buf := conv_to_varint(vec[j])
+          r_struct[i] = VarintResult{buf, size}
+        }
+        r_array[i] = r_struct
+      }
+      return r_array
+    }
+
     if .Use_Vec2 in flags {
       varint_i_vec2s := gather_as_vec2_from_vec3_array(i128, varint_i_vecs)
       varint_o_vec2s := gather_as_vec2_from_vec3_array(i128, varint_o_vecs)
       varint_v_vec2s := gather_as_vec2_from_vec3_array(i128, varint_v_vecs)
-    
-      write_varint(writer, i128(len(varint_i_vec2s)))
-      for varint_i_vec in varint_i_vec2s {
-        write_varint(writer, varint_i_vec.x)
-        write_varint(writer, varint_i_vec.y)
-      }
-      write_varint(writer, i128(len(varint_o_vec2s)))
-      for varint_o_vec in varint_o_vec2s {
-        write_varint(writer, varint_o_vec.x)
-        write_varint(writer, varint_o_vec.y)
-      }
-      write_varint(writer, i128(len(varint_v_vec2s)))
-      for varint_v_vec in varint_v_vec2s {
-        write_varint(writer, varint_v_vec.x)
-        write_varint(writer, varint_v_vec.y)
-      }
+
+      varint_i_array := conv_intern_to_varint(varint_i_vec2s)
+      varint_o_array := conv_intern_to_varint(varint_o_vec2s)
+      varint_v_array := conv_intern_to_varint(varint_v_vec2s)
+      write_array(writer, varint_i_array)
+      write_array(writer, varint_o_array)
+      write_array(writer, varint_v_array)
     } else {
-      
+      varint_i_array := conv_intern_to_varint(varint_i_vecs)
+      varint_o_array := conv_intern_to_varint(varint_o_vecs)
+      varint_v_array := conv_intern_to_varint(varint_v_vecs)
+      write_array(writer, varint_i_array)
+      write_array(writer, varint_o_array)
+      write_array(writer, varint_v_array)
     }
   } else {
     f32_i_vecs := conv_arr_vec3_intern_type(f32, bezier_shape.i)
