@@ -176,14 +176,14 @@ PropVector :: union {
 }
 
 PropVectorSingle :: struct {
-  flags: u64,
+  mask: u64,
   sid: string,
   a:   bool,
   k:   Vec3,
 }
 
 PropVectorKeyframe :: struct {
-  flags: u64,
+  mask: u64,
   t: f64,
   h: i64,
   i: PropKeyframeEasingVec,
