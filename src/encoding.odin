@@ -244,6 +244,59 @@ write_gradient :: proc(writer: ^Writer, gradient: Gradient) {
   }
 }
 
+// A more general transform version supporting for all vector sizes
+transform_array_vec_change_size :: proc(vec_array: [][$Y]$T, target_vec_size: int, allocator := context.temp_allocator) -> [][Y]T {
+  r_vec_array := make_slice([][Y]T, len(vec_array), allocator)
+  for i in 0..<len(vec_array) {
+    for j in 0..<Y {
+      r_vec_array[i][j] = vec_array[i][j]
+    }
+  }
+  return r_vec_array
+}
+
+transform_array_vec3_to_vec2 :: proc($T: typeid, vec3_array: [][3]T, allocator := context.temp_allocator) -> [][2]T {
+  vec2_array := make_slice([][2]T, len(vec3_array), allocator)
+  for i in 0..<len(vec3_array) {
+    vec2_array[i] = vec3_array[i].xy
+  }
+  return vec2_array
+}
+
+transform_array_vec3_intern_type :: proc($T: typeid, comp: []Vec3, allocator := context.temp_allocator) -> [][3]T {
+  vec_array := make_slice([][3]T, len(comp), allocator)
+
+  for i in 0..<len(comp) {
+    vec := [3]T{
+      T(comp[i].x),
+      T(comp[i].y),
+      T(comp[i].z),
+    }
+    vec_array[i] = vec
+  }
+
+  return vec_array
+}
+
+VarintResult :: struct {
+  buffer: [varint.LEB128_MAX_BYTES]byte,
+  size: int
+}
+transform_array_vec_intern_varint :: proc(vec_slice: [][$T]i128, allocator := context.temp_allocator) -> [][T]VarintResult {
+  #assert(T <= 3, "Why is your vector size un-natural???")
+  r_array := make_slice([][T]VarintResult, len(vec_slice), allocator)
+  for i in 0..<len(vec_slice) {
+    vec := vec_slice[i]
+    r_struct := [T]VarintResult{}
+    for j in 0..<T {
+      size, buf := conv_to_varint(vec[j])
+      r_struct[i] = VarintResult{buf, size}
+    }
+    r_array[i] = r_struct
+  }
+  return r_array
+}
+
 BezierShapeFlags :: enum u8 {
   Closed_Loop,
   As_Float32,  // Encode all vector values as f32
@@ -252,6 +305,7 @@ BezierShapeFlags :: enum u8 {
   Use_Vec2,    // Use Vec2 instead of Vec3
 }
 
+// Will free the temporary allocator
 write_bezier :: proc(writer: ^Writer,
                      bezier_shape: BezierShapeValue,
                      flags: bit_set[BezierShapeFlags; u8]) {
@@ -263,38 +317,15 @@ write_bezier :: proc(writer: ^Writer,
   assert(len(bezier_shape.v) == expected_len, "mismatched i and v in bezier shape")
 
 
-  conv_arr_vec3_intern_type :: proc($T: typeid, comp: []Vec3) -> [][3]T {
-    vec_array := make_slice([][3]T, len(comp), context.temp_allocator)
-
-    for i in 0..<len(comp) {
-      vec := [3]T{
-        T(comp[i].x),
-        T(comp[i].y),
-        T(comp[i].z),
-      }
-      vec_array[i] = vec
-    }
-
-    return vec_array
-  }
-
-  gather_as_vec2_from_vec3_array :: proc($T: typeid, vec3_array: [][3]T) -> [][2]T {
-    vec2_array := make_slice([][2]T, len(vec3_array), context.temp_allocator)
-    for i in 0..<len(vec3_array) {
-      vec2_array[i] = vec3_array[i].xy
-    }
-    return vec2_array
-  }
-
   if .As_Float16 in flags {
-    f16_i_vecs := conv_arr_vec3_intern_type(f16, bezier_shape.i)
-    f16_o_vecs := conv_arr_vec3_intern_type(f16, bezier_shape.o)
-    f16_v_vecs := conv_arr_vec3_intern_type(f16, bezier_shape.v)
+    f16_i_vecs := transform_array_vec3_intern_type(f16, bezier_shape.i)
+    f16_o_vecs := transform_array_vec3_intern_type(f16, bezier_shape.o)
+    f16_v_vecs := transform_array_vec3_intern_type(f16, bezier_shape.v)
 
     if .Use_Vec2 in flags {
-      f16_i_vec2s := gather_as_vec2_from_vec3_array(f16, f16_i_vecs)
-      f16_o_vec2s := gather_as_vec2_from_vec3_array(f16, f16_o_vecs)
-      f16_v_vec2s := gather_as_vec2_from_vec3_array(f16, f16_v_vecs)
+      f16_i_vec2s := transform_array_vec3_to_vec2(f16, f16_i_vecs)
+      f16_o_vec2s := transform_array_vec3_to_vec2(f16, f16_o_vecs)
+      f16_v_vec2s := transform_array_vec3_to_vec2(f16, f16_v_vecs)
       write_array(writer, f16_i_vec2s)
       write_array(writer, f16_i_vec2s)
       write_array(writer, f16_i_vec2s)
@@ -306,58 +337,38 @@ write_bezier :: proc(writer: ^Writer,
   } else if .As_Varint in flags {
     // note(iyaan): Force truncate floats to varints. You will lose the
     // float precision
-    varint_i_vecs := conv_arr_vec3_intern_type(i128, bezier_shape.i)
-    varint_o_vecs := conv_arr_vec3_intern_type(i128, bezier_shape.o)
-    varint_v_vecs := conv_arr_vec3_intern_type(i128, bezier_shape.v)
-
-    VarintResult :: struct {
-      buffer: [varint.LEB128_MAX_BYTES]byte,
-      size: int
-    }
-
-    conv_intern_to_varint :: proc(vec_type_slice: [][$T]i128) -> [][T]VarintResult {
-      #assert(T <= 3, "Why is your vector size un-natural???")
-      r_array := make_slice([][T]VarintResult, len(vec_type_slice), context.temp_allocator)
-      for i in 0..<len(vec_type_slice) {
-        vec := vec_type_slice[i]
-        r_struct := [T]VarintResult{}
-        for j in 0..<T {
-          size, buf := conv_to_varint(vec[j])
-          r_struct[i] = VarintResult{buf, size}
-        }
-        r_array[i] = r_struct
-      }
-      return r_array
-    }
+    varint_i_vecs := transform_array_vec3_intern_type(i128, bezier_shape.i)
+    varint_o_vecs := transform_array_vec3_intern_type(i128, bezier_shape.o)
+    varint_v_vecs := transform_array_vec3_intern_type(i128, bezier_shape.v)
 
     if .Use_Vec2 in flags {
-      varint_i_vec2s := gather_as_vec2_from_vec3_array(i128, varint_i_vecs)
-      varint_o_vec2s := gather_as_vec2_from_vec3_array(i128, varint_o_vecs)
-      varint_v_vec2s := gather_as_vec2_from_vec3_array(i128, varint_v_vecs)
+      varint_i_vec2s := transform_array_vec3_to_vec2(i128, varint_i_vecs)
+      varint_o_vec2s := transform_array_vec3_to_vec2(i128, varint_o_vecs)
+      varint_v_vec2s := transform_array_vec3_to_vec2(i128, varint_v_vecs)
 
-      varint_i_array := conv_intern_to_varint(varint_i_vec2s)
-      varint_o_array := conv_intern_to_varint(varint_o_vec2s)
-      varint_v_array := conv_intern_to_varint(varint_v_vec2s)
+      varint_i_array := transform_array_vec_intern_varint(varint_i_vec2s)
+      varint_o_array := transform_array_vec_intern_varint(varint_o_vec2s)
+      varint_v_array := transform_array_vec_intern_varint(varint_v_vec2s)
       write_array(writer, varint_i_array)
       write_array(writer, varint_o_array)
       write_array(writer, varint_v_array)
     } else {
-      varint_i_array := conv_intern_to_varint(varint_i_vecs)
-      varint_o_array := conv_intern_to_varint(varint_o_vecs)
-      varint_v_array := conv_intern_to_varint(varint_v_vecs)
+      varint_i_array := transform_array_vec_intern_varint(varint_i_vecs)
+      varint_o_array := transform_array_vec_intern_varint(varint_o_vecs)
+      varint_v_array := transform_array_vec_intern_varint(varint_v_vecs)
       write_array(writer, varint_i_array)
       write_array(writer, varint_o_array)
       write_array(writer, varint_v_array)
     }
   } else {
-    f32_i_vecs := conv_arr_vec3_intern_type(f32, bezier_shape.i)
-    f32_o_vecs := conv_arr_vec3_intern_type(f32, bezier_shape.o)
-    f32_v_vecs := conv_arr_vec3_intern_type(f32, bezier_shape.v)
+    f32_i_vecs := transform_array_vec3_intern_type(f32, bezier_shape.i)
+    f32_o_vecs := transform_array_vec3_intern_type(f32, bezier_shape.o)
+    f32_v_vecs := transform_array_vec3_intern_type(f32, bezier_shape.v)
 
     if .Use_Vec2 in flags {
-      f32_i_vec2s := gather_as_vec2_from_vec3_array(f32, f32_i_vecs)
-      f32_o_vec2s := gather_as_vec2_from_vec3_array(f32, f32_o_vecs)
-      f32_v_vec2s := gather_as_vec2_from_vec3_array(f32, f32_v_vecs)
+      f32_i_vec2s := transform_array_vec3_to_vec2(f32, f32_i_vecs)
+      f32_o_vec2s := transform_array_vec3_to_vec2(f32, f32_o_vecs)
+      f32_v_vec2s := transform_array_vec3_to_vec2(f32, f32_v_vecs)
       write_array(writer, f32_i_vec2s)
       write_array(writer, f32_i_vec2s)
       write_array(writer, f32_i_vec2s)
@@ -379,15 +390,15 @@ is_set :: #force_inline proc(flags: u64, bit: u64) -> bool {
   return get_flag(flags, bit) == 1
 }
 
-// write_prop_vector :: proc(writer: ^TinyLottieWriter, vector: PropVector) {
-//   if vector_single, ok := vector.(PropVectorSingle); ok {
-//     if is_set(vector_single.mask, 0) {write_string(writer, vector_single.sid)}
-//     if is_set(vector_single.mask, 1) {write_bool(writer, vector_single.a)}
-//     if is_set(vector_single.mask, 2) {write_vec3(writer, vector_single.k)}
-//   } else if vector_anim, ok := vector.(PropVectorAnim); ok {
-//
-//   }
-// }
+write_prop_vector :: proc(writer: ^Writer, vector: PropVector) {
+  if vector_single, ok := vector.(PropVectorSingle); ok {
+    if is_set(vector_single.mask, 0) {write_string(writer, vector_single.sid)}
+    if is_set(vector_single.mask, 1) {write_bool(writer, vector_single.a)}
+    if is_set(vector_single.mask, 2) {write_vector3(writer, vector_single.k)}
+  } else if vector_anim, ok := vector.(PropVectorAnim); ok {
+
+  }
+}
 
 
 write_transform :: proc(writer: Writer, transform: Transform) {
