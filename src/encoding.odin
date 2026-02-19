@@ -1,5 +1,7 @@
 package main
 
+import "core:math/bits"
+import "base:intrinsics"
 import "core:encoding/varint"
 import "core:math"
 import "core:mem"
@@ -278,19 +280,53 @@ transform_array_vec3_intern_type :: proc($T: typeid, comp: []Vec3, allocator := 
   return vec_array
 }
 
-VarintResult :: struct {
+LEB128Res :: struct {
   buffer: [varint.LEB128_MAX_BYTES]byte,
   size: int
 }
-transform_array_vec_intern_varint :: proc(vec_slice: [][$T]i128, allocator := context.temp_allocator) -> [][T]VarintResult {
+transform_array_vec_intern_varint :: proc(vec_slice: [][$T]i128, allocator := context.temp_allocator) -> [][T]LEB128Res {
   #assert(T <= 3, "Why is your vector size un-natural???")
-  r_array := make_slice([][T]VarintResult, len(vec_slice), allocator)
+  r_array := make_slice([][T]LEB128Res, len(vec_slice), allocator)
   for i in 0..<len(vec_slice) {
     vec := vec_slice[i]
-    r_struct := [T]VarintResult{}
+    r_struct := [T]LEB128Res{}
     for j in 0..<T {
       size, buf := conv_to_varint(vec[j])
-      r_struct[i] = VarintResult{buf, size}
+      r_struct[i] = LEB128Res{buf, size}
+    }
+    r_array[i] = r_struct
+  }
+  return r_array
+}
+
+// Will compute the delta, of each subsequent value. Use the first value as the first
+// reference point. The values will then be encoded in LEB128
+// TODO: Make this a SIMD algorithm. Maybe Daniel Lemiere's algorithm.
+transform_array_delta_enc :: proc(array: $T/[]$E, allocator := context.temp_allocator) -> []LEB128Res
+  where intrinsics.type_is_float(E) || intrinsics.type_is_integer(E) {
+  assert(len(array) >= 2, "delta encoding requires at least two elements")
+  r_array := make_slice([]LEB128Res, len(array), allocator)
+  for i in 1..<len(array) {
+    delta := array[i] - array[i - 1]
+    size, buf := conv_to_varint(i128(delta))
+    r_array[i] = LEB128Res{buf, size}
+  }
+  return r_array
+}
+
+// Delta encoding variant for 3d vectors
+transform_array_vec3_delta_enc :: proc(array: []Vec3, allocator := context.allocator) -> [][3]LEB128Res {
+  assert(len(array) >= 2, "delta encoding requires at least two elements")
+  r_array := make_slice([][3]LEB128Res, len(array), allocator)
+  for i in 1..<len(array) {
+    delta := array[i].xyz - array[i - 1].xyz
+    size_x, buf_x := conv_to_varint(i128(delta.x))
+    size_y, buf_y := conv_to_varint(i128(delta.y))
+    size_z, buf_z := conv_to_varint(i128(delta.z))
+    r_struct := [3]LEB128Res{
+      LEB128Res{buf_x, size_x},
+      LEB128Res{buf_y, size_y},
+      LEB128Res{buf_z, size_z}
     }
     r_array[i] = r_struct
   }
@@ -382,12 +418,10 @@ write_bezier :: proc(writer: ^Writer,
   free_all(context.temp_allocator)
 }
 
-get_flag :: #force_inline proc(flags: u64, bit: u64) -> u8 {
-  return u8(flags & (1 << bit))
-}
-
-is_set :: #force_inline proc(flags: u64, bit: u64) -> bool {
-  return get_flag(flags, bit) == 1
+is_set :: proc(value: u64, bit: uint) -> bool {
+  // note(iyaan): odin implementation
+  // of this produces better ASM than my impl in odin
+  return bits.bitfield_extract_u64(value, bit, 1) == 1
 }
 
 write_prop_vector :: proc(writer: ^Writer, vector: PropVector) {
@@ -397,9 +431,36 @@ write_prop_vector :: proc(writer: ^Writer, vector: PropVector) {
     if is_set(vector_single.mask, 2) {write_vector3(writer, vector_single.k)}
   } else if vector_anim, ok := vector.(PropVectorAnim); ok {
 
+    write_prop_vector_keyframe :: proc(writer: ^Writer, vec_keyframe: PropVectorKeyframe, flags: u8) {
+      write_uint8(writer, transmute(u8)flags)
+      flags := u64(flags)
+      if is_set(flags, 0) {write_varint(writer, i128(vec_keyframe.t))}
+      if is_set(flags, 1) {}
+      if is_set(flags, 2) {}
+      if is_set(flags, 3) {}
+    }
+
+    v := [?]Vec3{Vec3{1, 2, 3}, Vec3{4, 5, 6}}
+    transform_array_delta_enc(v[0][:])
   }
 }
 
+write_keyframe_easing :: proc(writer: ^Writer, easing: PropKeyframeEasing) {
+  switch type in easing {
+  case PropKeyframeEasingScalar:
+    easing_scalar := easing.(PropKeyframeEasingScalar)
+    write_varint(writer, i128(easing_scalar.x))
+    write_varint(writer, i128(easing_scalar.y))
+  case PropKeyframeEasingVec:
+    easing_vector := easing.(PropKeyframeEasingVec)
+    // TODO: Probably should not write just write each vector
+    // as plain f32 here
+    write_vector3(writer, easing_vector.x)
+    write_vector3(writer, easing_vector.y)
+  case:
+    panic("Unidentifed union type in PropKeyframeEasing")
+  }
+}
 
 write_transform :: proc(writer: Writer, transform: Transform) {
   

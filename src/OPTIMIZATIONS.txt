@@ -1,14 +1,20 @@
-  == Here lies different optimizaions that could be applied later ==
+== Here lies different optimizaions that could be applied later ==
 
-  1. Converting long string names into single byte numbers if possible
-  2. Picking the most smallest of storage using data type for numbers
-     A number that can be expressed in 1 byte should not be written as a
-     4 byte number anything like that.
-  3. Use LEB128 encoding as the Varint encoding, that could satisfy the above
-     optimization rule
-  4. Use delta encoding within large shapes arrays to find repeating information
-     and only encopde the differences between them. This also counts for vectors
-     which only changes by an acceptable amount
-  5. If colors are using Color4 but the alpha is not relevant then convert into
-     a Color3
-  6. If a Float can be encoded as an integer please do
+1. Converting long string names into single byte numbers if possible
+2. Picking the most smallest of storage using data type for numbers
+    A number that can be expressed in 1 byte should not be written as a
+    4 byte number anything like that.
+3. Use LEB128 encoding as the Varint encoding, that could satisfy the above
+    optimization rule
+4. Use delta encoding within large shapes arrays to find repeating information
+    and only encopde the differences between them. This also counts for vectors
+    which only changes by an acceptable amount
+5. If colors are using Color4 but the alpha is not relevant then convert into
+    a Color3
+6. If a Float can be encoded as an integer please do
+7. Implement FastPFOR (Patched Frame Of Reference) 
+    (https://ayende.com/blog/199523-C/integer-compression-understanding-fastpfor)
+8. Have a table of preconfigured easing function values for well known ones 
+    https://lottie.github.io/lottie-spec/latest/specs/properties/#easing-handle
+    From the x and y values maybe we can infer what kind of function it is and Use
+    and index into a table

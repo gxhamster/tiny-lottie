@@ -84,6 +84,10 @@ MatteMode :: enum {
   InvertedLuma,
 }
 
+PropKeyframeEasing :: union {
+  PropKeyframeEasingScalar,
+  PropKeyframeEasingVec
+}
 
 // Properties
 PropKeyframeEasingVec :: struct {
@@ -183,8 +187,7 @@ PropVectorSingle :: struct {
 }
 
 PropVectorKeyframe :: struct {
-  mask: u64,
-  t: f64,
+  t: u64,
   h: i64,
   i: PropKeyframeEasingVec,
   o: PropKeyframeEasingVec,
