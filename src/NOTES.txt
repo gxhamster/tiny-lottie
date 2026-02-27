@@ -15,7 +15,7 @@ write_layer :: proc(writer: TinyLottieWriter, layer: ^Layer) {
   layer_schema := {
     "nm",     .String,
     "hd",     .Bool,
-    "ty",     .Int64,
+    "ty",     .Int64,`1
     "ind",    .Int64,
     "parent", .Int64, 
     "ip",     .Float64,
@@ -106,3 +106,53 @@ from any other language
 
 If we are passing a struct it becomes a little difficult to 
 know what fields are set and what are not?
+
+== Ways of appraoching writing optional fields ==
+The most straight forward way I can think of is simply
+to do some branches to check if each field exists. This is done
+in the function body
+
+if isset(flags, 0) do write_string(writer, vector_single.sid)
+if isset(flags, 1) do write_bool(writer, vector_single.a)
+if isset(flags, 2) do write_vector3(writer, vector_single.k)
+
+
+Next method is to have a table of the offsets of each field
+of the struct with the corresponding encoding function for each
+field.
+
+WriteFunc :: proc(writer: ^Writer, buf: []byte)
+TblEntry :: struct {
+  offset: uintptr,
+  size: int,
+  func: WriteFunc
+}
+
+v_single := PropVectorSingle{}
+prop_vector_single_tbl := [?]TblEntry{
+  {offset_of(PropVectorSingle, sid), size_of(v_single.sid), write_f64},
+  {offset_of(PropVectorSingle, a),   size_of(v_single.a),   write_b8},
+  {offset_of(PropVectorSingle, k),   size_of(v_single.k),   write_vector3},
+}
+
+Another way of having a table is to do as below. Having a bunch of anonymous functions
+defined inside each encoding funtion so that you can still have the type system available
+and not have to do pass everything as rawptr's
+
+write_prop_vector2 :: proc(writer: ^Writer, vector: PropVector) {
+  Func :: proc(w: ^Writer, vec: PropVectorSingle)
+
+  if vector_single, ok := vector.(PropVectorSingle); ok {
+    write_tbl := [?]Func{
+      proc(w: ^Writer, vec: PropVectorSingle) {write_string(w, vec.sid)},
+      proc(w: ^Writer, vec: PropVectorSingle) {write_bool(w, vec.a)},
+      proc(w: ^Writer, vec: PropVectorSingle) {write_vector3(w, vec.k)},
+    }
+    mask := extract_bit_indices(vector_single._flags)
+    for idx in mask {
+      if idx < len(write_tbl) {
+        write_tbl[idx](writer, vector_single)
+      }
+    }
+  }
+}

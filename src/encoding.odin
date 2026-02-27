@@ -418,30 +418,81 @@ write_bezier :: proc(writer: ^Writer,
   free_all(context.temp_allocator)
 }
 
-is_set :: proc(value: u64, bit: uint) -> bool {
+@(deprecated="use the bitset version")
+isset_old :: #force_inline proc "contextless" (value: u64, bit: uint) -> bool {
   // note(iyaan): odin implementation
   // of this produces better ASM than my impl in odin
   return bits.bitfield_extract_u64(value, bit, 1) == 1
 }
 
+isset :: #force_inline proc "contextless" (value: Bit64, bit: int) -> bool {
+  return bit in value
+}
+
+@(deprecated="use the bitset version")
+extract_bit_indices_old :: proc(flags: u64) -> [64]u8 {
+  flags1 := flags
+  r := [64]u8{}
+  for flags1 > 0 {
+    trail_zeros := intrinsics.count_trailing_zeros(flags1)
+    // note(iyaan): The number of trailing zeros will also
+    // conveniently give the index of the rightmost 1 bit
+    // Eg: 00011010 (26) = 1 trailing zero, idx of right most
+    // is 1
+    r[trail_zeros] = 1
+    flags1 &= flags1 - 1
+  }
+  return r
+}
+
+Bit64 :: bit_set[0..<64]
+// A utility function that will give a convenient
+// bitset, depending on whether the respective
+// index position in the parameter is set or not. The first
+// element of the resulting array corresponds to the rightmost
+// bit of the parameter
+extract_bit_indices :: proc(flags: u64) -> (r: Bit64) {
+  r = transmute(Bit64)flags
+  return r
+}
+
+write_prop_vector_keyframe :: proc(writer: ^Writer, vec_keyframe: PropVectorKeyframe) {
+  flags := transmute(Bit64)vec_keyframe._flags
+  write_uint8(writer, u8(vec_keyframe._flags))
+  if isset(flags, 0) do write_varint(writer, i128(vec_keyframe.t))
+  if isset(flags, 1) do write_varint(writer, i128(vec_keyframe.h))
+  if isset(flags, 2) do write_keyframe_easing(writer, vec_keyframe.i)
+  if isset(flags, 3) do write_keyframe_easing(writer, vec_keyframe.o)
+  write_vector3(writer, vec_keyframe.s)
+}
+
 write_prop_vector :: proc(writer: ^Writer, vector: PropVector) {
-  if vector_single, ok := vector.(PropVectorSingle); ok {
-    if is_set(vector_single.mask, 0) {write_string(writer, vector_single.sid)}
-    if is_set(vector_single.mask, 1) {write_bool(writer, vector_single.a)}
-    if is_set(vector_single.mask, 2) {write_vector3(writer, vector_single.k)}
-  } else if vector_anim, ok := vector.(PropVectorAnim); ok {
+  // note(iyaan): These are required fields as by lottie-schema
+  // https://lottie.github.io/lottie-spec/latest/specs/schema/#/$defs/helpers/slottable-property
 
-    write_prop_vector_keyframe :: proc(writer: ^Writer, vec_keyframe: PropVectorKeyframe, flags: u8) {
-      write_uint8(writer, transmute(u8)flags)
-      flags := u64(flags)
-      if is_set(flags, 0) {write_varint(writer, i128(vec_keyframe.t))}
-      if is_set(flags, 1) {}
-      if is_set(flags, 2) {}
-      if is_set(flags, 3) {}
+  switch type in vector {
+  case PropVectorSingle:
+    vector_single := vector.(PropVectorSingle)
+    write_uint8(writer, u8(vector_single._flags))
+    flags := transmute(Bit64)vector_single._flags
+    
+    if isset(flags, 0) do write_string(writer, vector_single.sid)
+    if isset(flags, 1) do write_bool(writer, vector_single.a)
+    if isset(flags, 2) do write_vector3(writer, vector_single.k)
+  case PropVectorAnim:
+    vector_anim := vector.(PropVectorAnim)
+    write_uint8(writer, u8(vector_anim._flags))
+    flags := transmute(Bit64)vector_anim._flags
+    if isset(flags, 0) do write_string(writer, vector_anim.sid)
+    if isset(flags, 1) do write_bool(writer, vector_anim.a)
+
+    if isset(flags, 2) {
+      // write the keyframes as an array
+      write_varint(writer, i128(len(vector_anim.k)))
+      for frame in vector_anim.k {
+        write_prop_vector_keyframe(writer, frame)
+      }
     }
-
-    v := [?]Vec3{Vec3{1, 2, 3}, Vec3{4, 5, 6}}
-    transform_array_delta_enc(v[0][:])
   }
 }
 

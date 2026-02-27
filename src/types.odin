@@ -180,10 +180,11 @@ PropVector :: union {
 }
 
 PropVectorSingle :: struct {
-  mask: u64,
   sid: string,
   a:   bool,
   k:   Vec3,
+  _flags: u64,
+
 }
 
 PropVectorKeyframe :: struct {
@@ -192,13 +193,16 @@ PropVectorKeyframe :: struct {
   i: PropKeyframeEasingVec,
   o: PropKeyframeEasingVec,
   s: Vec3,
+  _flags: u64,
+
 }
 
 PropVectorAnim :: struct {
-  flags: u64,
   sid: string,
   a:   bool,
   k:   []PropVectorKeyframe,
+  _flags: u64,
+
 }
 
 // 2D version of a Vector property
