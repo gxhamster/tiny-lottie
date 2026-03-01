@@ -496,6 +496,79 @@ write_prop_vector :: proc(writer: ^Writer, vector: PropVector) {
   }
 }
 
+write_prop_scalar_keyframe :: proc(writer: ^Writer, scalar_keyframe: PropScalarKeyframe) {
+  flags := transmute(Bit64)scalar_keyframe._flags
+  write_uint8(writer, u8(scalar_keyframe._flags))
+  if isset(flags, 0) do write_varint(writer, i128(scalar_keyframe.t))
+  if isset(flags, 1) do write_varint(writer, i128(scalar_keyframe.h))
+  if isset(flags, 2) do write_keyframe_easing(writer, scalar_keyframe.i)
+  if isset(flags, 3) do write_keyframe_easing(writer, scalar_keyframe.o)
+  write_float32(writer, f32(scalar_keyframe.s))
+}
+
+write_prop_scalar :: proc(writer: ^Writer, scalar: PropScalar) {
+  switch type in scalar {
+  case PropScalarSingle:
+    scalar_single := scalar.(PropScalarSingle)
+    flags := transmute(Bit64)scalar_single._flags
+    write_uint8(writer, u8(transmute(u64)flags))
+    
+    if isset(flags, 0) do write_string(writer, scalar_single.sid)
+    if isset(flags, 2) do write_float32(writer, f32(scalar_single.k))
+  case PropScalarAnim:
+    scalar_anim := scalar.(PropScalarAnim)
+    flags := transmute(Bit64)scalar_anim._flags
+    assert(1 in flags, "Animated position does not have the `a` flag set")
+    if isset(flags, 0) do write_string(writer, scalar_anim.sid)
+    
+    write_varint(writer, i128(len(scalar_anim.k)))
+    for frame in scalar_anim.k {
+      write_prop_scalar_keyframe(writer, frame)
+    }
+  }
+}
+
+write_prop_position_keyframe :: proc(writer: ^Writer, position_keyframe: PropPositionKeyframe) {
+  flags := transmute(Bit64)position_keyframe._flags
+  write_uint8(writer, u8(position_keyframe._flags))
+  if isset(flags, 0) do write_varint(writer, i128(position_keyframe.t))
+  if isset(flags, 1) do write_varint(writer, i128(position_keyframe.h))
+  if isset(flags, 2) do write_keyframe_easing(writer, position_keyframe.i)
+  if isset(flags, 3) do write_keyframe_easing(writer, position_keyframe.o)
+  // TODO(iyaan): In the base lottie spec there are no 3d dimensional
+  // animations therefore positions are always 2d vectors. Need to change
+  // later
+  write_vector2(writer, position_keyframe.s.xy)
+  write_vector2(writer, position_keyframe.ti.xy)
+  write_vector2(writer, position_keyframe.to.xy)
+}
+
+write_prop_position :: proc(writer: ^Writer, position: PropPosition) {
+  switch type in position {
+  case PropPositionSingle:
+    position_single := position.(PropPositionSingle)
+    flags := transmute(Bit64)position_single._flags
+    write_uint8(writer, u8(transmute(u64)flags))
+    if isset(flags, 0) do write_string(writer, position_single.sid)
+    vec2 := Vec2{position_single.k.x, position_single.k.y}
+    if isset(flags, 2) do write_vector2(writer, vec2)
+  case PropPositionAnim:
+    position_anim := position.(PropPositionAnim)
+    flags := transmute(Bit64)position_anim._flags
+    assert(1 in flags, "Animated position does not have the `a` flag set")
+    if isset(flags, 0) do write_string(writer, position_anim.sid)
+    write_varint(writer, i128(len(position_anim.k)))
+    for frame in position_anim.k {
+      write_prop_position_keyframe(writer, frame)
+    }
+  case PropSplitPosition:
+    position_split := position.(PropSplitPosition)
+    write_bool(writer, position_split.s)
+    write_prop_scalar(writer, position_split.x)
+    write_prop_scalar(writer, position_split.y)
+  }
+}
+
 write_keyframe_easing :: proc(writer: ^Writer, easing: PropKeyframeEasing) {
   switch type in easing {
   case PropKeyframeEasingScalar:

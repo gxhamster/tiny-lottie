@@ -109,6 +109,7 @@ PropScalarSingle :: struct {
   sid: string,
   a:   bool,
   k:   f64,
+  _flags: u64,
 }
 
 PropScalarKeyframe :: struct {
@@ -117,12 +118,14 @@ PropScalarKeyframe :: struct {
   i: PropKeyframeEasingScalar,
   o: PropKeyframeEasingScalar,
   s: f64,
+  _flags: u64,
 }
 
 PropScalarAnim :: struct {
   sid: string,
   a:   bool,
   k:   []PropScalarKeyframe,
+  _flags: u64,
 }
 
 PropBezier :: union {
@@ -214,25 +217,28 @@ PropPosition :: union {
 
 PropPositionSingle :: PropVectorSingle
 PropPositionKeyframe :: struct {
-  t:  f64,
+  t:  u64,
   h:  i64,
   i:  PropKeyframeEasingVec,
   o:  PropKeyframeEasingVec,
   s:  Vec3,
   ti: Vec3,
   to: Vec3,
+  _flags: u64,
 }
 
 PropPositionAnim :: struct {
   sid: string,
   a:   bool,
   k:   []PropPositionKeyframe,
+  _flags: u64,
 }
 
 PropSplitPosition :: struct {
   s: bool,
   x: PropScalar,
   y: PropScalar,
+  _flags: u64,
 }
 
 // Helpers
