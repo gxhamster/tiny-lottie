@@ -317,7 +317,7 @@ parse_prop_bezier :: proc(
       bezier_prop = single_bezier
       return bezier_prop, .None
     } else if animated_val == 1 {
-      anim_vector := JsonLottie_Prop_Bezier_Anim {
+      anim_vector := PropBezierAnim {
         a = true,
       }
 
@@ -672,7 +672,6 @@ parse_vector_keyframe :: proc(
   case json.Object:
     object := value.(json.Object)
 
-    vec_keyframe.t = parse_number(object["t"]) or_return
     vec_keyframe.h = parse_integer(object["h"]) or_return
     vec_keyframe.i = parse_keyframe_easing_vec(
       object["i"],
@@ -706,7 +705,6 @@ parse_position_keyframe :: proc(
   case json.Object:
     object := value.(json.Object)
 
-    pos_keyframe.t = parse_number(object["t"]) or_return
     pos_keyframe.h = parse_integer(object["h"]) or_return
     pos_keyframe.i = parse_keyframe_easing_vec(
       object["i"],

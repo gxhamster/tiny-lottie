@@ -156,3 +156,66 @@ write_prop_vector2 :: proc(writer: ^Writer, vector: PropVector) {
     }
   }
 }
+
+
+Type :: enum {
+  String,
+  Bool,
+  Float64,
+  Float32,
+  Float16,
+  Int8,
+  Int16,
+  Int32,
+  Int64,
+  UInt8,
+  UInt16,
+  UInt32,
+  UInt64,
+}
+
+SchemaValueEntry :: struct {
+  name: string,
+  type: Type,
+  is_array: bool,
+  array_size: u64,
+}
+
+
+scalar_schema := [?]SchemaValueEntry{
+  {"sid", .String, false, 0},
+  {"a", .Bool, false, 0},
+  {"k", .Float64, false, 0},
+}
+
+scalar_anim_schema := [?]SchemaValueEntry{
+  {"sid", .String, false, 0},
+  {"a", .Bool, false, 0},
+  {"k", .Float64, true, 0},
+}
+
+vector_single_schema := [?]SchemaValueEntry{
+  {"sid", .String, false, 0},
+  {"a", .Bool, false, 0},
+  {"k", .Float64, true, 0},
+}
+
+MaxPropRecords :: 32
+PropRecord :: struct {
+  size: u64,
+  field_mask: Bit64,
+  schema: []SchemaValueEntry,
+  data: rawptr,
+}
+
+write_prop_record :: proc(writer: ^Writer, prop: ^PropRecord) {
+  mask_size_bits := len(prop.schema)
+  for entry in prop.schema {
+    switch entry.type {
+    case .String:
+
+    case .Bool:
+    case .Float64:
+    }
+  }
+}

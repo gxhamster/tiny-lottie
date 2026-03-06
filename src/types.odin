@@ -130,12 +130,13 @@ PropScalarAnim :: struct {
 
 PropBezier :: union {
   PropBezierSingle,
-  JsonLottie_Prop_Bezier_Anim,
+  PropBezierAnim,
 }
 
 PropBezierSingle :: struct {
   a: bool,
   k: BezierShapeValue,
+  
 }
 
 PropBezierKeyframe :: struct {
@@ -146,7 +147,7 @@ PropBezierKeyframe :: struct {
   s: BezierShapeValue,
 }
 
-JsonLottie_Prop_Bezier_Anim :: struct {
+PropBezierAnim :: struct {
   a: bool,
   k: []PropBezierKeyframe,
 }
@@ -187,7 +188,6 @@ PropVectorSingle :: struct {
   a:   bool,
   k:   Vec3,
   _flags: u64,
-
 }
 
 PropVectorKeyframe :: struct {
@@ -243,7 +243,6 @@ PropSplitPosition :: struct {
 
 // Helpers
 Transform :: struct {
-  flags: u64,
   a:  PropPosition,
   p:  PropPosition,
   r:  PropScalar,
@@ -251,6 +250,7 @@ Transform :: struct {
   o:  PropScalar,
   sk: PropScalar,
   sa: PropScalar,
+  _flags: u64,
 }
 
 Layer :: struct {

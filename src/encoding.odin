@@ -5,6 +5,8 @@ import "base:intrinsics"
 import "core:encoding/varint"
 import "core:math"
 import "core:mem"
+import "core:testing"
+import "core:log"
 
 // To keep track of writes to the byte buffer
 DebugInfo :: struct {
@@ -15,6 +17,13 @@ DebugInfo :: struct {
 Writer :: struct {
   data: []byte,
   offset: int,
+  bits: uint // This is the bit offset within the current byte specified by `offset` in `data` 
+}
+
+writer_reset :: proc(writer: ^Writer) {
+  writer.bits = 0
+  writer.offset = 0
+  mem.zero(&writer.data[0], len(writer.data))
 }
 
 // Will serialize any sequence of data. Does not write
@@ -569,6 +578,23 @@ write_prop_position :: proc(writer: ^Writer, position: PropPosition) {
   }
 }
 
+write_prop_bezier_shape :: proc(writer: ^Writer, bezier: PropBezier) {
+  default_bezier_flags := bit_set[BezierShapeFlags; u8]{.As_Float32}
+  if bezier_single, ok := bezier.(PropBezierSingle); ok {
+    write_bool(writer, bezier_single.a)
+    write_bezier(writer, bezier_single.k, default_bezier_flags)
+  } else if bezier_anim, ok := bezier.(PropBezierAnim); ok {
+    write_bool(writer, bezier_anim.a)
+    write_varint(writer, i128(len(bezier_anim.k)))
+    for frame in bezier_anim.k {
+      // TODO(iyaan): write the keyframe procedure
+      // write_bezier(writer, frame, default_bezier_flags)
+    }
+  } else {
+    panic("Unidentifed union type in PropBezier")
+  }
+}
+
 write_keyframe_easing :: proc(writer: ^Writer, easing: PropKeyframeEasing) {
   switch type in easing {
   case PropKeyframeEasingScalar:
@@ -586,6 +612,53 @@ write_keyframe_easing :: proc(writer: ^Writer, easing: PropKeyframeEasing) {
   }
 }
 
-write_transform :: proc(writer: Writer, transform: Transform) {
-  
+write_transform :: proc(writer: ^Writer, transform: Transform) {
+  write_uint8(writer, u8(transform._flags))
+  flags := transmute(Bit64)transform._flags
+  if isset(flags, 0) do write_prop_position(writer, transform.a)
+  if isset(flags, 1) do write_prop_position(writer, transform.p)
+  if isset(flags, 2) do write_prop_scalar(writer, transform.r)
+  if isset(flags, 3) do write_prop_vector(writer, transform.s)
+  if isset(flags, 4) do write_prop_scalar(writer, transform.o)
+  if isset(flags, 5) do write_prop_scalar(writer, transform.sk)
+  if isset(flags, 6) do write_prop_scalar(writer, transform.sa)
+}
+
+write_bits :: proc(writer: ^Writer, value: int, num_bits: uint) {
+  ptr := cast(^int)raw_data(writer.data[writer.offset:])
+  mask := int(1 << num_bits - 1)
+  base := ptr^
+	res := (base & ~(mask << writer.bits)) | ((value & mask) << writer.bits)
+  total_bit_offset := int(writer.bits + num_bits)
+  writer.offset += total_bit_offset / 8
+  writer.bits = uint(total_bit_offset) % 8
+  ptr^ = res
+}
+
+@(test)
+write_bits_test :: proc(t: ^testing.T) {
+  writer := Writer{}
+  buf := [10]byte{}
+  writer.data = buf[:]
+  write_bits(&writer, 1, 2)
+  write_bits(&writer, 2, 2)
+  write_bits(&writer, 3, 2)
+
+  testing.expect_value(t, (buf[0] & 0x03) >> 0, 1)
+  testing.expect_value(t, (buf[0] & 0x0c) >> 2, 2)
+  testing.expect_value(t, (buf[0] & 0x30) >> 4, 3)
+
+  writer_reset(&writer)
+  write_bits(&writer, 2002, 23)
+  write_bits(&writer, 10, 4)
+  write_bits(&writer, 16, 5)
+
+
+  testing.expect_value(t, (^u16)(&buf[0])^ & 0x7ff, 2002)
+  testing.expect_value(t,  (buf[3] & 0x07) << 1 | (buf[2] & 0x80) >> 7, 10)
+  testing.expect_value(t,  (buf[3] & 0x07) << 1 | (buf[2] & 0x80) >> 7, 10)
+  testing.expect_value(t, (buf[3] & 0xf8) >> 3, 16)
+
+  testing.expect(t, writer.offset == 4, "next byte offset is 4")
+  testing.expect(t, writer.bits == 0, "next bit offset is 0")
 }
