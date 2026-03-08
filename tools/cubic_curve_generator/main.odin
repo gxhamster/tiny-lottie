@@ -76,6 +76,7 @@ cubic_curve_approx :: proc(p1, p2: enc.Vec2, samples: int) -> []enc.Vec2 {
 }
 
 DEFAULT_SAMPLES :: 8
+DEFAULT_FLOAT_PRECISION_WIDTH :: 16
 main :: proc() {
   DisplayOps :: enum {
     normal,
@@ -87,7 +88,8 @@ main :: proc() {
     p1: enc.Vec2 `args:"required" usage:"P1 control points"`,    
     p2: enc.Vec2 `args:"required" usage:"P2 control points"`,    
     samples: int `usage:"how many samples to take from the curve"`,
-    display: DisplayOps `usage:"how to display the points (normal, flat, sep)"`
+    display: DisplayOps `usage:"how to display the points (normal, flat, sep)"`,
+    fw: int `usage:"the width of the float precision"`
   }
 
   args : Args
@@ -97,30 +99,85 @@ main :: proc() {
   if args.samples == 0 {
     args.samples = DEFAULT_SAMPLES 
   }
+
+  args.fw = args.fw > 0 && args.fw < DEFAULT_FLOAT_PRECISION_WIDTH ? args.fw : DEFAULT_FLOAT_PRECISION_WIDTH 
   points := cubic_curve_approx(args.p1, args.p2, args.samples)
-  if args.display == .normal {
-    fmt.println(points)
-  } else if args.display == .flat {
+  switch args.display {
+  case .normal:
+  {
+    builder, err := strings.builder_make(0, allocator = context.temp_allocator)
+    if err != .None {
+      panic("cannot allocate for string builder")
+    }
+    strings.write_string(&builder, "[%.")
+    strings.write_int(&builder, args.fw)
+    strings.write_string(&builder, "f, %.");
+    strings.write_int(&builder, args.fw)
+    strings.write_string(&builder, "f]");
+    
+    fmt.printf("[")
+    for vec2 in points {
+      fmt.printf(strings.to_string(builder), vec2.x, vec2.y)
+    }
+    fmt.printf("]\n")
+    strings.builder_destroy(&builder)
+  }
+  case .flat:
+  {
+    builder, err := strings.builder_make(0, allocator = context.temp_allocator)
+    if err != .None {
+      panic("cannot allocate for string builder")
+    }
+    strings.write_string(&builder, "%.")
+    strings.write_int(&builder, args.fw)
+    strings.write_string(&builder, "f, %.");
+    strings.write_int(&builder, args.fw)
+    strings.write_string(&builder, "f, ");
+
     fmt.print("[")
     for vec2 in points {
-      fmt.printf("%v, %v", vec2.x, vec2.y)
+      fmt.printf(strings.to_string(builder), vec2.x, vec2.y)
     }
     fmt.print("]\n")
-  } else if args.display == .sep {
+    strings.builder_destroy(&builder)
+  }
+  case .sep:
+  {
+    builder, err := strings.builder_make(0, allocator = context.temp_allocator)
+    if err != .None {
+      panic("cannot allocate for string builder")
+    }
+    strings.write_string(&builder, "%.")
+    strings.write_int(&builder, args.fw)
+    strings.write_string(&builder, "f, ")
+
     fmt.print("[")
     for vec2 in points {
-      fmt.printf("%v, ", vec2.x)
+      fmt.printf(strings.to_string(builder), vec2.x)
     }
     fmt.print("]\n")
     fmt.print("[")
     for vec2 in points {
-      fmt.printf("%v, ", vec2.y)
+      fmt.printf(strings.to_string(builder), vec2.y)
     }
     fmt.print("]\n")
-  } else if args.display == .gnuplot {
-    fmt.printf("# %-8s %-8s\n", "x", "y")
-    for vec2 in points {
-      fmt.printf("%-10f %-10f\n", vec2.x, vec2.y)
+    strings.builder_destroy(&builder)
+  }
+  case .gnuplot:
+  {
+    builder, err := strings.builder_make(0, allocator = context.temp_allocator)
+    if err != .None {
+      panic("cannot allocate for string builder")
     }
+    strings.write_string(&builder, "%.");
+    strings.write_int(&builder, args.fw)
+    strings.write_string(&builder, "f %.");
+    strings.write_int(&builder, args.fw)
+    strings.write_string(&builder, "f\n");
+    for vec2 in points {
+      fmt.printf(strings.to_string(builder), vec2.x, vec2.y)
+    }
+    strings.builder_destroy(&builder)
+  }
   }
 }
