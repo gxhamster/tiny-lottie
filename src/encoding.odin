@@ -7,6 +7,8 @@ import "core:math"
 import "core:mem"
 import "core:testing"
 import "core:log"
+import "core:fmt"
+import "core:simd"
 
 // To keep track of writes to the byte buffer
 DebugInfo :: struct {
@@ -652,11 +654,21 @@ cubic_bezier :: #force_inline proc(t: f64, p0, p1, p2, p3: f64) -> f64 {
   + p3 * math.pow(t, 3)
 }
 
-SAMPLING_RATE :: 16
-cubic_curve_approx :: proc(p1, p2: Vec2) -> [SAMPLING_RATE]Vec2 {
+SAMPLING_RATE :: 8
+LINEAR_THRESHOLD :: 0.10
+cubic_curve_approx :: proc(p1, p2: Vec2) -> EasingFunction {
   p0 := Vec2{0, 0}
   p3 := Vec2{1, 1}
   
+  // Linear check
+  y_grad := p2.y - p1.y
+  x_grad := p2.x - p1.x
+  thresh := math.abs(f64(1.0) - (y_grad / x_grad))
+
+  if x_grad != 0 && thresh < LINEAR_THRESHOLD {
+    return .Linear
+  }
+
   t: f64 = 0.0
   sampled_points := [SAMPLING_RATE]Vec2{}
   for i in 0..<SAMPLING_RATE {
@@ -666,15 +678,115 @@ cubic_curve_approx :: proc(p1, p2: Vec2) -> [SAMPLING_RATE]Vec2 {
     t += 1.0 / SAMPLING_RATE
   }
 
-  return sampled_points
+  // TODO(iyaan): Do this in a more simd friendly way
+  least_diff := f64(1_000_000.0)
+  most_probable := EasingFunction.Error 
+  for i in 0..<len(cubic_easing_functions_tbl) {
+    sum := f64(0.0)
+    for j := 0; j < SAMPLING_RATE*2; j += 2 {
+      vec := Vec2{f64(cubic_easing_functions_tbl[i][j]), f64(cubic_easing_functions_tbl[i][j+1])}
+      diff := vec.xy - sampled_points[j/2].xy
+      sum += math.abs(diff.x) + math.abs(diff.y)
+    }
+    if (sum) < least_diff {
+      least_diff = sum
+      most_probable = EasingFunction(i)
+    }
+  }
+  
+  return most_probable
+  
 }
 
+cubic_curve_approx_v2 :: proc(p1, p2: Vec2) -> EasingFunction {
+  p0 := Vec2{0, 0}
+  p3 := Vec2{1, 1}
+  
+  // Linear check
+  y_grad := p2.y - p1.y
+  x_grad := p2.x - p1.x
+  thresh := math.abs(f64(1.0) - (y_grad / x_grad))
+
+  if x_grad != 0 && thresh < LINEAR_THRESHOLD {
+    return .Linear
+  }
+
+  t: f64 = 0.0
+  sx: [SAMPLING_RATE]f32
+  sy: [SAMPLING_RATE]f32
+
+  for i in 0..<SAMPLING_RATE {
+    sx[i] = f32(cubic_bezier(t, p0.x, p1.x, p2.x, p3.x))
+    sy[i] = f32(cubic_bezier(t, p0.y, p1.y, p2.y, p3.y))
+    t += 1.0 / SAMPLING_RATE
+  }
+
+  sx_simd := simd.from_array(sx)
+  sy_simd := simd.from_array(sy)
+  
+  sum := f32(0.0)
+  least_diff := f32(1_000_000.0)
+  most_probable := EasingFunction.Error 
+  for i in 0..<len(cubic_easing_functions_tbl) {
+    cubic : simd.f32x16 = simd.from_array(cubic_easing_functions_tbl[i])
+    x := simd.swizzle(cubic, 0, 2, 4, 6, 8, 10, 12, 14)
+    y := simd.swizzle(cubic, 1, 3, 5, 7, 9, 11, 13, 15)
+    diff_x := simd.sub(x, sx_simd)
+    diff_y := simd.sub(y, sy_simd)
+    diff_x_abs := simd.abs(diff_x)
+    diff_y_abs := simd.abs(diff_y)
+    sum = simd.reduce_add_ordered(diff_x_abs) + simd.reduce_add_ordered(diff_y_abs)
+
+    if sum < least_diff {
+        least_diff = sum
+        most_probable = EasingFunction(i)
+    }
+  }
+  
+  return most_probable 
+}
+
+
+// note(iyaan): generated using cubic_curve_gen tool in
+// tools directory. Parameters for function taken from 
+// https://easings.net, add more easig functions here later
+EasingFunction :: enum {
+  Ease,
+  EaseIn,
+  EaseOut,
+  EaseInOut,
+  Linear = 32,
+  Error = -1
+}
+// note(iyaan): Blindly increasing the sampling rate would
+// increase computation time.
+cubic_easing_functions_tbl := [?][SAMPLING_RATE*2]f32{
+  { // ease
+    0.0000, 0.0000, 0.0840, 0.0717, 0.1562, 0.1984, 0.2285, 0.3604,
+    0.3125, 0.5375, 0.4199, 0.7100, 0.5625, 0.8578, 0.7520, 0.961
+  },
+  { // ease-in
+    0.0000, 0.0000, 0.1213, 0.0430, 0.2448, 0.1562, 0.3700, 0.3164,
+    0.4963, 0.5000, 0.6229, 0.6836, 0.7495, 0.8438, 0.8754, 0.957
+  },
+  { // ease-out
+    0.0000, 0.0000, 0.1246, 0.3301, 0.2505, 0.5781, 0.3771, 0.7559, 
+    0.5038, 0.8750, 0.6300, 0.9473, 0.7552, 0.9844, 0.8787, 0.9980
+  },
+  { // ease-in-out
+    0.0000, 0.0000, 0.2029, 0.0430, 0.3391, 0.1562, 0.4307, 0.3164, 
+    0.5000, 0.5000, 0.5693, 0.6836, 0.6609, 0.8438, 0.7971, 0.9570
+  },
+}
+
+
 @(test)
-cubic_curve_test :: proc(t: ^testing.T) {
-  p1 := Vec2{0.33,0}
-  p2 := Vec2{0.667,1}
-  r := cubic_curve_approx(p1, p2)
-  log.debug(r)
+cubic_curve_simd_test :: proc(t: ^testing.T) {
+  p1 := Vec2{0.0,0.919}
+  p2 := Vec2{0.535,1.079}
+  r0 := cubic_curve_approx(p1, p2)
+  r1 := cubic_curve_approx_v2(p1, p2)
+  testing.expect(t, r0 == r1, "simd and scalar approach gave different results (not .Linear)")
 }
 
 
