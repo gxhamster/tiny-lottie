@@ -26,6 +26,19 @@ writer_reset :: proc(writer: ^Writer) {
   mem.zero(&writer.data[0], len(writer.data))
 }
 
+// Allows for encoding fields not aligned at byte boundaries
+// will take care of the proper offsets
+write_bits :: proc(writer: ^Writer, value: int, num_bits: uint) {
+  ptr := cast(^int)raw_data(writer.data[writer.offset:])
+  mask := int(1 << num_bits - 1)
+  base := ptr^
+	res := (base & ~(mask << writer.bits)) | ((value & mask) << writer.bits)
+  total_bit_offset := int(writer.bits + num_bits)
+  writer.offset += total_bit_offset / 8
+  writer.bits = uint(total_bit_offset) % 8
+  ptr^ = res
+}
+
 // Will serialize any sequence of data. Does not write
 // the length
 writer_write_array :: proc(writer: ^Writer, array: []$T) {
@@ -624,16 +637,46 @@ write_transform :: proc(writer: ^Writer, transform: Transform) {
   if isset(flags, 6) do write_prop_scalar(writer, transform.sa)
 }
 
-write_bits :: proc(writer: ^Writer, value: int, num_bits: uint) {
-  ptr := cast(^int)raw_data(writer.data[writer.offset:])
-  mask := int(1 << num_bits - 1)
-  base := ptr^
-	res := (base & ~(mask << writer.bits)) | ((value & mask) << writer.bits)
-  total_bit_offset := int(writer.bits + num_bits)
-  writer.offset += total_bit_offset / 8
-  writer.bits = uint(total_bit_offset) % 8
-  ptr^ = res
+// note(iyaan): I want to be able to take the control points
+// from https://lottie.github.io/lottie-spec/latest/specs/properties/#easing-handle
+// and figure out what kind of curve it could be most related to. I have
+// seen that a lot of the sample files have mostly linear or ease-in-out easing functions
+// Maybe we can figure out what kind of curve it is and refrain from serializing the actual
+// control points each time and just encode some enum.
+cubic_bezier :: #force_inline proc(t: f64, p0, p1, p2, p3: f64) -> f64 {
+  // Cubic bezier parametric formula
+  // P = (1-t)**3 * p0 + t*p1*(3*(1-t)**2) + p2*(3*(1-t)*t**2) + p3*t**3
+  return math.pow(1 - t, 3) * p0 \ 
+  + t * p1 * (3 * math.pow(1 - t, 2)) \ 
+  + p2 * (3 * (1 - t) * math.pow(t, 2)) \ 
+  + p3 * math.pow(t, 3)
 }
+
+SAMPLING_RATE :: 16
+cubic_curve_approx :: proc(p1, p2: Vec2) -> [SAMPLING_RATE]Vec2 {
+  p0 := Vec2{0, 0}
+  p3 := Vec2{1, 1}
+  
+  t: f64 = 0.0
+  sampled_points := [SAMPLING_RATE]Vec2{}
+  for i in 0..<SAMPLING_RATE {
+    x := cubic_bezier(t, p0.x, p1.x, p2.x, p3.x) 
+    y := cubic_bezier(t, p0.y, p1.y, p2.y, p3.y) 
+    sampled_points[i] = Vec2{x, y}
+    t += 1.0 / SAMPLING_RATE
+  }
+
+  return sampled_points
+}
+
+@(test)
+cubic_curve_test :: proc(t: ^testing.T) {
+  p1 := Vec2{0.33,0}
+  p2 := Vec2{0.667,1}
+  r := cubic_curve_approx(p1, p2)
+  log.debug(r)
+}
+
 
 @(test)
 write_bits_test :: proc(t: ^testing.T) {
