@@ -113,7 +113,7 @@ main :: proc() {
     strings.write_int(&builder, args.fw)
     strings.write_string(&builder, "f, %.");
     strings.write_int(&builder, args.fw)
-    strings.write_string(&builder, "f]");
+    strings.write_string(&builder, "f], ");
     
     fmt.printf("[")
     for vec2 in points {
