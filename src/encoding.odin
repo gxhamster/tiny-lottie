@@ -30,6 +30,8 @@ writer_reset :: proc(writer: ^Writer) {
 
 // Allows for encoding fields not aligned at byte boundaries
 // will take care of the proper offsets
+// note(iyaan): when serializing flags do not call this function
+// for each individual flag bit. Do it for the whole thing.
 write_bits :: proc(writer: ^Writer, value: int, num_bits: uint) {
   ptr := cast(^int)raw_data(writer.data[writer.offset:])
   mask := int(1 << num_bits - 1)
@@ -42,7 +44,7 @@ write_bits :: proc(writer: ^Writer, value: int, num_bits: uint) {
 }
 
 // Will serialize any sequence of data. Does not write
-// the length
+// the length.
 writer_write_array :: proc(writer: ^Writer, array: []$T) {
   remaining := len(writer.data) - writer.offset
   assert(size_of(T)*len(array) <= remaining)
@@ -170,22 +172,79 @@ write_array :: proc(writer: ^Writer, array: []$T) {
   writer_write_array(writer, array)
 }
 
+VecInternType :: enum {
+  F32 = 0,
+  F16 = 1,
+  I8  = 2,
+  // TODO: remove i16 later. Reserve this state
+  // for signed flag of i8
+  I16 = 3,
+}
+
+check_optimal_intern_size :: proc(vec: [$Y]f64) -> VecInternType {
+  // note(iyaan): maybe later we can experiment
+  // after analysing of more lottie files on what
+  // the most apropriate theshold could be.
+  FLOAT_THRESHOLD :: 0.00001
+  opt := VecInternType.F32
+  for f in vec {
+    if f < math.F16_MAX && f > math.F16_MIN {
+      opt = .F16
+    }
+    i, frac := math.modf_f64(f)
+    if frac < FLOAT_THRESHOLD {
+      // Can be considered an integer, if the fractional
+      // part is so insignificant
+      as_int := (int)(i)
+      if as_int < int(max(i16)) && as_int > int(min(i16)) {
+        opt = .I16
+      }
+      if as_int < int(max(i8)) && as_int > int(min(i8)) {
+        opt = .I8
+      }
+    }
+  }
+  return opt
+} 
+
+write_vector_intern :: proc(writer: ^Writer, vec: [$Y]f64) {
+  // writing the type information in 2-bits
+  type := check_optimal_intern_size(vec)
+  write_bits(writer, int(type), 2)
+  switch type {
+  case .F16:
+    for i in 0..<Y {
+      write_float16(writer, f16(vec[i]))
+    }
+  case .F32:
+    for i in 0..<Y {
+      write_float32(writer, f32(vec[i]))
+    }
+  case .I8:
+    for i in 0..<Y {
+      write_int8(writer, i8(vec[i]))
+    }
+  case .I16:
+    for i in 0..<Y {
+      write_int16(writer, i16(vec[i]))  
+    }
+  }
+   
+}
+
 write_vector4 :: proc(writer: ^Writer, vec: Vec4) {
-  write_float32(writer, f32(vec[0]))
-  write_float32(writer, f32(vec[1]))
-  write_float32(writer, f32(vec[2]))
-  write_float32(writer, f32(vec[3]))
+  vec4 := cast([4]f64)vec
+  write_vector_intern(writer, vec4)
 }
 
 write_vector3 :: proc(writer: ^Writer, vec: Vec3) {
-  write_float32(writer, f32(vec[0]))
-  write_float32(writer, f32(vec[1]))
-  write_float32(writer, f32(vec[2]))
+  vec3 := cast([3]f64)vec
+  write_vector_intern(writer, vec3)
 }
 
 write_vector2 :: proc(writer: ^Writer, vec: Vec2) {
-  write_float32(writer, f32(vec[0]))
-  write_float32(writer, f32(vec[1]))
+  vec2 := cast([2]f64)vec
+  write_vector_intern(writer, vec2)
 }
 
 // note(iyaan): HexColor will also contain the preliminary # character
