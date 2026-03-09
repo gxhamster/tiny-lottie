@@ -1,5 +1,6 @@
 package main
 
+import "core:slice"
 import "core:math/bits"
 import "base:intrinsics"
 import "core:encoding/varint"
@@ -172,13 +173,10 @@ write_array :: proc(writer: ^Writer, array: []$T) {
   writer_write_array(writer, array)
 }
 
-VecInternType :: enum {
+VecInternType :: enum int {
   F32 = 0,
   F16 = 1,
-  I8  = 2,
-  // TODO: remove i16 later. Reserve this state
-  // for signed flag of i8
-  I16 = 3,
+  I8  = 3,
 }
 
 check_optimal_intern_size :: proc(vec: [$Y]f64) -> VecInternType {
@@ -186,26 +184,42 @@ check_optimal_intern_size :: proc(vec: [$Y]f64) -> VecInternType {
   // after analysing of more lottie files on what
   // the most apropriate theshold could be.
   FLOAT_THRESHOLD :: 0.00001
-  opt := VecInternType.F32
-  for f in vec {
+  opt := [Y]VecInternType{}
+  for idx in 0..<Y {
+    f := vec[idx]
     if f < math.F16_MAX && f > math.F16_MIN {
-      opt = .F16
+      opt[idx] = .F16
     }
     i, frac := math.modf_f64(f)
     if frac < FLOAT_THRESHOLD {
       // Can be considered an integer, if the fractional
       // part is so insignificant
       as_int := (int)(i)
-      if as_int < int(max(i16)) && as_int > int(min(i16)) {
-        opt = .I16
-      }
       if as_int < int(max(i8)) && as_int > int(min(i8)) {
-        opt = .I8
+        opt[idx] = .I8
       }
     }
   }
-  return opt
+  
+  res := slice.min(opt[:])
+  return res
 } 
+
+@(test)
+check_optimal_intern_size_test :: proc(t: ^testing.T) {
+  v1 := [2]f64{51.983, 10.645}
+  v2 := [2]f64{51.0000000983, 10.00000000000645}
+  v3 := [2]f64{51234.983, 1000501.645}
+  v4 := [3]f64{5123.983, 100.645, 10.0}
+  v5 := [3]f64{125.0, 100, 127}
+  v6 := [4]f64{125.0, 100, 126, 0.0000}
+  testing.expect_value(t, check_optimal_intern_size(v1), VecInternType.F16)
+  testing.expect_value(t, check_optimal_intern_size(v2), VecInternType.I8)
+  testing.expect_value(t, check_optimal_intern_size(v3), VecInternType.F32)
+  testing.expect_value(t, check_optimal_intern_size(v4), VecInternType.F16)
+  testing.expect_value(t, check_optimal_intern_size(v5), VecInternType.F16)
+  testing.expect_value(t, check_optimal_intern_size(v6), VecInternType.I8)
+}
 
 write_vector_intern :: proc(writer: ^Writer, vec: [$Y]f64) {
   // writing the type information in 2-bits
@@ -223,10 +237,6 @@ write_vector_intern :: proc(writer: ^Writer, vec: [$Y]f64) {
   case .I8:
     for i in 0..<Y {
       write_int8(writer, i8(vec[i]))
-    }
-  case .I16:
-    for i in 0..<Y {
-      write_int16(writer, i16(vec[i]))  
     }
   }
    
