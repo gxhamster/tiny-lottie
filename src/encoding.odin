@@ -429,7 +429,7 @@ write_gradient :: proc(writer: ^Writer, gradient: Gradient, debug_name: string =
 }
 
 // A more general transform version supporting for all vector sizes
-transform_array_vec_change_size :: proc(vec_array: [][$Y]$T, target_vec_size: int, allocator := context.temp_allocator) -> [][Y]T {
+trans_array_vec_change_size :: proc(vec_array: [][$Y]$T, target_vec_size: int, allocator := context.temp_allocator) -> [][Y]T {
   r_vec_array := make_slice([][Y]T, len(vec_array), allocator)
   for i in 0..<len(vec_array) {
     for j in 0..<Y {
@@ -439,7 +439,7 @@ transform_array_vec_change_size :: proc(vec_array: [][$Y]$T, target_vec_size: in
   return r_vec_array
 }
 
-transform_array_vec3_to_vec2 :: proc($T: typeid, vec3_array: [][3]T, allocator := context.temp_allocator) -> [][2]T {
+trans_array_vec3_to_vec2 :: proc($T: typeid, vec3_array: [][3]T, allocator := context.temp_allocator) -> [][2]T {
   vec2_array := make_slice([][2]T, len(vec3_array), allocator)
   for i in 0..<len(vec3_array) {
     vec2_array[i] = vec3_array[i].xy
@@ -447,7 +447,7 @@ transform_array_vec3_to_vec2 :: proc($T: typeid, vec3_array: [][3]T, allocator :
   return vec2_array
 }
 
-transform_array_vec3_intern_type :: proc($T: typeid, comp: []Vec3, allocator := context.temp_allocator) -> [][3]T {
+trans_array_vec3_intern_type :: proc($T: typeid, comp: []Vec3, allocator := context.temp_allocator) -> [][3]T {
   vec_array := make_slice([][3]T, len(comp), allocator)
 
   for i in 0..<len(comp) {
@@ -466,7 +466,7 @@ LEB128Res :: struct {
   buffer: [varint.LEB128_MAX_BYTES]byte,
   size: int
 }
-transform_array_vec_intern_varint :: proc(vec_slice: [][$T]i128, allocator := context.temp_allocator) -> [][T]LEB128Res {
+trans_array_vec_intern_varint :: proc(vec_slice: [][$T]i128, allocator := context.temp_allocator) -> [][T]LEB128Res {
   #assert(T <= 3, "Why is your vector size un-natural???")
   r_array := make_slice([][T]LEB128Res, len(vec_slice), allocator)
   for i in 0..<len(vec_slice) {
@@ -484,7 +484,7 @@ transform_array_vec_intern_varint :: proc(vec_slice: [][$T]i128, allocator := co
 // Will compute the delta, of each subsequent value. Use the first value as the first
 // reference point. The values will then be encoded in LEB128
 // TODO: Make this a SIMD algorithm. Maybe Daniel Lemiere's algorithm.
-transform_array_delta_enc :: proc(array: $T/[]$E, allocator := context.temp_allocator) -> []LEB128Res
+trans_array_delta :: proc(array: $T/[]$E, allocator := context.temp_allocator) -> []LEB128Res
   where intrinsics.type_is_float(E) || intrinsics.type_is_integer(E) {
   assert(len(array) >= 2, "delta encoding requires at least two elements")
   r_array := make_slice([]LEB128Res, len(array), allocator)
@@ -497,7 +497,7 @@ transform_array_delta_enc :: proc(array: $T/[]$E, allocator := context.temp_allo
 }
 
 // Delta encoding variant for 3d vectors
-transform_array_vec3_delta_enc :: proc(array: []Vec3, allocator := context.allocator) -> [][3]LEB128Res {
+trans_array_vec3_delta :: proc(array: []Vec3, allocator := context.allocator) -> [][3]LEB128Res {
   assert(len(array) >= 2, "delta encoding requires at least two elements")
   r_array := make_slice([][3]LEB128Res, len(array), allocator)
   for i in 1..<len(array) {
@@ -517,87 +517,50 @@ transform_array_vec3_delta_enc :: proc(array: []Vec3, allocator := context.alloc
 
 BezierShapeFlags :: enum u8 {
   Closed_Loop,
-  As_Float32,  // Encode all vector values as f32
-  As_Float16,
-  As_Varint,   // Will truncate floating point values
   Use_Vec2,    // Use Vec2 instead of Vec3
 }
 
 // Will free the temporary allocator
 write_bezier :: proc(writer: ^Writer,
                      bezier_shape: BezierShapeValue,
-                     flags: bit_set[BezierShapeFlags; u8]) {
+                     flags: bit_set[BezierShapeFlags; u8],
+                     debug_name: string = "") {
+
+  info := begin_debug_info(writer, debug_name, .meta) 
   #assert(size_of(flags) == size_of(u8), "flags should be an u8")
-  write_uint8(writer, transmute(u8)flags)
-  // note(iyaan): The vector fileds are supposed to have the same length
+  write_uint8(writer, transmute(u8)flags, "flags")
   expected_len := len(bezier_shape.i)
   assert(len(bezier_shape.o) == expected_len, "mismatched i and o in bezier shape")
   assert(len(bezier_shape.v) == expected_len, "mismatched i and v in bezier shape")
 
-
-  if .As_Float16 in flags {
-    f16_i_vecs := transform_array_vec3_intern_type(f16, bezier_shape.i)
-    f16_o_vecs := transform_array_vec3_intern_type(f16, bezier_shape.o)
-    f16_v_vecs := transform_array_vec3_intern_type(f16, bezier_shape.v)
-
+  i_info := begin_debug_info(writer, "i", .meta) 
+  for ivec in bezier_shape.i {
     if .Use_Vec2 in flags {
-      f16_i_vec2s := transform_array_vec3_to_vec2(f16, f16_i_vecs)
-      f16_o_vec2s := transform_array_vec3_to_vec2(f16, f16_o_vecs)
-      f16_v_vec2s := transform_array_vec3_to_vec2(f16, f16_v_vecs)
-      write_array(writer, f16_i_vec2s)
-      write_array(writer, f16_i_vec2s)
-      write_array(writer, f16_i_vec2s)
+      write_vector2(writer, ivec.xy)
     } else {
-      write_array(writer, f16_i_vecs)
-      write_array(writer, f16_o_vecs)
-      write_array(writer, f16_v_vecs)
-    }
-  } else if .As_Varint in flags {
-    // note(iyaan): Force truncate floats to varints. You will lose the
-    // float precision
-    varint_i_vecs := transform_array_vec3_intern_type(i128, bezier_shape.i)
-    varint_o_vecs := transform_array_vec3_intern_type(i128, bezier_shape.o)
-    varint_v_vecs := transform_array_vec3_intern_type(i128, bezier_shape.v)
-
-    if .Use_Vec2 in flags {
-      varint_i_vec2s := transform_array_vec3_to_vec2(i128, varint_i_vecs)
-      varint_o_vec2s := transform_array_vec3_to_vec2(i128, varint_o_vecs)
-      varint_v_vec2s := transform_array_vec3_to_vec2(i128, varint_v_vecs)
-
-      varint_i_array := transform_array_vec_intern_varint(varint_i_vec2s)
-      varint_o_array := transform_array_vec_intern_varint(varint_o_vec2s)
-      varint_v_array := transform_array_vec_intern_varint(varint_v_vec2s)
-      write_array(writer, varint_i_array)
-      write_array(writer, varint_o_array)
-      write_array(writer, varint_v_array)
-    } else {
-      varint_i_array := transform_array_vec_intern_varint(varint_i_vecs)
-      varint_o_array := transform_array_vec_intern_varint(varint_o_vecs)
-      varint_v_array := transform_array_vec_intern_varint(varint_v_vecs)
-      write_array(writer, varint_i_array)
-      write_array(writer, varint_o_array)
-      write_array(writer, varint_v_array)
-    }
-  } else {
-    f32_i_vecs := transform_array_vec3_intern_type(f32, bezier_shape.i)
-    f32_o_vecs := transform_array_vec3_intern_type(f32, bezier_shape.o)
-    f32_v_vecs := transform_array_vec3_intern_type(f32, bezier_shape.v)
-
-    if .Use_Vec2 in flags {
-      f32_i_vec2s := transform_array_vec3_to_vec2(f32, f32_i_vecs)
-      f32_o_vec2s := transform_array_vec3_to_vec2(f32, f32_o_vecs)
-      f32_v_vec2s := transform_array_vec3_to_vec2(f32, f32_v_vecs)
-      write_array(writer, f32_i_vec2s)
-      write_array(writer, f32_i_vec2s)
-      write_array(writer, f32_i_vec2s)
-    } else {
-      write_array(writer, f32_i_vecs)
-      write_array(writer, f32_o_vecs)
-      write_array(writer, f32_v_vecs)
+      write_vector3(writer, ivec)
     }
   }
-
-  free_all(context.temp_allocator)
+  end_debug_info(&i_info, writer)
+  o_info := begin_debug_info(writer, "o", .meta) 
+  for ovec in bezier_shape.o {
+    if .Use_Vec2 in flags {
+      write_vector2(writer, ovec.xy)
+    } else {
+      write_vector3(writer, ovec)
+    }
+  }
+  end_debug_info(&o_info, writer)
+  v_info := begin_debug_info(writer, "v", .meta) 
+  for vvec in bezier_shape.v {
+    if .Use_Vec2 in flags {
+      write_vector2(writer, vvec.xy)
+    } else {
+      write_vector3(writer, vvec)
+    }
+  }
+  end_debug_info(&v_info, writer)
+  end_debug_info(&info, writer)
 }
 
 @(deprecated="use the bitset version")
@@ -752,7 +715,7 @@ write_prop_position :: proc(writer: ^Writer, position: PropPosition) {
 }
 
 write_prop_bezier_shape :: proc(writer: ^Writer, bezier: PropBezier) {
-  default_bezier_flags := bit_set[BezierShapeFlags; u8]{.As_Float32}
+  default_bezier_flags := bit_set[BezierShapeFlags; u8]{}
   if bezier_single, ok := bezier.(PropBezierSingle); ok {
     write_bool(writer, bezier_single.a)
     write_bezier(writer, bezier_single.k, default_bezier_flags)
