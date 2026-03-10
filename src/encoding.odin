@@ -70,6 +70,7 @@ write_bits :: proc(writer: ^Writer, value: int, num_bits: uint) {
 
 // Will serialize any sequence of data. Does not write
 // the length.
+@(deprecated = "cannot write in between bytes")
 writer_write_array :: proc(writer: ^Writer, array: []$T) {
   remaining := len(writer.data) - writer.offset
   assert(size_of(T)*len(array) <= remaining)
@@ -288,12 +289,14 @@ check_optimal_intern_size_test :: proc(t: ^testing.T) {
   v4 := [3]f64{5123.983, 100.645, 10.0}
   v5 := [3]f64{125.0, 100, 127}
   v6 := [4]f64{125.0, 100, 126, 0.0000}
+  v7 := [4]f64{125.0, 100, 132, 0.0000}
   testing.expect_value(t, check_optimal_intern_size(v1), VecInternType.F16)
   testing.expect_value(t, check_optimal_intern_size(v2), VecInternType.I8)
   testing.expect_value(t, check_optimal_intern_size(v3), VecInternType.F32)
   testing.expect_value(t, check_optimal_intern_size(v3), VecInternType.F32)
   testing.expect_value(t, check_optimal_intern_size(v5), VecInternType.F16)
   testing.expect_value(t, check_optimal_intern_size(v6), VecInternType.I8)
+  testing.expect_value(t, check_optimal_intern_size(v7), VecInternType.F16)
 }
 
 write_vector_intern :: proc(writer: ^Writer, vec: [$Y]f64) {
@@ -563,32 +566,10 @@ write_bezier :: proc(writer: ^Writer,
   end_debug_info(&info, writer)
 }
 
-@(deprecated="use the bitset version")
-isset_old :: #force_inline proc "contextless" (value: u64, bit: uint) -> bool {
-  // note(iyaan): odin implementation
-  // of this produces better ASM than my impl in odin
-  return bits.bitfield_extract_u64(value, bit, 1) == 1
-}
-
 isset :: #force_inline proc "contextless" (value: Bit64, bit: int) -> bool {
   return bit in value
 }
 
-@(deprecated="use the bitset version")
-extract_bit_indices_old :: proc(flags: u64) -> [64]u8 {
-  flags1 := flags
-  r := [64]u8{}
-  for flags1 > 0 {
-    trail_zeros := intrinsics.count_trailing_zeros(flags1)
-    // note(iyaan): The number of trailing zeros will also
-    // conveniently give the index of the rightmost 1 bit
-    // Eg: 00011010 (26) = 1 trailing zero, idx of right most
-    // is 1
-    r[trail_zeros] = 1
-    flags1 &= flags1 - 1
-  }
-  return r
-}
 
 Bit64 :: bit_set[0..<64]
 // A utility function that will give a convenient
@@ -673,11 +654,76 @@ write_prop_scalar :: proc(writer: ^Writer, scalar: PropScalar) {
   }
 }
 
+easing_curve :: proc(writer: ^Writer, p0, p1: PropKeyframeEasing) {
+  // note(iyaan): if one point is a scalar then the other point
+  // also has to be scalar
+  p0_scalar, p0_scalar_ok := p0.(PropKeyframeEasingScalar)
+  p1_scalar, p1_scalar_ok := p1.(PropKeyframeEasingScalar)
+  p0_vector, p0_vector_ok := p0.(PropKeyframeEasingVec)
+  p1_vector, p1_vector_ok := p1.(PropKeyframeEasingVec)
+  
+  FLAG_COUNT :: 3 // Number of enums must match this bit width
+  EasingCurveFlag :: enum {
+    Vector, // if not set it is a scalar
+    Enum,   // If this flag is set no other values except the enum is set
+    Vector2 // Specify the either vector3 or vector2
+  }
+
+  EasingCurveFlag_Set :: bit_set[EasingCurveFlag; int]
+
+  if p0_scalar_ok && p1_scalar_ok {
+    v1 := Vec2{p0_scalar.x, p0_scalar.y}
+    v2 := Vec2{p1_scalar.x, p1_scalar.y}
+    easing := cubic_curve_approx(v1, v2)
+    flags : EasingCurveFlag_Set
+    if easing != .Error {
+      flags = {.Enum}
+      write_bits(writer, transmute(int)flags, FLAG_COUNT)
+      write_enum(writer, u8(easing))
+    } else {
+      // just write the point information
+      flags = {}
+      write_bits(writer, transmute(int)flags, FLAG_COUNT)
+      write_vector2(writer, v1)
+      write_vector2(writer, v2)
+    }
+  } else if p0_vector_ok && p1_vector_ok {
+    flags : EasingCurveFlag_Set
+    vec_length := 0
+    if p0_vector.x.z == 0 && p1_vector.y.z == 0 && p1_vector.x.z == 0 && p1_vector.y.z == 0 {
+      flags += {.Vector2}
+      vec_length = 2
+    } else {
+      flags -= {.Vector2}
+      vec_length = 3
+    } 
+    for i in 0..<vec_length {
+      point0 := Vec2{p0_vector.x.x, p0_vector.y.y}
+      point1 := Vec2{p1_vector.x.x, p1_vector.y.y}
+      easing := cubic_curve_approx(point0, point1)
+      if easing != .Error {
+        flags += {.Enum}
+        write_bits(writer, transmute(int)flags, FLAG_COUNT)
+        flags -= {.Enum}
+        write_enum(writer, u8(easing))
+      } else {
+        flags += {.Vector}
+        write_bits(writer, transmute(int)flags, FLAG_COUNT)
+        flags -= {.Vector}
+        write_vector2(writer, point0)
+        write_vector2(writer, point1)
+      }
+    }
+  } else {
+    assert(false, "mismatched types with the p0 and p1")
+  }
+}
+
 write_prop_position_keyframe :: proc(writer: ^Writer, position_keyframe: PropPositionKeyframe) {
   flags := transmute(Bit64)position_keyframe._flags
   write_uint8(writer, u8(position_keyframe._flags))
   if isset(flags, 0) do write_varint(writer, i128(position_keyframe.t))
-  if isset(flags, 1) do write_varint(writer, i128(position_keyframe.h))
+  if isset(flags, 1) do write_bool(writer, bool(position_keyframe.h))
   if isset(flags, 2) do write_keyframe_easing(writer, position_keyframe.i)
   if isset(flags, 3) do write_keyframe_easing(writer, position_keyframe.o)
   // TODO(iyaan): In the base lottie spec there are no 3d dimensional
@@ -691,13 +737,16 @@ write_prop_position_keyframe :: proc(writer: ^Writer, position_keyframe: PropPos
 write_prop_position :: proc(writer: ^Writer, position: PropPosition) {
   switch type in position {
   case PropPositionSingle:
+  {
     position_single := position.(PropPositionSingle)
     flags := transmute(Bit64)position_single._flags
     write_uint8(writer, u8(transmute(u64)flags))
-    if isset(flags, 0) do write_string(writer, position_single.sid)
     vec2 := Vec2{position_single.k.x, position_single.k.y}
+    if isset(flags, 0) do write_string(writer, position_single.sid)
     if isset(flags, 2) do write_vector2(writer, vec2)
+  }
   case PropPositionAnim:
+  {
     position_anim := position.(PropPositionAnim)
     flags := transmute(Bit64)position_anim._flags
     assert(1 in flags, "Animated position does not have the `a` flag set")
@@ -706,11 +755,14 @@ write_prop_position :: proc(writer: ^Writer, position: PropPosition) {
     for frame in position_anim.k {
       write_prop_position_keyframe(writer, frame)
     }
+  }
   case PropSplitPosition:
+  {
     position_split := position.(PropSplitPosition)
     write_bool(writer, position_split.s)
     write_prop_scalar(writer, position_split.x)
     write_prop_scalar(writer, position_split.y)
+  }
   }
 }
 
@@ -732,15 +784,16 @@ write_prop_bezier_shape :: proc(writer: ^Writer, bezier: PropBezier) {
 }
 
 write_keyframe_easing :: proc(writer: ^Writer, easing: PropKeyframeEasing) {
+  // TODO(iyaan): use the cubic bezier correlation optimization to
+  // know which type of cubic bezier easing function does the following control
+  // points to generate and get the enum
   switch type in easing {
   case PropKeyframeEasingScalar:
     easing_scalar := easing.(PropKeyframeEasingScalar)
-    write_varint(writer, i128(easing_scalar.x))
-    write_varint(writer, i128(easing_scalar.y))
+    write_float16(writer, f16(easing_scalar.x))
+    write_float16(writer, f16(easing_scalar.y))
   case PropKeyframeEasingVec:
     easing_vector := easing.(PropKeyframeEasingVec)
-    // TODO: Probably should not write just write each vector
-    // as plain f32 here
     write_vector3(writer, easing_vector.x)
     write_vector3(writer, easing_vector.y)
   case:
@@ -871,13 +924,13 @@ cubic_curve_approx_v2 :: proc(p1, p2: Vec2) -> EasingFunction {
 // note(iyaan): generated using cubic_curve_gen tool in
 // tools directory. Parameters for function taken from 
 // https://easings.net, add more easig functions here later
-EasingFunction :: enum {
+EasingFunction :: enum u8 {
   Ease,
   EaseIn,
   EaseOut,
   EaseInOut,
   Linear = 32,
-  Error = -1
+  Error = 255
 }
 // note(iyaan): Blindly increasing the sampling rate would
 // increase computation time.
