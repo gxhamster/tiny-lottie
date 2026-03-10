@@ -830,7 +830,8 @@ cubic_bezier :: #force_inline proc(t: f64, p0, p1, p2, p3: f64) -> f64 {
 
 SAMPLING_RATE :: 8
 LINEAR_THRESHOLD :: 0.10
-cubic_curve_approx :: proc(p1, p2: Vec2) -> EasingFunction {
+cubic_curve_approx :: cubic_curve_approx_simd
+cubic_curve_approx_scalar :: proc(p1, p2: Vec2) -> EasingFunction {
   p0 := Vec2{0, 0}
   p3 := Vec2{1, 1}
   
@@ -869,10 +870,9 @@ cubic_curve_approx :: proc(p1, p2: Vec2) -> EasingFunction {
   }
   
   return most_probable
-  
 }
 
-cubic_curve_approx_v2 :: proc(p1, p2: Vec2) -> EasingFunction {
+cubic_curve_approx_simd :: proc(p1, p2: Vec2) -> EasingFunction {
   p0 := Vec2{0, 0}
   p3 := Vec2{1, 1}
   
@@ -916,7 +916,6 @@ cubic_curve_approx_v2 :: proc(p1, p2: Vec2) -> EasingFunction {
         most_probable = EasingFunction(i)
     }
   }
-  
   return most_probable 
 }
 
@@ -958,8 +957,8 @@ cubic_easing_functions_tbl := [?][SAMPLING_RATE*2]f32{
 cubic_curve_simd_test :: proc(t: ^testing.T) {
   p1 := Vec2{0.0,0.919}
   p2 := Vec2{0.535,1.079}
-  r0 := cubic_curve_approx(p1, p2)
-  r1 := cubic_curve_approx_v2(p1, p2)
+  r0 := cubic_curve_approx_scalar(p1, p2)
+  r1 := cubic_curve_approx(p1, p2)
   testing.expect(t, r0 == r1, "simd and scalar approach gave different results (not .Linear)")
 }
 
