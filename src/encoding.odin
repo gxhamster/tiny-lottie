@@ -587,8 +587,16 @@ write_prop_vector_keyframe :: proc(writer: ^Writer, vec_keyframe: PropVectorKeyf
   write_uint8(writer, u8(vec_keyframe._flags))
   if isset(flags, 0) do write_varint(writer, i128(vec_keyframe.t))
   if isset(flags, 1) do write_varint(writer, i128(vec_keyframe.h))
-  if isset(flags, 2) do write_keyframe_easing(writer, vec_keyframe.i)
-  if isset(flags, 3) do write_keyframe_easing(writer, vec_keyframe.o)
+  if isset(flags, 2) && isset(flags, 3) {
+    // note(iyaan): i is the tangent point at the end of the curve
+    // and i is the tangent point at the start of the curve. so they will
+    // be o = p0 i = p1
+    // is it possible for one of o or i to exist without one or another.
+    // then the below function would not be the most effective, but it 
+    // also does not make sense to have one. I think that is like an invalid
+    // state
+    write_easing_curve(writer, vec_keyframe.o, vec_keyframe.i) 
+  }
   write_vector3(writer, vec_keyframe.s)
 }
 
@@ -627,8 +635,9 @@ write_prop_scalar_keyframe :: proc(writer: ^Writer, scalar_keyframe: PropScalarK
   write_uint8(writer, u8(scalar_keyframe._flags))
   if isset(flags, 0) do write_varint(writer, i128(scalar_keyframe.t))
   if isset(flags, 1) do write_varint(writer, i128(scalar_keyframe.h))
-  if isset(flags, 2) do write_keyframe_easing(writer, scalar_keyframe.i)
-  if isset(flags, 3) do write_keyframe_easing(writer, scalar_keyframe.o)
+  if isset(flags, 2) && isset(flags, 3) {
+    write_easing_curve(writer, scalar_keyframe.o, scalar_keyframe.i)
+  }
   write_float32(writer, f32(scalar_keyframe.s))
 }
 
@@ -654,7 +663,7 @@ write_prop_scalar :: proc(writer: ^Writer, scalar: PropScalar) {
   }
 }
 
-easing_curve :: proc(writer: ^Writer, p0, p1: PropKeyframeEasing) {
+write_easing_curve :: proc(writer: ^Writer, p0, p1: PropKeyframeEasing) {
   // note(iyaan): if one point is a scalar then the other point
   // also has to be scalar
   p0_scalar, p0_scalar_ok := p0.(PropKeyframeEasingScalar)
@@ -662,6 +671,10 @@ easing_curve :: proc(writer: ^Writer, p0, p1: PropKeyframeEasing) {
   p0_vector, p0_vector_ok := p0.(PropKeyframeEasingVec)
   p1_vector, p1_vector_ok := p1.(PropKeyframeEasingVec)
   
+  // note(iyaan): Likley invalid state handling. The p1 point is at (0, 0).
+  // A very unlikely curve to exist
+  // assert(p1_scalar_ok && p1_scalar.x == 
+
   FLAG_COUNT :: 3 // Number of enums must match this bit width
   EasingCurveFlag :: enum {
     Vector, // if not set it is a scalar
@@ -724,8 +737,9 @@ write_prop_position_keyframe :: proc(writer: ^Writer, position_keyframe: PropPos
   write_uint8(writer, u8(position_keyframe._flags))
   if isset(flags, 0) do write_varint(writer, i128(position_keyframe.t))
   if isset(flags, 1) do write_bool(writer, bool(position_keyframe.h))
-  if isset(flags, 2) do write_keyframe_easing(writer, position_keyframe.i)
-  if isset(flags, 3) do write_keyframe_easing(writer, position_keyframe.o)
+  if isset(flags, 2) && isset(flags, 3) {
+    write_easing_curve(writer, position_keyframe.o, position_keyframe.i)
+  }
   // TODO(iyaan): In the base lottie spec there are no 3d dimensional
   // animations therefore positions are always 2d vectors. Need to change
   // later
@@ -783,7 +797,7 @@ write_prop_bezier_shape :: proc(writer: ^Writer, bezier: PropBezier) {
   }
 }
 
-write_keyframe_easing :: proc(writer: ^Writer, easing: PropKeyframeEasing) {
+write_keyframe_easing_handle :: proc(writer: ^Writer, easing: PropKeyframeEasing) {
   // TODO(iyaan): use the cubic bezier correlation optimization to
   // know which type of cubic bezier easing function does the following control
   // points to generate and get the enum
@@ -898,25 +912,26 @@ cubic_curve_approx_simd :: proc(p1, p2: Vec2) -> EasingFunction {
   sx_simd := simd.from_array(sx)
   sy_simd := simd.from_array(sy)
   
-  sum := f32(0.0)
-  least_diff := f32(1_000_000.0)
-  most_probable := EasingFunction.Error 
+  MAX_MAGNITUDE_THRESH :: 0.25
   for i in 0..<len(cubic_easing_functions_tbl) {
     cubic : simd.f32x16 = simd.from_array(cubic_easing_functions_tbl[i])
     x := simd.swizzle(cubic, 0, 2, 4, 6, 8, 10, 12, 14)
     y := simd.swizzle(cubic, 1, 3, 5, 7, 9, 11, 13, 15)
     diff_x := simd.sub(x, sx_simd)
     diff_y := simd.sub(y, sy_simd)
-    diff_x_abs := simd.abs(diff_x)
-    diff_y_abs := simd.abs(diff_y)
-    sum = simd.reduce_add_ordered(diff_x_abs) + simd.reduce_add_ordered(diff_y_abs)
-
-    if sum < least_diff {
-        least_diff = sum
-        most_probable = EasingFunction(i)
+    diff_x2 := simd.mul(diff_x, diff_x)
+    diff_y2 := simd.mul(diff_y, diff_y)
+    r1 := simd.add(diff_x2, diff_y2)
+    mag := simd.sqrt(r1)
+    mag_thresh := #simd[SAMPLING_RATE]f32{}
+    mag_thresh = MAX_MAGNITUDE_THRESH
+    largest_mag := simd.lanes_gt(mag, mag_thresh)
+    is_zero := simd.reduce_or(largest_mag)
+    if is_zero == 0 {
+      return EasingFunction(i)
     }
   }
-  return most_probable 
+  return EasingFunction.Error
 }
 
 
@@ -938,10 +953,13 @@ cubic_easing_functions_tbl := [?][SAMPLING_RATE*2]f32{
     0.0000, 0.0000, 0.0840, 0.0717, 0.1562, 0.1984, 0.2285, 0.3604,
     0.3125, 0.5375, 0.4199, 0.7100, 0.5625, 0.8578, 0.7520, 0.961
   },
-  { // ease-in
-    0.0000, 0.0000, 0.1213, 0.0430, 0.2448, 0.1562, 0.3700, 0.3164,
-    0.4963, 0.5000, 0.6229, 0.6836, 0.7495, 0.8438, 0.8754, 0.957
+  { // ease-in (0.32, 0, 0.67, 0)
+    // 0.0000, 0.0000, 0.1213, 0.0430, 0.2448, 0.1562, 0.3700, 0.3164,
+    // 0.4963, 0.5000, 0.6229, 0.6836, 0.7495, 0.8438, 0.8754, 0.957
+    0.0000, 0.0000, 0.1213, 0.0020, 0.2448, 0.0156, 0.3700, 0.0527, 
+    0.4963, 0.1250, 0.6229, 0.2441, 0.7495, 0.4219, 0.8754, 0.6699
   },
+
   { // ease-out
     0.0000, 0.0000, 0.1246, 0.3301, 0.2505, 0.5781, 0.3771, 0.7559, 
     0.5038, 0.8750, 0.6300, 0.9473, 0.7552, 0.9844, 0.8787, 0.9980
@@ -955,11 +973,41 @@ cubic_easing_functions_tbl := [?][SAMPLING_RATE*2]f32{
 
 @(test)
 cubic_curve_simd_test :: proc(t: ^testing.T) {
-  p1 := Vec2{0.0,0.919}
-  p2 := Vec2{0.535,1.079}
-  r0 := cubic_curve_approx_scalar(p1, p2)
-  r1 := cubic_curve_approx(p1, p2)
-  testing.expect(t, r0 == r1, "simd and scalar approach gave different results (not .Linear)")
+  {
+    // Ease-out curve
+    log.debug("Ease-out curve")
+    p0 := Vec2{0.0,0.919}
+    p1 := Vec2{0.535,1.079}
+    r0 := cubic_curve_approx_scalar(p0, p1)
+    r1 := cubic_curve_approx(p0, p1)
+    log.debug(r1)
+    testing.expect(t, r0 == r1, "simd and scalar approach gave different results (not .Linear)")
+  }
+
+  {
+    log.debug("Invalid curve")
+    p0 := Vec2{0.158, 0.919}
+    p1 := Vec2{0.0, 0.0}
+    r := cubic_curve_approx(p0, p1)
+    log.debug(r)
+  }
+
+  {
+    log.debug("Random curve")
+    p0 := Vec2{0, 0.865}
+    p1 := Vec2{1, 0.124}
+    r := cubic_curve_approx(p0, p1)
+    log.debug(r)
+  }
+  {
+    log.debug("Ease-in")
+    // Ease-in
+    p0 := Vec2{0.32, 0.0}
+    p1 := Vec2{0.67, 0.0}
+    r := cubic_curve_approx(p0, p1)
+    log.debug(r)
+  }
+
 }
 
 
