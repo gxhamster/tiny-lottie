@@ -86,15 +86,6 @@ writer_write_string :: proc(writer: ^Writer, str: string) {
   }
 }
 
-@(deprecated="cannot write sub-byte values")
-writer_write_value :: proc(writer: ^Writer, value: $T) {
-  remaining := len(writer.data) - writer.offset
-  assert(size_of(T) <= remaining)
-  ptr := raw_data(writer.data[writer.offset:])
-  (^T)(ptr)^ = value
-  writer.offset += size_of(T)
-}
-
 writer_write_bytes :: proc(writer: ^Writer, buf: []byte) {
   for b in buf {
     write_bits(writer, int(b), size_of(byte))
