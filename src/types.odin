@@ -136,7 +136,7 @@ PropBezier :: union {
 PropBezierSingle :: struct {
   a: bool,
   k: BezierShapeValue,
-  
+  _flags: u64,
 }
 
 PropBezierKeyframe :: struct {
@@ -145,11 +145,13 @@ PropBezierKeyframe :: struct {
   i: PropKeyframeEasingVec,
   o: PropKeyframeEasingVec,
   s: BezierShapeValue,
+  _flags: u64,
 }
 
 PropBezierAnim :: struct {
   a: bool,
   k: []PropBezierKeyframe,
+  _flags: u64,
 }
 
 

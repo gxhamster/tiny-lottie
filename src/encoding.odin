@@ -518,27 +518,65 @@ trans_array_vec3_delta :: proc(array: []Vec3, allocator := context.allocator) ->
   return r_array
 }
 
-BezierShapeFlags :: enum u8 {
-  Closed_Loop,
-  Use_Vec2,    // Use Vec2 instead of Vec3
+can_be_vec2 :: proc{
+  can_be_vec2_vec3,
+  can_be_vec2_generic
+}
+can_be_vec2_vec3 :: proc(vec: Vec3) -> bool {
+  return vec.z == 0 ? true : false
+}
+can_be_vec2_generic :: proc(vec: [$T]f64) -> bool {
+  if T == 2 {
+    return true
+  }
+  else if T > 2 {
+    for i in 2..<T {
+      if vec[i] != 0 {
+        return false
+      } 
+    }
+    return true
+  }
+  else {
+    return false
+  }
 }
 
-// Will free the temporary allocator
 write_bezier :: proc(writer: ^Writer,
                      bezier_shape: BezierShapeValue,
-                     flags: bit_set[BezierShapeFlags; u8],
                      debug_name: string = "") {
 
   info := begin_debug_info(writer, debug_name, .meta) 
-  #assert(size_of(flags) == size_of(u8), "flags should be an u8")
-  write_uint8(writer, transmute(u8)flags, "flags")
   expected_len := len(bezier_shape.i)
   assert(len(bezier_shape.o) == expected_len, "mismatched i and o in bezier shape")
   assert(len(bezier_shape.v) == expected_len, "mismatched i and v in bezier shape")
+  
+  // note(iyaan): Vec2 optimization can only be applied
+  // if all the vector fields can be converted
+  // vector2. So it is applied to the whole bezier not
+  // just individual fields
+  truncate_to_vec2 := true
+  for i in 0..<len(bezier_shape.i) {
+    if !can_be_vec2(bezier_shape.i[i]) \
+    || !can_be_vec2(bezier_shape.o[i]) \
+    || !can_be_vec2(bezier_shape.v[i]) {
+      truncate_to_vec2 = false
+      break
+    }
+  }
+
+  flags : bit_set[0..<2; u8]
+  if truncate_to_vec2 do flags += {1}
+  if bezier_shape.c do flags += {0}
+  
+  // TODO: Why are we wasting 1 whole byte just for 2 flags?
+  write_uint8(writer, transmute(u8)flags, "flags")
+  
+  write_varint(writer, i128(len(bezier_shape.i)), "length")
 
   i_info := begin_debug_info(writer, "i", .meta) 
   for ivec in bezier_shape.i {
-    if .Use_Vec2 in flags {
+    if truncate_to_vec2 {
       write_vector2(writer, ivec.xy)
     } else {
       write_vector3(writer, ivec)
@@ -547,7 +585,7 @@ write_bezier :: proc(writer: ^Writer,
   end_debug_info(&i_info, writer)
   o_info := begin_debug_info(writer, "o", .meta) 
   for ovec in bezier_shape.o {
-    if .Use_Vec2 in flags {
+    if truncate_to_vec2 {
       write_vector2(writer, ovec.xy)
     } else {
       write_vector3(writer, ovec)
@@ -556,7 +594,7 @@ write_bezier :: proc(writer: ^Writer,
   end_debug_info(&o_info, writer)
   v_info := begin_debug_info(writer, "v", .meta) 
   for vvec in bezier_shape.v {
-    if .Use_Vec2 in flags {
+    if truncate_to_vec2 {
       write_vector2(writer, vvec.xy)
     } else {
       write_vector3(writer, vvec)
@@ -671,10 +709,6 @@ write_easing_curve :: proc(writer: ^Writer, p0, p1: PropKeyframeEasing) {
   p0_vector, p0_vector_ok := p0.(PropKeyframeEasingVec)
   p1_vector, p1_vector_ok := p1.(PropKeyframeEasingVec)
   
-  // note(iyaan): Likley invalid state handling. The p1 point is at (0, 0).
-  // A very unlikely curve to exist
-  // assert(p1_scalar_ok && p1_scalar.x == 
-
   FLAG_COUNT :: 3 // Number of enums must match this bit width
   EasingCurveFlag :: enum {
     Vector, // if not set it is a scalar
@@ -780,23 +814,38 @@ write_prop_position :: proc(writer: ^Writer, position: PropPosition) {
   }
 }
 
+write_prop_bezier_keyframe :: proc(writer: ^Writer, bezier_keyframe: PropBezierKeyframe) {
+  flags := transmute(Bit64)bezier_keyframe._flags
+  write_uint8(writer, u8(bezier_keyframe._flags))
+  if isset(flags, 0) do write_varint(writer, i128(bezier_keyframe.t))
+  if isset(flags, 1) do write_bool(writer, bool(bezier_keyframe.h))
+  if isset(flags, 2) && isset(flags, 3) {
+    write_easing_curve(writer, bezier_keyframe.o, bezier_keyframe.i)
+  }
+  write_bezier(writer, bezier_keyframe.s)
+}
+
 write_prop_bezier_shape :: proc(writer: ^Writer, bezier: PropBezier) {
-  default_bezier_flags := bit_set[BezierShapeFlags; u8]{}
-  if bezier_single, ok := bezier.(PropBezierSingle); ok {
+  switch _ in bezier {
+  case PropBezierSingle:
+  {
+    bezier_single := bezier.(PropBezierSingle)
     write_bool(writer, bezier_single.a)
-    write_bezier(writer, bezier_single.k, default_bezier_flags)
-  } else if bezier_anim, ok := bezier.(PropBezierAnim); ok {
+    write_bezier(writer, bezier_single.k)
+  }
+  case PropBezierAnim:
+  {
+    bezier_anim := bezier.(PropBezierAnim)
     write_bool(writer, bezier_anim.a)
     write_varint(writer, i128(len(bezier_anim.k)))
     for frame in bezier_anim.k {
-      // TODO(iyaan): write the keyframe procedure
-      // write_bezier(writer, frame, default_bezier_flags)
+      write_prop_bezier_keyframe(writer, frame)
     }
-  } else {
-    panic("Unidentifed union type in PropBezier")
+  }
   }
 }
 
+@(deprecated = "use write_easing_curve()")
 write_keyframe_easing_handle :: proc(writer: ^Writer, easing: PropKeyframeEasing) {
   // TODO(iyaan): use the cubic bezier correlation optimization to
   // know which type of cubic bezier easing function does the following control
@@ -954,8 +1003,6 @@ cubic_easing_functions_tbl := [?][SAMPLING_RATE*2]f32{
     0.3125, 0.5375, 0.4199, 0.7100, 0.5625, 0.8578, 0.7520, 0.961
   },
   { // ease-in (0.32, 0, 0.67, 0)
-    // 0.0000, 0.0000, 0.1213, 0.0430, 0.2448, 0.1562, 0.3700, 0.3164,
-    // 0.4963, 0.5000, 0.6229, 0.6836, 0.7495, 0.8438, 0.8754, 0.957
     0.0000, 0.0000, 0.1213, 0.0020, 0.2448, 0.0156, 0.3700, 0.0527, 
     0.4963, 0.1250, 0.6229, 0.2441, 0.7495, 0.4219, 0.8754, 0.6699
   },
@@ -975,7 +1022,6 @@ cubic_easing_functions_tbl := [?][SAMPLING_RATE*2]f32{
 cubic_curve_simd_test :: proc(t: ^testing.T) {
   {
     // Ease-out curve
-    log.debug("Ease-out curve")
     p0 := Vec2{0.0,0.919}
     p1 := Vec2{0.535,1.079}
     r0 := cubic_curve_approx_scalar(p0, p1)
@@ -985,7 +1031,7 @@ cubic_curve_simd_test :: proc(t: ^testing.T) {
   }
 
   {
-    log.debug("Invalid curve")
+    // Invalid curve
     p0 := Vec2{0.158, 0.919}
     p1 := Vec2{0.0, 0.0}
     r := cubic_curve_approx(p0, p1)
@@ -993,14 +1039,13 @@ cubic_curve_simd_test :: proc(t: ^testing.T) {
   }
 
   {
-    log.debug("Random curve")
+    // Random curve
     p0 := Vec2{0, 0.865}
     p1 := Vec2{1, 0.124}
     r := cubic_curve_approx(p0, p1)
     log.debug(r)
   }
   {
-    log.debug("Ease-in")
     // Ease-in
     p0 := Vec2{0.32, 0.0}
     p1 := Vec2{0.67, 0.0}
