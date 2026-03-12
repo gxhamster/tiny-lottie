@@ -637,7 +637,7 @@ parse_scalar_keyframe :: proc(
   case json.Object:
     object := value.(json.Object)
 
-    scalar_keyframe.t = parse_number(object["t"]) or_return
+    scalar_keyframe.t = parse_integer(object["t"]) or_return
     scalar_keyframe.h = parse_integer(object["h"]) or_return
     scalar_keyframe.i = parse_keyframe_easing_scalar(
       object["i"],

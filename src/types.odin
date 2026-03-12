@@ -113,7 +113,7 @@ PropScalarSingle :: struct {
 }
 
 PropScalarKeyframe :: struct {
-  t: f64,
+  t: i64,
   h: i64,
   i: PropKeyframeEasingScalar,
   o: PropKeyframeEasingScalar,
@@ -140,7 +140,7 @@ PropBezierSingle :: struct {
 }
 
 PropBezierKeyframe :: struct {
-  t: f64,
+  t: u64,
   h: i64,
   i: PropKeyframeEasingVec,
   o: PropKeyframeEasingVec,
@@ -168,7 +168,7 @@ PropColorSingle :: struct {
 }
 
 PropColorKeyframe :: struct {
-  t: f64,
+  t: u64,
   h: i64,
   i: PropKeyframeEasingVec,
   o: PropKeyframeEasingVec,
@@ -181,6 +181,36 @@ PropColorAnim :: struct {
   a:   bool,
   k:   []PropColorKeyframe,
   _flags: u64,
+}
+
+PropGradient :: struct {
+  p: u64,
+  k: GradientStop
+}
+
+GradientStop :: union {
+  GradientStopSingle,
+  GradientStopAnim,
+}
+
+GradientStopSingle :: struct {
+  a: bool,
+  k: Gradient,
+}
+
+GradientKeyframe :: struct {
+  t: i64,
+  h: i64,
+  i: PropKeyframeEasingVec,
+  o: PropKeyframeEasingVec,
+  s: Gradient,
+  _flags: u64,
+  
+}
+
+GradientStopAnim :: struct {
+  a: bool,
+  k: []GradientKeyframe
 }
 
 PropVector :: union {

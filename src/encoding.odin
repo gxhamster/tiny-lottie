@@ -533,9 +533,7 @@ can_be_vec2_generic :: proc(vec: [$T]f64) -> bool {
   }
 }
 
-write_bezier :: proc(writer: ^Writer,
-                     bezier_shape: BezierShapeValue,
-                     debug_name: string = "") {
+write_bezier :: proc(writer: ^Writer, bezier_shape: BezierShapeValue, debug_name: string = "") {
 
   info := begin_debug_info(writer, debug_name, .meta) 
   expected_len := len(bezier_shape.i)
@@ -880,6 +878,38 @@ write_prop_color :: proc(writer: ^Writer, color: PropColor) {
       for frame in color_anim.k {
         write_prop_color_keyframe(writer, frame)
       }
+    }
+  }
+  }
+}
+
+write_prop_gradient_keyframe :: proc(writer: ^Writer, gradient_keyframe: GradientKeyframe) {
+  flags := transmute(Bit64)gradient_keyframe._flags
+  write_uint8(writer, u8(gradient_keyframe._flags))
+  if isset(flags, 0) do write_varint(writer, i128(gradient_keyframe.t))
+  if isset(flags, 1) do write_bool(writer, bool(gradient_keyframe.h))
+  if isset(flags, 2) && isset(flags, 3) {
+    write_easing_curve(writer, gradient_keyframe.o, gradient_keyframe.i)
+  }
+  write_gradient(writer, gradient_keyframe.s)
+}
+
+write_prop_gradient :: proc(writer: ^Writer, gradient: PropGradient) {
+  write_varint(writer, i128(gradient.p))
+  switch _ in gradient.k {
+  case GradientStopSingle:
+  {
+    grad_single := gradient.k.(GradientStopSingle)
+    write_bool(writer, grad_single.a)
+    write_gradient(writer, grad_single.k)
+  }
+  case GradientStopAnim:
+  {
+    grad_anim := gradient.k.(GradientStopAnim)
+    write_bool(writer, grad_anim.a)
+    write_varint(writer, i128(len(grad_anim.k)))
+    for frame in grad_anim.k {
+      write_prop_gradient_keyframe(writer, frame)
     }
   }
   }
