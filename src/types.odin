@@ -164,6 +164,7 @@ PropColorSingle :: struct {
   sid: string,
   a:   bool,
   k:   Color4,
+  _flags: u64,
 }
 
 PropColorKeyframe :: struct {
@@ -172,12 +173,14 @@ PropColorKeyframe :: struct {
   i: PropKeyframeEasingVec,
   o: PropKeyframeEasingVec,
   s: Color4,
+  _flags: u64,
 }
 
 PropColorAnim :: struct {
   sid: string,
   a:   bool,
   k:   []PropColorKeyframe,
+  _flags: u64,
 }
 
 PropVector :: union {

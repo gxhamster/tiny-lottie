@@ -644,6 +644,7 @@ write_prop_vector :: proc(writer: ^Writer, vector: PropVector) {
 
   switch type in vector {
   case PropVectorSingle:
+  {
     vector_single := vector.(PropVectorSingle)
     write_uint8(writer, u8(vector_single._flags))
     flags := transmute(Bit64)vector_single._flags
@@ -651,7 +652,9 @@ write_prop_vector :: proc(writer: ^Writer, vector: PropVector) {
     if isset(flags, 0) do write_string(writer, vector_single.sid)
     if isset(flags, 1) do write_bool(writer, vector_single.a)
     if isset(flags, 2) do write_vector3(writer, vector_single.k)
+  }
   case PropVectorAnim:
+  {
     vector_anim := vector.(PropVectorAnim)
     write_uint8(writer, u8(vector_anim._flags))
     flags := transmute(Bit64)vector_anim._flags
@@ -665,6 +668,7 @@ write_prop_vector :: proc(writer: ^Writer, vector: PropVector) {
         write_prop_vector_keyframe(writer, frame)
       }
     }
+  }
   }
 }
 
@@ -682,13 +686,16 @@ write_prop_scalar_keyframe :: proc(writer: ^Writer, scalar_keyframe: PropScalarK
 write_prop_scalar :: proc(writer: ^Writer, scalar: PropScalar) {
   switch type in scalar {
   case PropScalarSingle:
+  {
     scalar_single := scalar.(PropScalarSingle)
     flags := transmute(Bit64)scalar_single._flags
     write_uint8(writer, u8(transmute(u64)flags))
     
     if isset(flags, 0) do write_string(writer, scalar_single.sid)
     if isset(flags, 2) do write_float32(writer, f32(scalar_single.k))
+  }
   case PropScalarAnim:
+  {
     scalar_anim := scalar.(PropScalarAnim)
     flags := transmute(Bit64)scalar_anim._flags
     assert(1 in flags, "Animated position does not have the `a` flag set")
@@ -698,6 +705,7 @@ write_prop_scalar :: proc(writer: ^Writer, scalar: PropScalar) {
     for frame in scalar_anim.k {
       write_prop_scalar_keyframe(writer, frame)
     }
+  }
   }
 }
 
@@ -840,6 +848,47 @@ write_prop_bezier_shape :: proc(writer: ^Writer, bezier: PropBezier) {
     write_varint(writer, i128(len(bezier_anim.k)))
     for frame in bezier_anim.k {
       write_prop_bezier_keyframe(writer, frame)
+    }
+  }
+  }
+}
+
+write_prop_color_keyframe :: proc(writer: ^Writer, color_keyframe: PropColorKeyframe) {
+  flags := transmute(Bit64)color_keyframe._flags
+  write_uint8(writer, u8(color_keyframe._flags))
+  if isset(flags, 0) do write_varint(writer, i128(color_keyframe.t))
+  if isset(flags, 1) do write_bool(writer, bool(color_keyframe.h))
+  if isset(flags, 2) && isset(flags, 3) {
+    write_easing_curve(writer, color_keyframe.o, color_keyframe.i)
+  }
+  write_color4(writer, color_keyframe.s)
+}
+
+write_prop_color :: proc(writer: ^Writer, color: PropColor) {
+  switch _ in color {
+  case PropColorSingle:
+  {
+    color_single := color.(PropColorSingle)
+    write_uint8(writer, u8(color_single._flags))
+    flags := transmute(Bit64)color_single._flags
+    
+    if isset(flags, 0) do write_string(writer, color_single.sid)
+    if isset(flags, 1) do write_bool(writer, color_single.a)
+    if isset(flags, 2) do write_color4(writer, color_single.k)
+  }
+  case PropColorAnim:
+  {
+    color_anim := color.(PropColorAnim)
+    write_uint8(writer, u8(color_anim._flags))
+    flags := transmute(Bit64)color_anim._flags
+    if isset(flags, 0) do write_string(writer, color_anim.sid)
+    if isset(flags, 1) do write_bool(writer, color_anim.a)
+
+    if isset(flags, 2) {
+      write_varint(writer, i128(len(color_anim.k)))
+      for frame in color_anim.k {
+        write_prop_color_keyframe(writer, frame)
+      }
     }
   }
   }
