@@ -29,12 +29,13 @@ DebugInfoType :: enum {
   bool,
   string,
 }
+
 DebugInfo :: struct {
   name: string,
   type: DebugInfoType,
   start_byte: int,
-  start_bit: uint,
   end_byte: int,
+  start_bit: uint,
   end_bit: uint,
 }
 
@@ -45,10 +46,19 @@ Writer :: struct {
   debug: [dynamic]DebugInfo,
 }
 
+DEFAULT_WRITER_DATA_LEN :: 1 << 15
+writer_init :: proc(writer: ^Writer, data_len := DEFAULT_WRITER_DATA_LEN, allocator := context.allocator) {
+ writer.data = make([]byte, data_len, allocator)
+ writer.debug = make([dynamic]DebugInfo, 0, data_len, allocator)
+ writer.offset = 0
+ writer.bits = 0
+}
+
 writer_reset :: proc(writer: ^Writer) {
   writer.bits = 0
   writer.offset = 0
   mem.zero(&writer.data[0], len(writer.data))
+  clear(&writer.debug)
 }
 
 // note(iyaan): Allows for encoding fields not aligned at 
@@ -934,6 +944,7 @@ write_keyframe_easing_handle :: proc(writer: ^Writer, easing: PropKeyframeEasing
   }
 }
 
+
 write_transform :: proc(writer: ^Writer, transform: Transform) {
   write_uint8(writer, u8(transform._flags))
   flags := transmute(Bit64)transform._flags
@@ -1129,8 +1140,8 @@ cubic_curve_simd_test :: proc(t: ^testing.T) {
 @(test)
 write_bits_test :: proc(t: ^testing.T) {
   writer := Writer{}
-  buf := [10]byte{}
-  writer.data = buf[:]
+  buf := make([]byte, 4096, context.temp_allocator)
+  writer.data = buf
   write_bits(&writer, 1, 2)
   write_bits(&writer, 2, 2)
   write_bits(&writer, 3, 2)

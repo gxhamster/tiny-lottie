@@ -186,3 +186,63 @@ json_lottie_test_prop_position_keyframe :: proc(t: ^testing.T) {
   err := unmarshal_object(m, keyframe)
   log.debug(keyframe)
 }
+
+@(test)
+json_lottie_parse_transform_test :: proc(t: ^testing.T) {
+  source := `{
+"a": {
+    "a": 0,
+    "k": [
+        256,
+        256
+    ]
+},
+"p": {
+    "a": 0,
+    "k": [
+        256,
+        256
+    ]
+},
+"s": {
+    "a": 0,
+    "k": [
+        100,
+        100
+    ]
+},
+"r": {
+    "sid": "r",
+    "a": 0,
+    "k": 300
+},
+"o": {
+    "a": 0,
+    "k": 100
+},
+"sk": {
+    "a": 0,
+    "k": 0
+},
+"sa": {
+    "a": 0,
+    "k": 0
+}
+}`
+ value, err := json.parse_string(source, parse_integers = true, allocator = context.temp_allocator)
+ if err != .None {
+  log.fatalf("json.parse returned error = %v", err)
+ } else {
+   tr := Transform{}
+   err := unmarshal_object(value, tr)
+   if err != .None {
+    log.fatalf("parse_transform returned error = %v, %v", err, tr)
+   } else {
+     writer := Writer{}
+     writer_init(&writer, allocator = context.temp_allocator)
+     write_transform(&writer, tr)
+     log.debug(writer.data[:10])
+     log.debug(tr)
+   }
+ }
+}

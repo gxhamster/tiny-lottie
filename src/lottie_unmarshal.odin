@@ -5,6 +5,7 @@ import "core:encoding/json"
 import "core:log"
 import "core:mem"
 import "core:reflect"
+import "core:intrinsics"
 
 // This file contains procedures which are used
 // to take json values and convert them or unmarshal
@@ -18,6 +19,7 @@ unmarshal_value :: proc(
   val: json.Value,
   p: any,
   allocator := context.allocator,
+  loc := #caller_location,
 ) -> (
   err: JL_Error,
 ) {
@@ -26,22 +28,31 @@ unmarshal_value :: proc(
 
   #partial switch t in type_info.variant {
   case runtime.Type_Info_String:
+  {
     val := parse_string(val) or_return
     field_val_ptr := transmute(^string)ptr
     field_val_ptr^ = val
+  }
   case runtime.Type_Info_Boolean:
+  {
     val := parse_bool(val) or_return
     field_val_ptr := transmute(^bool)ptr
     field_val_ptr^ = val
+  }
   case runtime.Type_Info_Float:
+  {
     val := parse_number(val) or_return
     field_val_ptr := transmute(^f64)ptr
     field_val_ptr^ = val
+  }
   case runtime.Type_Info_Integer:
+  {
     val := parse_integer(val) or_return
     field_val_ptr := transmute(^i64)ptr
     field_val_ptr^ = val
+  }
   case runtime.Type_Info_Enum:
+  {
     // note(iyaan): Internally odin treats the enum value
     // as an i64 by default. The internal backing type can
     // be found from Type_Info_Enum (t) t.base. Ofcourse have
@@ -59,8 +70,12 @@ unmarshal_value :: proc(
     if !val_in_enum {
       return .Unmarshal_Out_Of_Bound_Enum_Value
     }
+  }
   case:
+  {
+    log.fatalf("unknown type: %v, called from %v", t, loc)
     return .Unmarshal_Unknown_Value_Type
+  }
   }
   return .None
 }
@@ -80,6 +95,7 @@ unmarshal_array :: proc(
 
     #partial switch array_type in type_info.variant {
     case runtime.Type_Info_Slice:
+    {
       internal_elem_type_info := array_type.elem
       internal_elem_size := internal_elem_type_info.size
       internal_elem_alignment := internal_elem_type_info.align
@@ -130,7 +146,9 @@ unmarshal_array :: proc(
         }
       }
       return .None
+    }
     case runtime.Type_Info_Array:
+    {
       if json_array_len <= array_type.count {
         internal_elem_type_info := array_type.elem
         internal_elem_size := internal_elem_type_info.size
@@ -144,8 +162,11 @@ unmarshal_array :: proc(
       } else {
         return .Too_Large_Vector
       }
+    }
     case runtime.Type_Info_Dynamic_Array:
+    {
       return .Unmarshal_Unsupported_Array_Type
+    }
     case:
       return .Unmarshal_Unknown_Array_Type
     }
@@ -165,74 +186,141 @@ unmarshal_object :: proc(
   type_info := reflect.type_info_base(type_info_of(p.id))
   ptr := p.data
 
+  if _, ok := type_info.variant.(reflect.Type_Info_Struct); !ok {
+    return .Incompatible_Object_Type
+  }
 
-  if t, ok := type_info.variant.(reflect.Type_Info_Struct); ok {
-    fields := reflect.struct_fields_zipped(p.id)
+  if _, ok := val.(json.Object); !ok {
+    return .Incompatible_Object_Type
+  }
 
-    #partial switch tval in val {
-    case json.Object:
-      json_obj := val.(json.Object)
-      for field in fields {
-        field_type_as_base := reflect.type_info_base(field.type)
-        field_ptr := rawptr(uintptr(p.data) + field.offset)
-        #partial switch struct_type in field_type_as_base.variant {
-        case runtime.Type_Info_Integer,
-             runtime.Type_Info_Float,
-             runtime.Type_Info_String,
-             runtime.Type_Info_Boolean,
-             runtime.Type_Info_Enum:
-          field_value_any := any{field_ptr, field.type.id}
-          unmarshal_value(json_obj[field.name], field_value_any) or_return
-        case runtime.Type_Info_Array,
-             runtime.Type_Info_Slice,
-             runtime.Type_Info_Dynamic_Array:
-          field_value_any := any{field_ptr, field.type.id}
-          unmarshal_array(json_obj[field.name], field_value_any) or_return
-        case runtime.Type_Info_Struct:
-          field_value_any := any{field_ptr, field.type.id}
-          unmarshal_object(json_obj[field.name], field_value_any) or_return
-        case runtime.Type_Info_Union:
-          // TODO(iyaan): Handle some obvious unions (eg: JsonLottie_Prop_Position)
-          // Finding a generic way to handle all cases of unions would be too much
-          switch field.type.id {
-          case PropPosition:
-            pos_val := parse_position(json_obj[field.name]) or_return
-            field_ptr_offset := uintptr(ptr) + field.offset
-            field_val_ptr := transmute(^PropPosition)field_ptr_offset
-            field_val_ptr^ = pos_val
-          case PropScalar:
-            scalar_val := parse_prop_scalar(json_obj[field.name]) or_return
-            field_ptr_offset := uintptr(ptr) + field.offset
-            field_val_ptr := transmute(^PropScalar)field_ptr_offset
-            field_val_ptr^ = scalar_val
-          case PropVector:
-            vector_val := parse_prop_vector(json_obj[field.name]) or_return
-            field_ptr_offset := uintptr(ptr) + field.offset
-            field_val_ptr := transmute(^PropVector)field_ptr_offset
-            field_val_ptr^ = vector_val
-          case PropBezier:
-            bezier_val := parse_prop_bezier(json_obj[field.name]) or_return
-            field_ptr_offset := uintptr(ptr) + field.offset
-            field_val_ptr := transmute(^PropBezier)field_ptr_offset
-            field_val_ptr^ = bezier_val
-          case PropColor:
-            color_val := parse_prop_color(json_obj[field.name]) or_return
-            field_ptr_offset := uintptr(ptr) + field.offset
-            field_val_ptr := transmute(^PropColor)field_ptr_offset
-            field_val_ptr^ = color_val
-          case:
-            return .Unmarshal_Unknown_Union_Field_Type
-          }
-
-        case:
-          return .Unmarshal_Unknown_Struct_Field_Type
+  fields := reflect.struct_fields_zipped(p.id)
+  json_obj := val.(json.Object)
+  flags : Bit64
+  flags_field_exists: = false
+  flags_field_ptr : rawptr
+  for field, idx in fields {
+    field_type_as_base := reflect.type_info_base(field.type)
+    field_ptr := rawptr(uintptr(p.data) + field.offset)
+    if field.name == "_flags" {
+      flags_field_exists = true
+      flags_field_ptr = field_ptr
+      continue
+    }
+    if _, field_exists := json_obj[field.name]; field_exists {
+      flags += {idx}
+    }
+    #partial switch struct_type in field_type_as_base.variant {
+    case runtime.Type_Info_Integer,
+         runtime.Type_Info_Float,
+         runtime.Type_Info_String,
+         runtime.Type_Info_Boolean,
+         runtime.Type_Info_Enum:
+    {
+      field_value_any := any{field_ptr, field.type.id}
+      unmarshal_value(json_obj[field.name], field_value_any) or_return
+    }
+    case runtime.Type_Info_Array,
+         runtime.Type_Info_Slice,
+         runtime.Type_Info_Dynamic_Array:
+    {
+      field_value_any := any{field_ptr, field.type.id}
+      unmarshal_array(json_obj[field.name], field_value_any) or_return
+    }
+    case runtime.Type_Info_Struct:
+    {
+      field_value_any := any{field_ptr, field.type.id}
+      unmarshal_object(json_obj[field.name], field_value_any) or_return
+    }
+    case runtime.Type_Info_Union:
+    {
+      if _, ok := json_obj[field.name].(json.Object); !ok {
+        return .Unmarshal_Unknown_Struct_Field_Type
+      }
+      object := json_obj[field.name].(json.Object)
+      switch field.type.id {
+      case PropScalar:
+      {
+        animated := parse_bool(object["a"]) or_return
+        // note(iyaan): It important to initialize that union field location
+        // with its expected type before you set it to the correct
+        // variant. This is true for all the cases of this switch statement
+        field_val_ptr := transmute(^PropScalar)field_ptr
+        field_val_ptr^ = PropScalarSingle{}
+        if animated {
+          field_value_any := any{field_ptr, typeid_of(PropScalarAnim)}
+          unmarshal_object(object, field_value_any) or_return
+        } else {
+          field_value_any := any{field_ptr, typeid_of(PropScalarSingle)}
+          unmarshal_object(json_obj[field.name], field_value_any)
         }
       }
-      return .None
+      case PropVector:
+      {
+        animated := parse_bool(object["a"]) or_return
+        field_val_ptr := transmute(^PropVector)field_ptr
+        field_val_ptr^ = PropVectorSingle{}
+        if animated {
+          field_value_any := any{field_ptr, typeid_of(PropVectorAnim)}
+          unmarshal_object(object, field_value_any) or_return
+        } else {
+          field_value_any := any{field_ptr, typeid_of(PropVectorSingle)}
+          unmarshal_object(json_obj[field.name], field_value_any)
+        }
+      }
+      case PropBezier:
+      {
+        animated := parse_bool(object["a"]) or_return
+        field_val_ptr := transmute(^PropBezier)field_ptr
+        field_val_ptr^ = PropBezierSingle{}
+        if animated {
+          field_value_any := any{field_ptr, typeid_of(PropBezierAnim)}
+          unmarshal_object(object, field_value_any) or_return
+        } else {
+          field_value_any := any{field_ptr, typeid_of(PropBezierSingle)}
+          unmarshal_object(json_obj[field.name], field_value_any)
+        }
+      }
+      case PropPosition:
+      {
+        animated := parse_bool(object["a"]) or_return
+        field_val_ptr := transmute(^PropPosition)field_ptr
+        field_val_ptr^ = PropPositionSingle{}
+        if animated {
+          field_value_any := any{field_ptr, typeid_of(PropPositionAnim)}
+          unmarshal_object(object, field_value_any) or_return
+        } else {
+          field_value_any := any{field_ptr, typeid_of(PropPositionSingle)}
+          unmarshal_object(json_obj[field.name], field_value_any)
+        }
+      }
+      case PropColor:
+      {
+        animated := parse_bool(object["a"]) or_return
+        field_val_ptr := transmute(^PropColor)field_ptr
+        field_val_ptr^ = PropColorSingle{}
+        if animated {
+          field_value_any := any{field_ptr, typeid_of(PropColorAnim)}
+          unmarshal_object(object, field_value_any) or_return
+        } else {
+          field_value_any := any{field_ptr, typeid_of(PropColorSingle)}
+          unmarshal_object(json_obj[field.name], field_value_any)
+        }
+      }
+      case:
+        return .Unmarshal_Unknown_Union_Field_Type
+      }
+    } 
     case:
-      return .Incompatible_Object_Type
+      return .Unmarshal_Unknown_Struct_Field_Type
     }
-  } else {
-    return .Incompatible_Object_Type
-	}
+  }
+  // Set the flags of the struct as a mask
+  // which will tell which fields of the struct
+  // were set
+  if flags_field_exists {
+    field_val_ptr := transmute(^Bit64)flags_field_ptr
+    field_val_ptr^ = flags
+  }
+  return .None
 }
