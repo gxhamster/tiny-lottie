@@ -11,9 +11,12 @@ import "core:log"
 import "core:fmt"
 import "core:simd"
 
+BYTE_BITS :: 8
+
 // To keep track of writes to the byte buffer
 DebugInfoType :: enum {
   meta,
+  flags,
   f16,
   f32,
   f64,
@@ -136,33 +139,39 @@ writer_write_array :: proc(writer: ^Writer, array: []$T) {
 
 writer_write_string :: proc(writer: ^Writer, str: string) {
   for idx in 0..<len(str) {
-    write_bits(writer, int(str[idx]), size_of(byte))
+    write_bits(writer, int(str[idx]), size_of(byte) * BYTE_BITS)
   }
 }
 
 writer_write_bytes :: proc(writer: ^Writer, buf: []byte) {
   for b in buf {
-    write_bits(writer, int(b), size_of(byte))
+    write_bits(writer, int(b), size_of(byte) * BYTE_BITS)
   }
+}
+
+write_flags :: proc(writer: ^Writer, flags: Bit64, bits: uint, debug_name: string = "flags") {
+  begin_debug_info(writer, debug_name, .flags)
+  write_bits(writer, transmute(int)flags, bits)
+  end_debug_info(writer)
 }
 
 // Fixed IEEE-754 floats (Helpers around the writer interface)
 
 write_float64 :: proc(writer: ^Writer, f: f64, debug_name: string = "") {
   begin_debug_info(writer, debug_name, .f64)
-  write_bits(writer, int(f), size_of(f64))
+  write_bits(writer, int(f), size_of(f64) * BYTE_BITS)
   end_debug_info(writer)
 }
 
 write_float32 :: proc(writer: ^Writer, f: f32, debug_name: string = "") {
   begin_debug_info(writer, debug_name, .f32)
-  write_bits(writer, int(f), size_of(f32))
+  write_bits(writer, int(f), size_of(f32) * BYTE_BITS)
   end_debug_info(writer)
 }
 
 write_float16 :: proc(writer: ^Writer, f: f16, debug_name: string = "") {
   begin_debug_info(writer, debug_name, .f16)
-  write_bits(writer, int(f), size_of(f32))
+  write_bits(writer, int(f), size_of(f16) * BYTE_BITS)
   end_debug_info(writer)
 }
 
@@ -170,25 +179,25 @@ write_float16 :: proc(writer: ^Writer, f: f16, debug_name: string = "") {
 
 write_int8 :: proc(writer: ^Writer, i: i8, debug_name: string = "") {
   begin_debug_info(writer, debug_name, .i8)
-  write_bits(writer, int(i), size_of(i8))
+  write_bits(writer, int(i), size_of(i8) * BYTE_BITS)
   end_debug_info(writer)
 }
 
 write_int16 :: proc(writer: ^Writer, i: i16, debug_name: string = "") {
   begin_debug_info(writer, debug_name, .i16)
-  write_bits(writer, int(i), size_of(i16))
+  write_bits(writer, int(i), size_of(i16) * BYTE_BITS)
   end_debug_info(writer)
 }
 
 write_int32 :: proc(writer: ^Writer, i: i32, debug_name: string = "") {
   begin_debug_info(writer, debug_name, .i32)
-  write_bits(writer, int(i), size_of(i32))
+  write_bits(writer, int(i), size_of(i32) * BYTE_BITS)
   end_debug_info(writer)
 }
 
 write_int64 :: proc(writer: ^Writer, i: i64, debug_name: string = "") {
   begin_debug_info(writer, debug_name, .i64)
-  write_bits(writer, int(i), size_of(i64))
+  write_bits(writer, int(i), size_of(i64) * BYTE_BITS)
   end_debug_info(writer)
 }
 
@@ -196,25 +205,25 @@ write_int64 :: proc(writer: ^Writer, i: i64, debug_name: string = "") {
 
 write_uint8 :: proc(writer: ^Writer, i: u8, debug_name: string = "") {
   begin_debug_info(writer, debug_name, .u8)
-  write_bits(writer, int(i), size_of(u8))
+  write_bits(writer, int(i), size_of(u8) * BYTE_BITS)
   end_debug_info(writer)
 }
 
 write_uint16 :: proc(writer: ^Writer, i: u16, debug_name: string = "") {
   begin_debug_info(writer, debug_name, .u16)
-  write_bits(writer, int(i), size_of(u16))
+  write_bits(writer, int(i), size_of(u16) * BYTE_BITS)
   end_debug_info(writer)
 }
 
 write_uint32 :: proc(writer: ^Writer, i: u32, debug_name: string = "") {
   begin_debug_info(writer, debug_name, .u32)
-  write_bits(writer, int(i), size_of(u32))
+  write_bits(writer, int(i), size_of(u32) * BYTE_BITS)
   end_debug_info(writer)
 }
 
 write_uint64 :: proc(writer: ^Writer, i: u64, debug_name: string = "") {
   begin_debug_info(writer, debug_name, .u64)
-  write_bits(writer, int(i), size_of(u64))
+  write_bits(writer, int(i), size_of(u64) * BYTE_BITS)
   end_debug_info(writer)
 }
 
@@ -321,10 +330,11 @@ check_optimal_intern_size_test :: proc(t: ^testing.T) {
   testing.expect_value(t, check_optimal_intern_size(v7), VecInternType.F16)
 }
 
+VECTOR_INTERN_FLAG_BITS :: 2
 write_vector_intern :: proc(writer: ^Writer, vec: [$Y]f64) {
   // writing the type information in 2-bits
   type := check_optimal_intern_size(vec)
-  write_bits(writer, int(type), 2)
+  write_flags(writer, transmute(Bit64)int(type), VECTOR_INTERN_FLAG_BITS)
   switch type {
   case .F16:
     for i in 0..<Y {
@@ -642,9 +652,10 @@ extract_bit_indices :: proc(flags: u64) -> (r: Bit64) {
 
 write_prop_vector_keyframe :: proc(writer: ^Writer, vec_keyframe: PropVectorKeyframe) {
   flags := transmute(Bit64)vec_keyframe._flags
-  write_uint8(writer, u8(vec_keyframe._flags))
-  if isset(flags, 0) do write_varint(writer, i128(vec_keyframe.t))
-  if isset(flags, 1) do write_varint(writer, i128(vec_keyframe.h))
+  begin_debug_info(writer, "vector_keyframe", .meta)
+  write_flags(writer, flags, PROP_VECTOR_KEYFRAME_FIELDS)
+  if isset(flags, 0) do write_varint(writer, i128(vec_keyframe.t), "t")
+  if isset(flags, 1) do write_varint(writer, i128(vec_keyframe.h), "h")
   if isset(flags, 2) && isset(flags, 3) {
     // note(iyaan): i is the tangent point at the end of the curve
     // and i is the tangent point at the start of the curve. so they will
@@ -655,31 +666,32 @@ write_prop_vector_keyframe :: proc(writer: ^Writer, vec_keyframe: PropVectorKeyf
     // state
     write_easing_curve(writer, vec_keyframe.o, vec_keyframe.i) 
   }
-  write_vector3(writer, vec_keyframe.s)
+  write_vector3(writer, vec_keyframe.s, "s")
+  end_debug_info(writer)
 }
 
-write_prop_vector :: proc(writer: ^Writer, vector: PropVector) {
-  // note(iyaan): These are required fields as by lottie-schema
-  // https://lottie.github.io/lottie-spec/latest/specs/schema/#/$defs/helpers/slottable-property
-
+write_prop_vector :: proc(writer: ^Writer, vector: PropVector, debug_name: string = "prop_vector") {
   switch type in vector {
   case PropVectorSingle:
   {
     vector_single := vector.(PropVectorSingle)
-    write_uint8(writer, u8(vector_single._flags))
     flags := transmute(Bit64)vector_single._flags
+    begin_debug_info(writer, debug_name, .meta)
+    write_flags(writer, flags, PROP_VECTOR_SINGLE_FIELDS)
     
-    if isset(flags, 0) do write_string(writer, vector_single.sid)
-    if isset(flags, 1) do write_bool(writer, vector_single.a)
-    if isset(flags, 2) do write_vector3(writer, vector_single.k)
+    if isset(flags, 0) do write_string(writer, vector_single.sid, "sid")
+    if isset(flags, 1) do write_bool(writer, vector_single.a, "a")
+    if isset(flags, 2) do write_vector3(writer, vector_single.k, "k")
+    end_debug_info(writer)
   }
   case PropVectorAnim:
   {
     vector_anim := vector.(PropVectorAnim)
-    write_uint8(writer, u8(vector_anim._flags))
     flags := transmute(Bit64)vector_anim._flags
-    if isset(flags, 0) do write_string(writer, vector_anim.sid)
-    if isset(flags, 1) do write_bool(writer, vector_anim.a)
+    begin_debug_info(writer, debug_name, .meta)
+    write_flags(writer, flags, PROP_VECTOR_ANIM_FIELDS)
+    if isset(flags, 0) do write_string(writer, vector_anim.sid, "sid")
+    if isset(flags, 1) do write_bool(writer, vector_anim.a, "a")
 
     if isset(flags, 2) {
       // write the keyframes as an array
@@ -688,43 +700,50 @@ write_prop_vector :: proc(writer: ^Writer, vector: PropVector) {
         write_prop_vector_keyframe(writer, frame)
       }
     }
+    end_debug_info(writer)
   }
   }
 }
 
 write_prop_scalar_keyframe :: proc(writer: ^Writer, scalar_keyframe: PropScalarKeyframe) {
   flags := transmute(Bit64)scalar_keyframe._flags
-  write_uint8(writer, u8(scalar_keyframe._flags))
-  if isset(flags, 0) do write_varint(writer, i128(scalar_keyframe.t))
-  if isset(flags, 1) do write_varint(writer, i128(scalar_keyframe.h))
+  begin_debug_info(writer, "scalar_keyframe", .meta)
+  write_flags(writer, flags, PROP_SCALAR_KEYFRAME_FIELDS)
+  if isset(flags, 0) do write_varint(writer, i128(scalar_keyframe.t), "t")
+  if isset(flags, 1) do write_varint(writer, i128(scalar_keyframe.h), "h")
   if isset(flags, 2) && isset(flags, 3) {
     write_easing_curve(writer, scalar_keyframe.o, scalar_keyframe.i)
   }
-  write_float32(writer, f32(scalar_keyframe.s))
+  write_float32(writer, f32(scalar_keyframe.s), "s")
+  end_debug_info(writer)
 }
 
-write_prop_scalar :: proc(writer: ^Writer, scalar: PropScalar) {
+write_prop_scalar :: proc(writer: ^Writer, scalar: PropScalar, debug_name: string = "prop_scalar") {
   switch type in scalar {
   case PropScalarSingle:
   {
     scalar_single := scalar.(PropScalarSingle)
     flags := transmute(Bit64)scalar_single._flags
-    write_uint8(writer, u8(transmute(u64)flags))
+    begin_debug_info(writer, debug_name, .meta)
+    write_flags(writer, flags, PROP_SCALAR_SINGLE_FIELDS)
     
-    if isset(flags, 0) do write_string(writer, scalar_single.sid)
-    if isset(flags, 2) do write_float32(writer, f32(scalar_single.k))
+    if isset(flags, 0) do write_string(writer, scalar_single.sid, "sid")
+    if isset(flags, 2) do write_float32(writer, f32(scalar_single.k), "k")
+    end_debug_info(writer)
   }
   case PropScalarAnim:
   {
     scalar_anim := scalar.(PropScalarAnim)
     flags := transmute(Bit64)scalar_anim._flags
-    assert(1 in flags, "Animated position does not have the `a` flag set")
-    if isset(flags, 0) do write_string(writer, scalar_anim.sid)
+    begin_debug_info(writer, debug_name, .meta)
+    write_flags(writer, flags, PROP_SCALAR_ANIM_FIELDS)
+    if isset(flags, 0) do write_string(writer, scalar_anim.sid, "sid")
     
     write_varint(writer, i128(len(scalar_anim.k)))
     for frame in scalar_anim.k {
       write_prop_scalar_keyframe(writer, frame)
     }
+    end_debug_info(writer)
   }
   }
 }
@@ -796,41 +815,47 @@ write_easing_curve :: proc(writer: ^Writer, p0, p1: PropKeyframeEasing) {
 
 write_prop_position_keyframe :: proc(writer: ^Writer, position_keyframe: PropPositionKeyframe) {
   flags := transmute(Bit64)position_keyframe._flags
-  write_uint8(writer, u8(position_keyframe._flags))
-  if isset(flags, 0) do write_varint(writer, i128(position_keyframe.t))
-  if isset(flags, 1) do write_bool(writer, bool(position_keyframe.h))
+  begin_debug_info(writer, "position_keyframe", .meta)
+  write_flags(writer, flags, PROP_POSITION_KEYFRAME_FIELDS)
+  if isset(flags, 0) do write_varint(writer, i128(position_keyframe.t), "t")
+  if isset(flags, 1) do write_bool(writer, bool(position_keyframe.h), "h")
   if isset(flags, 2) && isset(flags, 3) {
     write_easing_curve(writer, position_keyframe.o, position_keyframe.i)
   }
   // TODO(iyaan): In the base lottie spec there are no 3d dimensional
   // animations therefore positions are always 2d vectors. Need to change
   // later
-  write_vector2(writer, position_keyframe.s.xy)
-  write_vector2(writer, position_keyframe.ti.xy)
-  write_vector2(writer, position_keyframe.to.xy)
+  write_vector2(writer, position_keyframe.s.xy, "s")
+  write_vector2(writer, position_keyframe.ti.xy, "ti")
+  write_vector2(writer, position_keyframe.to.xy, "to")
+  end_debug_info(writer)
 }
 
-write_prop_position :: proc(writer: ^Writer, position: PropPosition) {
+write_prop_position :: proc(writer: ^Writer, position: PropPosition, debug_name: string = "prop_position") {
   switch type in position {
   case PropPositionSingle:
   {
     position_single := position.(PropPositionSingle)
     flags := transmute(Bit64)position_single._flags
-    write_uint8(writer, u8(transmute(u64)flags))
+    begin_debug_info(writer, debug_name, .meta)
+    write_flags(writer, flags, PROP_VECTOR_SINGLE_FIELDS)
     vec2 := Vec2{position_single.k.x, position_single.k.y}
-    if isset(flags, 0) do write_string(writer, position_single.sid)
-    if isset(flags, 2) do write_vector2(writer, vec2)
+    if isset(flags, 0) do write_string(writer, position_single.sid, "sid")
+    if isset(flags, 2) do write_vector2(writer, vec2, "k")
+    end_debug_info(writer)
   }
   case PropPositionAnim:
   {
     position_anim := position.(PropPositionAnim)
     flags := transmute(Bit64)position_anim._flags
-    assert(1 in flags, "Animated position does not have the `a` flag set")
-    if isset(flags, 0) do write_string(writer, position_anim.sid)
+    begin_debug_info(writer, debug_name, .meta)
+    write_flags(writer, flags, PROP_VECTOR_ANIM_FIELDS)
+    if isset(flags, 0) do write_string(writer, position_anim.sid, "sid")
     write_varint(writer, i128(len(position_anim.k)))
     for frame in position_anim.k {
       write_prop_position_keyframe(writer, frame)
     }
+    end_debug_info(writer)
   }
   case PropSplitPosition:
   {
@@ -967,8 +992,8 @@ write_keyframe_easing_handle :: proc(writer: ^Writer, easing: PropKeyframeEasing
 
 
 write_transform :: proc(writer: ^Writer, transform: Transform) {
-  write_uint8(writer, u8(transform._flags), "flags")
   flags := transmute(Bit64)transform._flags
+  write_flags(writer, flags, 7, "flags")
   if isset(flags, 0) do write_prop_position(writer, transform.a)
   if isset(flags, 1) do write_prop_position(writer, transform.p)
   if isset(flags, 2) do write_prop_scalar(writer, transform.r)
@@ -1128,7 +1153,6 @@ cubic_curve_simd_test :: proc(t: ^testing.T) {
     p1 := Vec2{0.535,1.079}
     r0 := cubic_curve_approx_scalar(p0, p1)
     r1 := cubic_curve_approx(p0, p1)
-    log.debug(r1)
     testing.expect(t, r0 == r1, "simd and scalar approach gave different results (not .Linear)")
   }
 
@@ -1137,7 +1161,6 @@ cubic_curve_simd_test :: proc(t: ^testing.T) {
     p0 := Vec2{0.158, 0.919}
     p1 := Vec2{0.0, 0.0}
     r := cubic_curve_approx(p0, p1)
-    log.debug(r)
   }
 
   {
@@ -1145,14 +1168,12 @@ cubic_curve_simd_test :: proc(t: ^testing.T) {
     p0 := Vec2{0, 0.865}
     p1 := Vec2{1, 0.124}
     r := cubic_curve_approx(p0, p1)
-    log.debug(r)
   }
   {
     // Ease-in
     p0 := Vec2{0.32, 0.0}
     p1 := Vec2{0.67, 0.0}
     r := cubic_curve_approx(p0, p1)
-    log.debug(r)
   }
 
 }

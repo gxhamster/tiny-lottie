@@ -2,6 +2,9 @@ package main
 
 import "core:os"
 import "core:encoding/json"
+import "base:intrinsics"
+
+fields :: intrinsics.type_struct_field_count
 
 JL_Error :: enum {
   None,
@@ -105,6 +108,7 @@ PropScalar :: union {
   PropScalarAnim,
 }
 
+PROP_SCALAR_SINGLE_FIELDS :: fields(PropScalarSingle) - 1
 PropScalarSingle :: struct {
   sid: string,
   a:   bool,
@@ -112,6 +116,7 @@ PropScalarSingle :: struct {
   _flags: u64,
 }
 
+PROP_SCALAR_KEYFRAME_FIELDS :: fields(PropScalarKeyframe) - 1
 PropScalarKeyframe :: struct {
   t: i64,
   h: i64,
@@ -121,6 +126,7 @@ PropScalarKeyframe :: struct {
   _flags: u64,
 }
 
+PROP_SCALAR_ANIM_FIELDS :: fields(PropScalarAnim) - 1
 PropScalarAnim :: struct {
   sid: string,
   a:   bool,
@@ -218,6 +224,8 @@ PropVector :: union {
   PropVectorAnim,
 }
 
+
+PROP_VECTOR_SINGLE_FIELDS :: fields(PropVectorSingle) - 1
 PropVectorSingle :: struct {
   sid: string,
   a:   bool,
@@ -225,6 +233,7 @@ PropVectorSingle :: struct {
   _flags: u64,
 }
 
+PROP_VECTOR_KEYFRAME_FIELDS :: fields(PropVectorKeyframe) - 1
 PropVectorKeyframe :: struct {
   t: u64,
   h: i64,
@@ -235,6 +244,7 @@ PropVectorKeyframe :: struct {
 
 }
 
+PROP_VECTOR_ANIM_FIELDS :: fields(PropVectorAnim) - 1
 PropVectorAnim :: struct {
   sid: string,
   a:   bool,
@@ -251,6 +261,7 @@ PropPosition :: union {
 }
 
 PropPositionSingle :: PropVectorSingle
+PROP_POSITION_KEYFRAME_FIELDS :: fields(PropPositionKeyframe) - 1
 PropPositionKeyframe :: struct {
   t:  u64,
   h:  i64,
@@ -262,6 +273,7 @@ PropPositionKeyframe :: struct {
   _flags: u64,
 }
 
+PROP_POSITION_ANIM_FIELDS :: fields(PropPositionAnim) - 1
 PropPositionAnim :: struct {
   sid: string,
   a:   bool,

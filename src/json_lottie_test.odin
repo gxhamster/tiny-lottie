@@ -212,7 +212,6 @@ json_lottie_parse_transform_test :: proc(t: ^testing.T) {
     ]
 },
 "r": {
-    "sid": "r",
     "a": 0,
     "k": 300
 },
@@ -242,6 +241,13 @@ json_lottie_parse_transform_test :: proc(t: ^testing.T) {
      writer_init(&writer, allocator = context.temp_allocator)
      write_transform(&writer, tr)
      log.debug(writer.data[:10])
+     total_bits := 0
+     for d in writer.debug {
+      bits := (d.end_byte - d.start_byte) * 8 + int(d.end_bit - d.start_bit)
+      total_bits += bits
+      log.debug(d, "SIZE:", bits) 
+     }
+     log.debugf("OFFSET: %v, BIT_OFFSET: %v\n", writer.offset, writer.bits)
      log.debug(tr)
    }
  }

@@ -5,7 +5,7 @@ import "core:encoding/json"
 import "core:log"
 import "core:mem"
 import "core:reflect"
-import "core:intrinsics"
+import "base:intrinsics"
 
 // This file contains procedures which are used
 // to take json values and convert them or unmarshal
