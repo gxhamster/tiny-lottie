@@ -714,7 +714,14 @@ write_prop_scalar_keyframe :: proc(writer: ^Writer, scalar_keyframe: PropScalarK
   if isset(flags, 2) && isset(flags, 3) {
     write_easing_curve(writer, scalar_keyframe.o, scalar_keyframe.i)
   }
-  write_float32(writer, f32(scalar_keyframe.s), "s")
+  write_scalar_value(writer, scalar_keyframe.s, "s")
+  end_debug_info(writer)
+}
+
+write_scalar_value :: proc(writer: ^Writer, scalar_number: f64, debug_name: string = "scalar_value") {
+  begin_debug_info(writer, debug_name, .meta)
+  scalars := [1]f64{scalar_number}
+  write_vector_intern(writer, scalars) 
   end_debug_info(writer)
 }
 
@@ -728,7 +735,8 @@ write_prop_scalar :: proc(writer: ^Writer, scalar: PropScalar, debug_name: strin
     write_flags(writer, flags, PROP_SCALAR_SINGLE_FIELDS)
     
     if isset(flags, 0) do write_string(writer, scalar_single.sid, "sid")
-    if isset(flags, 2) do write_float32(writer, f32(scalar_single.k), "k")
+    if isset(flags, 2) do write_scalar_value(writer, scalar_single.k, "k")
+    // if isset(flags, 2) do write_float32(writer, f32(scalar_single.k), "k")
     end_debug_info(writer)
   }
   case PropScalarAnim:
