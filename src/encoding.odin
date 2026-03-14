@@ -39,11 +39,14 @@ DebugInfo :: struct {
   end_bit: uint,
 }
 
+DEBUG_STACK_SIZE :: 16
 Writer :: struct {
   data: []byte,
   offset: int,
   bits: uint,     // This is the bit offset within the current byte specified by `offset` in `data`
   debug: [dynamic]DebugInfo,
+  debug_stack: [DEBUG_STACK_SIZE]int,
+  debug_stack_top: int,
 }
 
 DEFAULT_WRITER_DATA_LEN :: 1 << 15
@@ -52,13 +55,54 @@ writer_init :: proc(writer: ^Writer, data_len := DEFAULT_WRITER_DATA_LEN, alloca
  writer.debug = make([dynamic]DebugInfo, 0, data_len, allocator)
  writer.offset = 0
  writer.bits = 0
+ writer.debug_stack_top = -1
 }
 
 writer_reset :: proc(writer: ^Writer) {
   writer.bits = 0
   writer.offset = 0
+  writer.debug_stack_top = -1
   mem.zero(&writer.data[0], len(writer.data))
   clear(&writer.debug)
+}
+
+debug_stack_pop :: proc(writer: ^Writer) -> int {
+  top := writer.debug_stack[writer.debug_stack_top]
+  if top > -1 do writer.debug_stack_top -= 1
+  return top
+}
+
+debug_stack_push :: proc(writer: ^Writer, info_idx: int) {
+  if writer.debug_stack_top + 1 < DEBUG_STACK_SIZE {
+    writer.debug_stack_top += 1
+    writer.debug_stack[writer.debug_stack_top] = info_idx
+  } else {
+    panic("cannot push to debug stack, full")
+  }
+}
+
+// captures the writers position state,
+// call before writing the actual information
+// to writer
+begin_debug_info :: proc(writer: ^Writer, debug_name: string, type: DebugInfoType) {
+  info := DebugInfo{}
+  info.name = debug_name
+  info.type = type
+  info.start_byte = writer.offset
+  info.start_bit = writer.bits
+  append(&writer.debug, info) 
+
+  debug_stack_push(writer, len(&writer.debug) - 1)
+}
+
+// captures the writers position state,
+// call after writing the actual information
+// to writer
+end_debug_info :: proc(writer: ^Writer) {
+  info_idx := debug_stack_pop(writer)
+  info := &writer.debug[info_idx]
+  info.end_byte = writer.offset
+  info.end_bit = writer.bits
 }
 
 // note(iyaan): Allows for encoding fields not aligned at 
@@ -102,99 +146,76 @@ writer_write_bytes :: proc(writer: ^Writer, buf: []byte) {
   }
 }
 
-// captures the writers position state,
-// call before writing the actual information
-// to writer
-begin_debug_info :: proc(writer: ^Writer, debug_name: string, type: DebugInfoType) -> DebugInfo {
-  info := DebugInfo{}
-  info.name = debug_name
-  info.type = type
-  info.start_byte = writer.offset
-  info.start_bit = writer.bits
-
-  return info
-}
-
-// captures the writers position state,
-// call after writing the actual information
-// to writer
-end_debug_info :: proc(info: ^DebugInfo, writer: ^Writer) {
-  info.end_byte = writer.offset
-  info.end_bit = writer.bits
-  append(&writer.debug, info^)
-}
-
 // Fixed IEEE-754 floats (Helpers around the writer interface)
 
 write_float64 :: proc(writer: ^Writer, f: f64, debug_name: string = "") {
-  info := begin_debug_info(writer, debug_name, .f64)
-  #assert(size_of(f64) == size_of(int))
+  begin_debug_info(writer, debug_name, .f64)
   write_bits(writer, int(f), size_of(f64))
-  end_debug_info(&info, writer)
+  end_debug_info(writer)
 }
 
 write_float32 :: proc(writer: ^Writer, f: f32, debug_name: string = "") {
-  info := begin_debug_info(writer, debug_name, .f32)
+  begin_debug_info(writer, debug_name, .f32)
   write_bits(writer, int(f), size_of(f32))
-  end_debug_info(&info, writer)
+  end_debug_info(writer)
 }
 
 write_float16 :: proc(writer: ^Writer, f: f16, debug_name: string = "") {
-  info := begin_debug_info(writer, debug_name, .f16)
+  begin_debug_info(writer, debug_name, .f16)
   write_bits(writer, int(f), size_of(f32))
-  end_debug_info(&info, writer)
+  end_debug_info(writer)
 }
 
 // Fixed signed interger variants
 
 write_int8 :: proc(writer: ^Writer, i: i8, debug_name: string = "") {
-  info := begin_debug_info(writer, debug_name, .i8)
+  begin_debug_info(writer, debug_name, .i8)
   write_bits(writer, int(i), size_of(i8))
-  end_debug_info(&info, writer)
+  end_debug_info(writer)
 }
 
 write_int16 :: proc(writer: ^Writer, i: i16, debug_name: string = "") {
-  info := begin_debug_info(writer, debug_name, .i16)
+  begin_debug_info(writer, debug_name, .i16)
   write_bits(writer, int(i), size_of(i16))
-  end_debug_info(&info, writer)
+  end_debug_info(writer)
 }
 
 write_int32 :: proc(writer: ^Writer, i: i32, debug_name: string = "") {
-  info := begin_debug_info(writer, debug_name, .i32)
+  begin_debug_info(writer, debug_name, .i32)
   write_bits(writer, int(i), size_of(i32))
-  end_debug_info(&info, writer)
+  end_debug_info(writer)
 }
 
 write_int64 :: proc(writer: ^Writer, i: i64, debug_name: string = "") {
-  info := begin_debug_info(writer, debug_name, .i64)
+  begin_debug_info(writer, debug_name, .i64)
   write_bits(writer, int(i), size_of(i64))
-  end_debug_info(&info, writer)
+  end_debug_info(writer)
 }
 
 // Fixed unsigned interger variants
 
 write_uint8 :: proc(writer: ^Writer, i: u8, debug_name: string = "") {
-  info := begin_debug_info(writer, debug_name, .u8)
+  begin_debug_info(writer, debug_name, .u8)
   write_bits(writer, int(i), size_of(u8))
-  end_debug_info(&info, writer)
+  end_debug_info(writer)
 }
 
 write_uint16 :: proc(writer: ^Writer, i: u16, debug_name: string = "") {
-  info := begin_debug_info(writer, debug_name, .u16)
+  begin_debug_info(writer, debug_name, .u16)
   write_bits(writer, int(i), size_of(u16))
-  end_debug_info(&info, writer)
+  end_debug_info(writer)
 }
 
 write_uint32 :: proc(writer: ^Writer, i: u32, debug_name: string = "") {
-  info := begin_debug_info(writer, debug_name, .u32)
+  begin_debug_info(writer, debug_name, .u32)
   write_bits(writer, int(i), size_of(u32))
-  end_debug_info(&info, writer)
+  end_debug_info(writer)
 }
 
 write_uint64 :: proc(writer: ^Writer, i: u64, debug_name: string = "") {
-  info := begin_debug_info(writer, debug_name, .u64)
+  begin_debug_info(writer, debug_name, .u64)
   write_bits(writer, int(i), size_of(u64))
-  end_debug_info(&info, writer)
+  end_debug_info(writer)
 }
 
 // Variable-byte encoding
@@ -221,16 +242,16 @@ conv_to_varint :: proc(i: i128) -> (int, [varint.LEB128_MAX_BYTES]byte) {
 // support
 write_varint :: proc(writer: ^Writer, i: i128, debug_name: string = "") {
   size, buffer := conv_to_varint(i)
-  info := begin_debug_info(writer, debug_name, .varint)
+  begin_debug_info(writer, debug_name, .varint)
   writer_write_bytes(writer, buffer[:size])
-  end_debug_info(&info, writer)
+  end_debug_info(writer)
 }
 
 write_string :: proc(writer: ^Writer, s: string, debug_name: string = "") {
-  info := begin_debug_info(writer, debug_name, .string)
+  begin_debug_info(writer, debug_name, .string)
   write_varint(writer, i128(len(s)))
   writer_write_string(writer, s)
-  end_debug_info(&info, writer)
+  end_debug_info(writer)
 }
 
 write_enum :: proc(writer: ^Writer, e: u8) {
@@ -240,9 +261,9 @@ write_enum :: proc(writer: ^Writer, e: u8) {
 }
 
 write_bool :: proc(writer: ^Writer, b: bool, debug_name: string = "") {
-  info := begin_debug_info(writer, debug_name, .bool)
+  begin_debug_info(writer, debug_name, .bool)
   write_bits(writer, int(b), 1)
-  end_debug_info(&info, writer)
+  end_debug_info(writer)
 }
 
 write_array :: proc(writer: ^Writer, array: []$T) {
@@ -323,23 +344,23 @@ write_vector_intern :: proc(writer: ^Writer, vec: [$Y]f64) {
 
 write_vector4 :: proc(writer: ^Writer, vec: Vec4, debug_name: string = "") {
   vec4 := cast([4]f64)vec
-  info := begin_debug_info(writer, debug_name, .meta)
+  begin_debug_info(writer, debug_name, .meta)
   write_vector_intern(writer, vec4)
-  end_debug_info(&info, writer)
+  end_debug_info(writer)
 }
 
 write_vector3 :: proc(writer: ^Writer, vec: Vec3, debug_name: string = "") {
   vec3 := cast([3]f64)vec
-  info := begin_debug_info(writer, debug_name, .meta)
+  begin_debug_info(writer, debug_name, .meta)
   write_vector_intern(writer, vec3)
-  end_debug_info(&info, writer)
+  end_debug_info(writer)
 }
 
 write_vector2 :: proc(writer: ^Writer, vec: Vec2, debug_name: string = "") {
   vec2 := cast([2]f64)vec
-  info := begin_debug_info(writer, debug_name, .meta)
+  begin_debug_info(writer, debug_name, .meta)
   write_vector_intern(writer, vec2)
-  end_debug_info(&info, writer)
+  end_debug_info(writer)
 }
 
 // note(iyaan): HexColor will also contain the preliminary # character
@@ -401,35 +422,35 @@ write_hexcolor :: proc(writer: ^Writer, hex_color: HexColor, debug_name: string 
   hex_color_u8 := transmute([]u8)hex_color
   rgb := conv_str_hexcolor_to_rgb(hex_color_u8[1:])
   
-  info := begin_debug_info(writer, debug_name, .meta)
+  begin_debug_info(writer, debug_name, .meta)
   writer_write_bytes(writer, rgb[:])
-  end_debug_info(&info, writer)
+  end_debug_info(writer)
 }
 
 write_color3 :: proc(writer: ^Writer, color3: Color3, debug_name: string = "") {
   color3_vec := transmute(Vec3)color3
-  info := begin_debug_info(writer, debug_name, .meta)
+  begin_debug_info(writer, debug_name, .meta)
   write_vector3(writer, color3_vec)
-  end_debug_info(&info, writer)
+  end_debug_info(writer)
 }
 
 write_color4 :: proc(writer: ^Writer, color4: Color4, debug_name: string = "") {
   color4_vec := transmute(Vec4)color4
-  info := begin_debug_info(writer, debug_name, .meta)
+  begin_debug_info(writer, debug_name, .meta)
   write_vector4(writer, color4_vec)
-  end_debug_info(&info, writer)
+  end_debug_info(writer)
 }
 
 write_gradient :: proc(writer: ^Writer, gradient: Gradient, debug_name: string = "") {
   // note(iyaan): offset1, r, g, b, offset2, r, g, b ... alpha_stops
   // Just dump the floats as u8
-  info := begin_debug_info(writer, debug_name, .meta)
+  begin_debug_info(writer, debug_name, .meta)
   for stop in gradient {
     norm255 := u64(math.floor(stop * 255))
     assert(norm255 <= 255, "gradient stop large than 1.0 probably")
     write_uint8(writer, u8(norm255))
   }
-  end_debug_info(&info, writer)
+  end_debug_info(writer)
 }
 
 // A more general transform version supporting for all vector sizes
@@ -545,7 +566,7 @@ can_be_vec2_generic :: proc(vec: [$T]f64) -> bool {
 
 write_bezier :: proc(writer: ^Writer, bezier_shape: BezierShapeValue, debug_name: string = "") {
 
-  info := begin_debug_info(writer, debug_name, .meta) 
+  begin_debug_info(writer, debug_name, .meta) 
   expected_len := len(bezier_shape.i)
   assert(len(bezier_shape.o) == expected_len, "mismatched i and o in bezier shape")
   assert(len(bezier_shape.v) == expected_len, "mismatched i and v in bezier shape")
@@ -573,7 +594,7 @@ write_bezier :: proc(writer: ^Writer, bezier_shape: BezierShapeValue, debug_name
   
   write_varint(writer, i128(len(bezier_shape.i)), "length")
 
-  i_info := begin_debug_info(writer, "i", .meta) 
+  begin_debug_info(writer, "i", .meta) 
   for ivec in bezier_shape.i {
     if truncate_to_vec2 {
       write_vector2(writer, ivec.xy)
@@ -581,8 +602,8 @@ write_bezier :: proc(writer: ^Writer, bezier_shape: BezierShapeValue, debug_name
       write_vector3(writer, ivec)
     }
   }
-  end_debug_info(&i_info, writer)
-  o_info := begin_debug_info(writer, "o", .meta) 
+  end_debug_info(writer)
+  begin_debug_info(writer, "o", .meta) 
   for ovec in bezier_shape.o {
     if truncate_to_vec2 {
       write_vector2(writer, ovec.xy)
@@ -590,8 +611,8 @@ write_bezier :: proc(writer: ^Writer, bezier_shape: BezierShapeValue, debug_name
       write_vector3(writer, ovec)
     }
   }
-  end_debug_info(&o_info, writer)
-  v_info := begin_debug_info(writer, "v", .meta) 
+  end_debug_info(writer)
+  begin_debug_info(writer, "v", .meta) 
   for vvec in bezier_shape.v {
     if truncate_to_vec2 {
       write_vector2(writer, vvec.xy)
@@ -599,8 +620,8 @@ write_bezier :: proc(writer: ^Writer, bezier_shape: BezierShapeValue, debug_name
       write_vector3(writer, vvec)
     }
   }
-  end_debug_info(&v_info, writer)
-  end_debug_info(&info, writer)
+  end_debug_info(writer)
+  end_debug_info(writer)
 }
 
 isset :: #force_inline proc "contextless" (value: Bit64, bit: int) -> bool {
@@ -724,7 +745,7 @@ write_easing_curve :: proc(writer: ^Writer, p0, p1: PropKeyframeEasing) {
   }
 
   EasingCurveFlag_Set :: bit_set[EasingCurveFlag; int]
-
+  begin_debug_info(writer, "easing", .meta)
   if p0_scalar_ok && p1_scalar_ok {
     v1 := Vec2{p0_scalar.x, p0_scalar.y}
     v2 := Vec2{p1_scalar.x, p1_scalar.y}
@@ -946,7 +967,7 @@ write_keyframe_easing_handle :: proc(writer: ^Writer, easing: PropKeyframeEasing
 
 
 write_transform :: proc(writer: ^Writer, transform: Transform) {
-  write_uint8(writer, u8(transform._flags))
+  write_uint8(writer, u8(transform._flags), "flags")
   flags := transmute(Bit64)transform._flags
   if isset(flags, 0) do write_prop_position(writer, transform.a)
   if isset(flags, 1) do write_prop_position(writer, transform.p)
