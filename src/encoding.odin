@@ -69,6 +69,11 @@ writer_reset :: proc(writer: ^Writer) {
   clear(&writer.debug)
 }
 
+calc_bits_from :: proc(start_byte, end_byte: int, start_bit, end_bit: uint) -> int {
+  return (end_byte - start_byte) * BYTE_BITS + int(end_bit - start_bit)
+}
+
+
 debug_stack_pop :: proc(writer: ^Writer) -> int {
   top := writer.debug_stack[writer.debug_stack_top]
   if top > -1 do writer.debug_stack_top -= 1
@@ -123,18 +128,6 @@ write_bits :: proc(writer: ^Writer, value: int, num_bits: uint) {
   writer.offset += total_bit_offset / 8
   writer.bits = uint(total_bit_offset) % 8
   ptr^ = res
-}
-
-// Will serialize any sequence of data. Does not write
-// the length.
-@(deprecated = "cannot write in between bytes")
-writer_write_array :: proc(writer: ^Writer, array: []$T) {
-  remaining := len(writer.data) - writer.offset
-  assert(size_of(T)*len(array) <= remaining)
-  ptr := raw_data(writer.data[writer.offset:])
-  dst := mem.slice_ptr((^T)(ptr), len(array))
-  copy(dst, array)
-  writer.offset += size_of(T) * len(array)
 }
 
 writer_write_string :: proc(writer: ^Writer, str: string) {
@@ -273,11 +266,6 @@ write_bool :: proc(writer: ^Writer, b: bool, debug_name: string = "") {
   begin_debug_info(writer, debug_name, .bool)
   write_bits(writer, int(b), 1)
   end_debug_info(writer)
-}
-
-write_array :: proc(writer: ^Writer, array: []$T) {
-  write_varint(writer, i128(len(array)))
-  writer_write_array(writer, array)
 }
 
 VecInternType :: enum int {
