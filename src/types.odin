@@ -289,6 +289,7 @@ PropSplitPosition :: struct {
 }
 
 // Helpers
+TRANSFORM_FIELDS :: fields(Transform) - 1
 Transform :: struct {
   a:  PropPosition,
   p:  PropPosition,

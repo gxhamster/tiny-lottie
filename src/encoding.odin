@@ -676,12 +676,25 @@ write_prop_vector :: proc(writer: ^Writer, vector: PropVector, debug_name: strin
   {
     vector_single := vector.(PropVectorSingle)
     flags := transmute(Bit64)vector_single._flags
+    truncate_to_vec2 := false
+    if truncate_to_vec2 = can_be_vec2(vector_single.k); truncate_to_vec2 {
+      // note(iyaan): Do not overwrite the field mask
+      // portion
+      flags += {PROP_VECTOR_SINGLE_FIELDS}
+    }
+
     begin_debug_info(writer, debug_name, .meta)
     write_flags(writer, flags, PROP_VECTOR_SINGLE_FIELDS)
     
     if isset(flags, 0) do write_string(writer, vector_single.sid, "sid")
     if isset(flags, 1) do write_bool(writer, vector_single.a, "a")
-    if isset(flags, 2) do write_vector3(writer, vector_single.k, "k")
+    if isset(flags, 2) {
+      if truncate_to_vec2 {
+        write_vector2(writer, vector_single.k.xy, "k")
+      } else {
+        write_vector3(writer, vector_single.k, "k")
+      }
+    }
     end_debug_info(writer)
   }
   case PropVectorAnim:
@@ -999,16 +1012,18 @@ write_keyframe_easing_handle :: proc(writer: ^Writer, easing: PropKeyframeEasing
 }
 
 
-write_transform :: proc(writer: ^Writer, transform: Transform) {
+write_transform :: proc(writer: ^Writer, transform: Transform, debug_name: string = "transform") {
   flags := transmute(Bit64)transform._flags
-  write_flags(writer, flags, 7, "flags")
-  if isset(flags, 0) do write_prop_position(writer, transform.a)
-  if isset(flags, 1) do write_prop_position(writer, transform.p)
-  if isset(flags, 2) do write_prop_scalar(writer, transform.r)
-  if isset(flags, 3) do write_prop_vector(writer, transform.s)
-  if isset(flags, 4) do write_prop_scalar(writer, transform.o)
-  if isset(flags, 5) do write_prop_scalar(writer, transform.sk)
-  if isset(flags, 6) do write_prop_scalar(writer, transform.sa)
+  begin_debug_info(writer, debug_name, .meta)
+  write_flags(writer, flags, TRANSFORM_FIELDS)
+  if isset(flags, 0) do write_prop_position(writer, transform.a, "a")
+  if isset(flags, 1) do write_prop_position(writer, transform.p, "p")
+  if isset(flags, 2) do write_prop_scalar(writer, transform.r, "r")
+  if isset(flags, 3) do write_prop_vector(writer, transform.s, "s")
+  if isset(flags, 4) do write_prop_scalar(writer, transform.o, "o")
+  if isset(flags, 5) do write_prop_scalar(writer, transform.sk, "sk")
+  if isset(flags, 6) do write_prop_scalar(writer, transform.sa, "sa")
+  end_debug_info(writer)
 }
 
 // note(iyaan): I want to be able to take the control points
