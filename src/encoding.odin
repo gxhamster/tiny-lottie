@@ -31,6 +31,7 @@ DebugInfoType :: enum {
   varint,
   bool,
   string,
+  Enum,
 }
 
 DebugInfo :: struct {
@@ -40,6 +41,7 @@ DebugInfo :: struct {
   end_byte: int,
   start_bit: uint,
   end_bit: uint,
+  end_idx: int,   // Used to idenitfy the range of debug info in case of a meta (inclusive)
 }
 
 DEBUG_STACK_SIZE :: 16
@@ -111,6 +113,7 @@ end_debug_info :: proc(writer: ^Writer) {
   info := &writer.debug[info_idx]
   info.end_byte = writer.offset
   info.end_bit = writer.bits
+  info.end_idx = len(writer.debug) - 1
 }
 
 // note(iyaan): Allows for encoding fields not aligned at 
