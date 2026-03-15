@@ -40,34 +40,59 @@ gen_html :: proc(writer: ^Writer, allocator := context.allocator) -> str.Builder
   return builder
 }
 
-gen_html_for_info :: proc(builder: ^str.Builder, info: DebugInfo, writer: ^Writer, allocator := context.allocator) {
-  gen_prim_div_tag_for_type :: proc(builder: ^str.Builder, info: DebugInfo, writer: ^Writer, class_name: string, $T: typeid, allocator := context.temp_allocator) {
-    str.write_string(builder, "<div class=\"")
-    str.write_string(builder, class_name)
-    str.write_string(builder, "\">")
-    ptr := cast(^int)raw_data(writer.data[info.start_byte:])
-    count := calc_bits_from(info.start_byte, info.end_byte, info.start_bit, info.end_bit)
-    assert(count > 0, "count of bits is probably incorrect")
-    int_val := bits.bitfield_extract_int(ptr^, info.start_bit, uint(count))
+gen_prim_div_tag_for_type :: proc(builder: ^str.Builder, info: DebugInfo, writer: ^Writer, class_name: string, $T: typeid, allocator := context.temp_allocator) {
+  str.write_string(builder, "<div class=\"")
+  str.write_string(builder, class_name)
+  str.write_string(builder, "\">")
+  ptr := cast(^int)raw_data(writer.data[info.start_byte:])
+  count := calc_bits_from(info.start_byte, info.end_byte, info.start_bit, info.end_bit)
+  assert(count > 0, "count of bits is probably incorrect")
+  int_val := bits.bitfield_extract_int(ptr^, info.start_bit, uint(count))
 
-    // TODO(iyaan): For display purposes I think big-endian is nicer
-    // maybe I should make this configurable
-    MAX_BYTE_BUF_SIZE :: size_of(u64)
-    T_val_bytes := [MAX_BYTE_BUF_SIZE]byte{}
-    ok := endian.put_u64(T_val_bytes[:], .Big, u64(int_val))
-    range_start := MAX_BYTE_BUF_SIZE - size_of(T)
-    hexes := hex.encode(T_val_bytes[range_start:], allocator)
+  // TODO(iyaan): For display purposes I think big-endian is nicer
+  // maybe I should make this configurable
+  MAX_BYTE_BUF_SIZE :: size_of(u64)
+  T_val_bytes := [MAX_BYTE_BUF_SIZE]byte{}
+  ok := endian.put_u64(T_val_bytes[:], .Big, u64(int_val))
+  range_start := MAX_BYTE_BUF_SIZE - size_of(T)
+  hexes := hex.encode(T_val_bytes[range_start:], allocator)
 
-    if len(hexes) <= 0 || len(hexes) % 2 != 0 {
-      panic("cannot output hex string to html")
-    }
-    for idx := 0; idx < len(hexes); idx += 2 {
-      str.write_byte(builder, hexes[idx])
-      str.write_byte(builder, hexes[idx + 1])
-      if idx + 1 != len(hexes) - 1 do str.write_string(builder, " ")
-    }
-    str.write_string(builder, "</div>")
+  if len(hexes) <= 0 || len(hexes) % 2 != 0 {
+    panic("cannot output hex string to html")
   }
+  for idx := 0; idx < len(hexes); idx += 2 {
+    str.write_byte(builder, hexes[idx])
+    str.write_byte(builder, hexes[idx + 1])
+    if idx + 1 != len(hexes) - 1 do str.write_string(builder, " ")
+  }
+  str.write_string(builder, "</div>")
+}
+
+// For types such as varint or strings which have byte sequences
+gen_html_for_byte_sequence_types :: proc(builder: ^str.Builder, info: DebugInfo, writer: ^Writer, class_name: string, allocator := context.temp_allocator) {
+  str.write_string(builder, "<div class=\"")
+  str.write_string(builder, class_name)
+  str.write_string(builder, "\">")
+  count := calc_bits_from(info.start_byte, info.end_byte, info.start_bit, info.end_bit)
+  bit_offset := info.start_bit
+
+  end := int(count / BYTE_BITS)
+  for cur_byte := 0; cur_byte < end; cur_byte += 1 {
+    ptr := cast(^int)raw_data(writer.data[info.start_byte + cur_byte:])
+    int_val := bits.bitfield_extract_int(ptr^, bit_offset, BYTE_BITS)
+    varint_bytes := [?]byte{byte(int_val)}
+    hexes := hex.encode(varint_bytes[:], context.temp_allocator)
+    
+    assert(len(hexes) == 2, "one byte has two hex characters")
+    str.write_byte(builder, hexes[0])
+    str.write_byte(builder, hexes[1])
+    
+    if cur_byte < end - 1 do str.write_string(builder, " ")
+  }
+  str.write_string(builder, "</div>")
+}
+
+gen_html_for_info :: proc(builder: ^str.Builder, info: DebugInfo, writer: ^Writer, allocator := context.allocator) {
 
   switch info.type {
   case .meta:
@@ -105,62 +130,20 @@ gen_html_for_info :: proc(builder: ^str.Builder, info: DebugInfo, writer: ^Write
     }
     str.write_string(builder, "</div>") 
   }
-  case .f16:  gen_prim_div_tag_for_type(builder, info, writer, "float16", f16)
-  case .f32:  gen_prim_div_tag_for_type(builder, info, writer, "float32", f32)
-  case .f64:  gen_prim_div_tag_for_type(builder, info, writer, "float64", f64)
-  case .i8:   gen_prim_div_tag_for_type(builder, info, writer, "int8", i8)
-  case .i16:  gen_prim_div_tag_for_type(builder, info, writer, "int16", i16)
-  case .i32:  gen_prim_div_tag_for_type(builder, info, writer, "int32", i32)
-  case .i64:  gen_prim_div_tag_for_type(builder, info, writer, "int64", i64)
-  case .u8:   gen_prim_div_tag_for_type(builder, info, writer, "uint8", u8)
-  case .u16:  gen_prim_div_tag_for_type(builder, info, writer, "uint16", u16)
-  case .u32:  gen_prim_div_tag_for_type(builder, info, writer, "uint32", u32)
-  case .u64:  gen_prim_div_tag_for_type(builder, info, writer, "uint64", u64)
-  case .bool: gen_prim_div_tag_for_type(builder, info, writer, "bool", bool)
-  case .varint:
-  {
-    str.write_string(builder, "<div class=\"varint\">")
-    count := calc_bits_from(info.start_byte, info.end_byte, info.start_bit, info.end_bit)
-    bit_offset := info.start_bit
-    for cur_count := 0; cur_count < count / BYTE_BITS; cur_count += 1 {
-      ptr := cast(^int)raw_data(writer.data[info.start_byte + cur_count:])
-      int_val := bits.bitfield_extract_int(ptr^, bit_offset, BYTE_BITS)
-      varint_bytes := [?]byte{byte(int_val)}
-      hexes := hex.encode(varint_bytes[:], context.temp_allocator)
-      
-      if len(hexes) <= 0 || len(hexes) % 2 != 0 {
-        panic("cannot output hex string to html")
-      }
-      for idx := 0; idx < len(hexes); idx += 2 {
-        str.write_byte(builder, hexes[idx])
-        str.write_byte(builder, hexes[idx + 1])
-      }
-      str.write_string(builder, " ")
-    }
-    str.write_string(builder, "</div>")
-  }
-  case .string:
-  {
-    str.write_string(builder, "<div class=\"string\">")
-    count := calc_bits_from(info.start_byte, info.end_byte, info.start_bit, info.end_bit)
-    bit_offset := info.start_bit
-    for cur_count := 0; cur_count < count / BYTE_BITS; cur_count += 1 {
-      ptr := cast(^int)raw_data(writer.data[info.start_byte + cur_count:])
-      int_val := bits.bitfield_extract_int(ptr^, bit_offset, BYTE_BITS)
-      varint_bytes := [?]byte{byte(int_val)}
-      hexes := hex.encode(varint_bytes[:], context.temp_allocator)
-      
-      if len(hexes) <= 0 || len(hexes) % 2 != 0 {
-        panic("cannot output hex string to html")
-      }
-      for idx := 0; idx < len(hexes); idx += 2 {
-        str.write_byte(builder, hexes[idx])
-        str.write_byte(builder, hexes[idx + 1])
-      }
-      str.write_string(builder, " ")
-    }
-    str.write_string(builder, "</div>")
-  }
+  case .f16:    gen_prim_div_tag_for_type(builder, info, writer, "float16", f16)
+  case .f32:    gen_prim_div_tag_for_type(builder, info, writer, "float32", f32)
+  case .f64:    gen_prim_div_tag_for_type(builder, info, writer, "float64", f64)
+  case .i8:     gen_prim_div_tag_for_type(builder, info, writer, "int8", i8)
+  case .i16:    gen_prim_div_tag_for_type(builder, info, writer, "int16", i16)
+  case .i32:    gen_prim_div_tag_for_type(builder, info, writer, "int32", i32)
+  case .i64:    gen_prim_div_tag_for_type(builder, info, writer, "int64", i64)
+  case .u8:     gen_prim_div_tag_for_type(builder, info, writer, "uint8", u8)
+  case .u16:    gen_prim_div_tag_for_type(builder, info, writer, "uint16", u16)
+  case .u32:    gen_prim_div_tag_for_type(builder, info, writer, "uint32", u32)
+  case .u64:    gen_prim_div_tag_for_type(builder, info, writer, "uint64", u64)
+  case .bool:   gen_prim_div_tag_for_type(builder, info, writer, "bool", bool)
+  case .varint: gen_html_for_byte_sequence_types(builder, info, writer, "varint") 
+  case .string: gen_html_for_byte_sequence_types(builder, info, writer, "string") 
   case .Enum:
   case:
 
