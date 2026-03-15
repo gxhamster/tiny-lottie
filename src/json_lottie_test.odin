@@ -5,6 +5,8 @@ import "core:encoding/json"
 import "core:fmt"
 import "core:log"
 import "core:testing"
+import "core:strings"
+import "core:os"
 
 @(test)
 json_lottie_unmarshal_test :: proc(t: ^testing.T) {
@@ -191,16 +193,17 @@ json_lottie_test_prop_position_keyframe :: proc(t: ^testing.T) {
 json_lottie_parse_transform_test :: proc(t: ^testing.T) {
   source := `{
 "a": {
+    "sid": "this is heck of a long string that is going to occupy more than the viewport space, i think",
     "a": 0,
     "k": [
-        256,
+        256.245,
         256
     ]
 },
 "p": {
     "a": 0,
     "k": [
-        256,
+        23.525,
         256
     ]
 },
@@ -208,7 +211,8 @@ json_lottie_parse_transform_test :: proc(t: ^testing.T) {
     "a": 0,
     "k": [
         100,
-        100
+        100,
+        562356.252
     ]
 },
 "r": {
@@ -228,6 +232,7 @@ json_lottie_parse_transform_test :: proc(t: ^testing.T) {
     "k": 0
 }
 }`
+ 
  value, err := json.parse_string(source, parse_integers = true, allocator = context.temp_allocator)
  if err != .None {
   log.fatalf("json.parse returned error = %v", err)
@@ -242,13 +247,21 @@ json_lottie_parse_transform_test :: proc(t: ^testing.T) {
      write_transform(&writer, tr)
      log.debug(writer.data[:10])
      total_bits := 0
-     for d in writer.debug {
+     for d, idx in writer.debug {
       bits := (d.end_byte - d.start_byte) * 8 + int(d.end_bit - d.start_bit)
       total_bits += bits
-      log.debug(d, "SIZE:", bits) 
+      log.debug(idx, d, "SIZE:", bits) 
      }
      log.debugf("OFFSET: %v, BIT_OFFSET: %v\n", writer.offset, writer.bits)
      log.debug(tr)
+     builder := gen_html(&writer)
+     builder_str := strings.to_string(builder)
+     // log.debug(builder_str)
+     FILE_NAME :: "data.debug"
+     succ := os.write_entire_file(FILE_NAME, transmute([]u8)builder_str)
+     if !succ {
+      panic("something went very wrong while file writing") 
+     }
    }
  }
 }

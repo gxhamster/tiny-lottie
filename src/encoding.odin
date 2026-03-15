@@ -134,9 +134,11 @@ write_bits :: proc(writer: ^Writer, value: int, num_bits: uint) {
 }
 
 writer_write_string :: proc(writer: ^Writer, str: string) {
+  begin_debug_info(writer, "string", .string) 
   for idx in 0..<len(str) {
     write_bits(writer, int(str[idx]), size_of(byte) * BYTE_BITS)
   }
+  end_debug_info(writer)
 }
 
 writer_write_bytes :: proc(writer: ^Writer, buf: []byte) {
@@ -259,7 +261,7 @@ write_varint :: proc(writer: ^Writer, i: i128, debug_name: string = "") {
 }
 
 write_string :: proc(writer: ^Writer, s: string, debug_name: string = "") {
-  begin_debug_info(writer, debug_name, .string)
+  begin_debug_info(writer, debug_name, .meta)
   write_varint(writer, i128(len(s)))
   writer_write_string(writer, s)
   end_debug_info(writer)

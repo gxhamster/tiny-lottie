@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Page Title</title>
+  <title>Tiny Lottie Debug Export</title>
   <link rel="stylesheet" href="style.css">
   <style>
     :root {
       --meta-padding: 0.5em;
-      --meta-background-color: #f8f8f8;
+      --meta-background-color: #FFFDF5;
       
       --type-text-bottom: -1.1em;
       --type-text-right:  0.5em;
@@ -29,6 +29,7 @@
       --bool-background:    #ebf577;
       --string-background:  #b4acf8;
       --enum-background:    #DEADB2;
+      --varint-background:  #DEADB2;
 
       --float16-border-color: red;
       --float32-border-color: #520ccd;
@@ -45,10 +46,12 @@
       --bool-border-color:    #9CA80C;
       --string-border-color:  #2110b6;
       --enum-border-color:    #BD5C66;
+      --varint-border-color:  #BD5C66;
     }
     body {
       font-family: 'Courier New', monospace;
     }
+
     #root {
       padding: 2em;
       display: flex;
@@ -56,11 +59,23 @@
       gap: 25px;
       flex-wrap: wrap;
     }
+
     .meta_content {
       display: flex;
       gap: 20px 10px;
-      max-width: 600px;
       flex-wrap: wrap;
+    }
+    .meta_title {
+      text-transform: uppercase;
+      display: flex;
+      letter-spacing: 1px;
+      justify-content: space-between;
+      margin-bottom: 1px;
+    }
+    .meta_title .bit_count {
+      text-transform: uppercase;
+      font-size: x-small;
+      font-weight: bold;
     }
     .meta {
       position: relative;
@@ -68,8 +83,32 @@
       display: flex;
       flex-direction: column;
       padding: var(--meta-padding);
-      border: 2.7px solid;
+      border: 3.0px solid #575349;
     }
+
+    .varint {
+      position: relative;
+      padding: 0.5em;
+      text-align: center;
+      line-height: var(--prim-height);
+      min-width: var(--prim-height);
+      height: var(--prim-height);
+      border: 3px solid var(--varint-border-color);
+      text-transform: lowercase;
+      background-color: var(--varint-background);
+      letter-spacing: -0.5px;
+      font-size: large;
+    }
+    .varint::after {
+      content: "varint";
+      font-size: x-small;
+      position: absolute;
+      bottom: var(--type-text-bottom);
+      font-weight: bold;
+      text-transform: uppercase;
+      left: var(--type-text-right);
+    }
+
     .flags {
       text-align: center;
       position: relative;
@@ -359,9 +398,9 @@
     .string {
       padding: 0.5em;
       position: relative;
-      text-align: center;
+      text-align: left;
       line-height: var(--prim-height);
-      height: var(--prim-height);
+      min-height: var(--prim-height);
       border: 3px solid var(--string-border-color);
       background-color: var(--string-background);
       font-size: large;
@@ -376,12 +415,6 @@
       left: var(--type-text-right);
     }
 
-    .meta_title {
-      font-weight: bold;
-      text-transform: uppercase;
-      text-decoration-thickness: 3px;
-      margin-bottom: 7px;
-    }
   </style>
 </head>
 <body>
@@ -393,7 +426,10 @@
           <div class="string">vector1</div>
           <div class="bool">0</div>
           <div class="meta">
-            <span class="meta_title">vector3</span>
+            <div class="meta_title">
+              <span>vector3</span>
+              <span class="bit_count">26 bits</span>
+            </div>
             <div class="meta_content">
               <div class="float16">F0 1E</div>
               <div class="float16">4d c2</div>
