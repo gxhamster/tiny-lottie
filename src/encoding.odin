@@ -155,19 +155,25 @@ write_flags :: proc(writer: ^Writer, flags: Bit64, bits: uint, debug_name: strin
 
 write_float64 :: proc(writer: ^Writer, f: f64, debug_name: string = "") {
   begin_debug_info(writer, debug_name, .f64)
-  write_bits(writer, int(f), size_of(f64) * BYTE_BITS)
+  f1 := f
+  interpret := (^u64)(&f1)^
+  write_bits(writer, int(interpret), size_of(f64) * BYTE_BITS)
   end_debug_info(writer)
 }
 
 write_float32 :: proc(writer: ^Writer, f: f32, debug_name: string = "") {
   begin_debug_info(writer, debug_name, .f32)
-  write_bits(writer, int(f), size_of(f32) * BYTE_BITS)
+  f1 := f
+  interpret := (^u32)(&f1)^
+  write_bits(writer, int(interpret), size_of(f32) * BYTE_BITS)
   end_debug_info(writer)
 }
 
 write_float16 :: proc(writer: ^Writer, f: f16, debug_name: string = "") {
   begin_debug_info(writer, debug_name, .f16)
-  write_bits(writer, int(f), size_of(f16) * BYTE_BITS)
+  f1 := f
+  interpret := (^u16)(&f1)^
+  write_bits(writer, int(interpret), size_of(f16) * BYTE_BITS)
   end_debug_info(writer)
 }
 
