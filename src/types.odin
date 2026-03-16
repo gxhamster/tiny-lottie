@@ -307,6 +307,232 @@ Transform :: struct {
   _flags: u64,
 }
 
+// Shapes
+ShapeDirection :: enum {
+  Normal = 1,
+  Reversed = 3,
+}
+
+Ellipse :: struct {
+  nm: string,
+  hd: bool,
+  ty: string,
+  d: ShapeDirection,
+  p: PropPosition,
+  s: PropVector,
+  _flags: u64,
+}
+
+Rectangle :: struct {
+  nm: string,
+  hd: bool,
+  ty: string,
+  d: ShapeDirection,
+  p: PropPosition,
+  s: PropVector,
+  r: PropScalar,
+  _flags: u64,
+}
+
+Path :: struct {
+  nm: string,
+  hd: bool,
+  ty: string,
+  d: ShapeDirection,
+  ks: PropBezier,
+  _flags: u64,
+}
+
+StarType :: enum {
+  Star  = 1,
+  Polygon = 2
+}
+
+Polystar :: struct {
+  nm: string,
+  hd: bool,
+  ty: string,
+  d:  ShapeDirection,
+  p:  PropPosition,
+  or: PropScalar,
+  os: PropScalar,
+  r:  PropScalar,
+  pt: PropScalar,
+  sy: StarType,
+  ir: PropScalar,
+  is: PropScalar,
+  _flags: u64,
+}
+
+// Grouping
+
+Group :: struct {
+  nm: string,
+  hd: bool,
+  ty: string,
+  np: i64,
+  it: []GraphicElement,
+  _flags: u64,
+}
+
+TransformShape :: struct {
+  nm: string,
+  hd: bool,
+  ty: string,
+  a:  PropPosition,
+  p:  PropPosition,
+  r:  PropScalar,
+  s:  PropVector,
+  o:  PropScalar,
+  sk: PropScalar,
+  sa: PropScalar,
+  _flags: u64,
+}
+
+// Style
+
+FillRule :: enum {
+  NonZero = 1,
+  EvenOdd = 2
+}
+
+Fill :: struct {
+  nm: string,
+  hd: bool,
+  ty: string,
+  o: PropScalar,
+  c: PropColor,
+  r: FillRule,
+  _flags: u64,
+}
+
+LineCap :: enum {
+  Butt = 1,
+  Round = 2,
+  Square = 3
+}
+
+LineJoin :: enum {
+  Miter = 1,
+  Round = 2,
+  Bevel = 3
+}
+
+StrokeDashType :: enum {
+  Dash = 'd',
+  Gap = 'g',
+  Offset = 'o'
+}
+
+StrokeDash :: struct {
+  nm: string,
+  n: StrokeDashType,
+  v: PropScalar,
+  _flags: u64,
+}
+
+Stroke :: struct {
+  nm: string,
+  hd: bool,
+  ty: string,
+  o: PropScalar,
+  lc: LineCap,
+  lj: LineJoin,
+  ml: i64,
+  ml2: PropScalar,
+  w: PropScalar,
+  d: []StrokeDash,
+  c: PropColor,
+  _flags: u64,
+}
+
+GradientType :: enum {
+  Linear = 1,
+  Radial = 2
+}
+
+GradientFill :: struct {
+  nm: string,
+  hd: bool,
+  ty: string,
+  o: PropScalar,
+  g: PropGradient,
+  s: PropPosition,
+  e: PropPosition,
+  t: GradientType,
+  h: PropScalar,
+  a: PropScalar,
+  r: FillRule,
+  _flags: u64,
+}
+
+GradientStroke :: struct {
+  nm: string,
+  hd: bool,
+  ty: string,
+  o: PropScalar,
+  lc: LineCap,
+  lj: LineJoin,
+  ml: i64,
+  ml2: PropScalar,
+  w: PropScalar,
+  d: []StrokeDash,
+  g: PropGradient,
+  s: PropPosition,
+  e: PropPosition,
+  t: GradientType,
+  h: PropScalar,
+  a: PropScalar,
+  _flags: u64,
+}
+
+// Modifiers
+
+TrimMultipleShapes :: enum {
+  Parallel = 1,
+  Sequential = 2
+}
+
+TrimPath :: struct {
+  nm: string,
+  hd: bool,
+  ty: string,
+  s: PropScalar,
+  e: PropScalar,
+  o: PropScalar,
+  m: TrimMultipleShapes,
+  _flags: u64,
+}
+
+GraphicElemType :: enum {
+  el = 0,  // Ellipse
+  fl = 1,  // Fill
+  gf = 2,  // Gradient Fill
+  gs = 3,  // Gradient Stroke
+  gr = 4,  // Group
+  sh = 5,  // Path
+  sr = 6,  // PolyStar
+  rc = 7,  // Rectangle
+  st = 8,  // Stroke
+  tr = 9,  // Transform Shape
+  tm = 10, // Trim Path
+  Error = -1
+}
+
+GraphicElement :: union {
+  Ellipse,
+  Rectangle,
+  Path,
+  Polystar,
+  Group,
+  TransformShape,
+  Fill,
+  Stroke,
+  GradientFill,
+  GradientStroke,
+  TrimPath
+}
+
 Layer :: struct {
   nm:     string,
   hd:     bool,

@@ -265,3 +265,83 @@ json_lottie_parse_transform_test :: proc(t: ^testing.T) {
    }
  }
 }
+
+@(test)
+path_unmarshal_test :: proc(t: ^testing.T) {
+  source := `{
+    "ty": "sh",
+    "d": 1,
+    "ks": {
+        "a": 0,
+        "k": {
+            "c": true,
+            "v": [
+                [
+                    253,
+                    147
+                ],
+                [
+                    56,
+                    153
+                ],
+                [
+                    253,
+                    440
+                ],
+                [
+                    450,
+                    153
+                ]
+            ],
+            "i": [
+                [
+                    12,
+                    -57
+                ],
+                [
+                    42,
+                    -112
+                ],
+                [
+                    -32,
+                    -114
+                ],
+                [
+                    46,
+                    123
+                ]
+            ],
+            "o": [
+                [
+                    -17,
+                    -61
+                ],
+                [
+                    -46,
+                    125
+                ],
+                [
+                    32,
+                    -114
+                ],
+                [
+                    -43,
+                    -115
+                ]
+            ]
+        }
+    }
+}`
+ value, err := json.parse_string(source, parse_integers = true, allocator = context.temp_allocator)
+ if err != .None {
+  log.fatalf("json.parse returned error = %v", err)
+ } else {
+   path := Path{}
+   err := unmarshal_object(value, path)
+   if err != .None {
+    log.fatalf("unmarshal_object returned error = %v, %v", err, path)
+   } else {
+     log.debug(path)
+   }
+ }
+}
