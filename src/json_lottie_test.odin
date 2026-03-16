@@ -250,10 +250,10 @@ json_lottie_parse_transform_test :: proc(t: ^testing.T) {
      for d, idx in writer.debug {
       bits := (d.end_byte - d.start_byte) * 8 + int(d.end_bit - d.start_bit)
       total_bits += bits
-      log.debug(idx, d, "SIZE:", bits) 
+      // log.debug(idx, d, "SIZE:", bits) 
      }
-     log.debugf("OFFSET: %v, BIT_OFFSET: %v\n", writer.offset, writer.bits)
-     log.debug(tr)
+     // log.debugf("OFFSET: %v, BIT_OFFSET: %v\n", writer.offset, writer.bits)
+     // log.debug(tr)
      builder := gen_html(&writer)
      builder_str := strings.to_string(builder)
      // log.debug(builder_str)
@@ -269,6 +269,8 @@ json_lottie_parse_transform_test :: proc(t: ^testing.T) {
 @(test)
 path_unmarshal_test :: proc(t: ^testing.T) {
   source := `{
+    "nm": "path",
+    "hd": true,
     "ty": "sh",
     "d": 1,
     "ks": {
@@ -342,6 +344,22 @@ path_unmarshal_test :: proc(t: ^testing.T) {
     log.fatalf("unmarshal_object returned error = %v, %v", err, path)
    } else {
      log.debug(path)
+     writer := Writer{}
+     writer_init(&writer, allocator = context.temp_allocator)
+     write_path(&writer, path)
+     total_bits := 0
+     for d, idx in writer.debug {
+      bits := (d.end_byte - d.start_byte) * 8 + int(d.end_bit - d.start_bit)
+      total_bits += bits
+      log.debug(idx, d, "SIZE:", bits) 
+     }
+     builder := gen_html(&writer)
+     builder_str := strings.to_string(builder)
+     FILE_NAME :: "data.debug"
+     succ := os.write_entire_file(FILE_NAME, transmute([]u8)builder_str)
+     if !succ {
+      panic("something went very wrong while file writing") 
+     }
    }
  }
 }

@@ -267,10 +267,13 @@ write_string :: proc(writer: ^Writer, s: string, debug_name: string = "") {
   end_debug_info(writer)
 }
 
-write_enum :: proc(writer: ^Writer, e: u8) {
+write_enum :: proc(writer: ^Writer, e: u8, enum_bits: uint = size_of(u8), debug_name: string = "") {
   // note(iyaan): Lottie does not have any enums that requires
   // more than 1 byte of storage.
-  write_uint8(writer, u8(e))  
+  
+  begin_debug_info(writer, debug_name, .Enum)
+  write_bits(writer, int(e), enum_bits)
+  end_debug_info(writer)
 }
 
 write_bool :: proc(writer: ^Writer, b: bool, debug_name: string = "") {
@@ -594,12 +597,13 @@ write_bezier :: proc(writer: ^Writer, bezier_shape: BezierShapeValue, debug_name
     }
   }
 
-  flags : bit_set[0..<2; u8]
+  BEZIER_FLAG_BITS :: 2
+  flags : Bit64
   if truncate_to_vec2 do flags += {1}
   if bezier_shape.c do flags += {0}
   
   // TODO: Why are we wasting 1 whole byte just for 2 flags?
-  write_uint8(writer, transmute(u8)flags, "flags")
+  write_flags(writer, flags, BEZIER_FLAG_BITS, "flags")
   
   write_varint(writer, i128(len(bezier_shape.i)), "length")
 
@@ -898,22 +902,26 @@ write_prop_bezier_keyframe :: proc(writer: ^Writer, bezier_keyframe: PropBezierK
   write_bezier(writer, bezier_keyframe.s)
 }
 
-write_prop_bezier_shape :: proc(writer: ^Writer, bezier: PropBezier) {
+write_prop_bezier_shape :: proc(writer: ^Writer, bezier: PropBezier, debug_name: string = "PropBezier") {
   switch _ in bezier {
   case PropBezierSingle:
   {
+    begin_debug_info(writer, debug_name, .meta)
     bezier_single := bezier.(PropBezierSingle)
     write_bool(writer, bezier_single.a)
     write_bezier(writer, bezier_single.k)
+    end_debug_info(writer)
   }
   case PropBezierAnim:
   {
+    begin_debug_info(writer, debug_name, .meta)
     bezier_anim := bezier.(PropBezierAnim)
     write_bool(writer, bezier_anim.a)
     write_varint(writer, i128(len(bezier_anim.k)))
     for frame in bezier_anim.k {
       write_prop_bezier_keyframe(writer, frame)
     }
+    end_debug_info(writer)
   }
   }
 }
@@ -929,21 +937,24 @@ write_prop_color_keyframe :: proc(writer: ^Writer, color_keyframe: PropColorKeyf
   write_color4(writer, color_keyframe.s)
 }
 
-write_prop_color :: proc(writer: ^Writer, color: PropColor) {
+write_prop_color :: proc(writer: ^Writer, color: PropColor, debug_name: string = "PropColor") {
   switch _ in color {
   case PropColorSingle:
   {
     color_single := color.(PropColorSingle)
+    begin_debug_info(writer, debug_name, .meta)
     write_uint8(writer, u8(color_single._flags))
     flags := transmute(Bit64)color_single._flags
     
     if isset(flags, 0) do write_string(writer, color_single.sid)
     if isset(flags, 1) do write_bool(writer, color_single.a)
     if isset(flags, 2) do write_color4(writer, color_single.k)
+    end_debug_info(writer)
   }
   case PropColorAnim:
   {
     color_anim := color.(PropColorAnim)
+    begin_debug_info(writer, debug_name, .meta)
     write_uint8(writer, u8(color_anim._flags))
     flags := transmute(Bit64)color_anim._flags
     if isset(flags, 0) do write_string(writer, color_anim.sid)
@@ -955,6 +966,7 @@ write_prop_color :: proc(writer: ^Writer, color: PropColor) {
         write_prop_color_keyframe(writer, frame)
       }
     }
+    end_debug_info(writer)
   }
   }
 }
@@ -970,23 +982,27 @@ write_prop_gradient_keyframe :: proc(writer: ^Writer, gradient_keyframe: Gradien
   write_gradient(writer, gradient_keyframe.s)
 }
 
-write_prop_gradient :: proc(writer: ^Writer, gradient: PropGradient) {
+write_prop_gradient :: proc(writer: ^Writer, gradient: PropGradient, debug_name: string = "PropGradient") {
   write_varint(writer, i128(gradient.p))
   switch _ in gradient.k {
   case GradientStopSingle:
   {
+    begin_debug_info(writer, debug_name, .meta)
     grad_single := gradient.k.(GradientStopSingle)
     write_bool(writer, grad_single.a)
     write_gradient(writer, grad_single.k)
+    end_debug_info(writer)
   }
   case GradientStopAnim:
   {
     grad_anim := gradient.k.(GradientStopAnim)
+    begin_debug_info(writer, debug_name, .meta)
     write_bool(writer, grad_anim.a)
     write_varint(writer, i128(len(grad_anim.k)))
     for frame in grad_anim.k {
       write_prop_gradient_keyframe(writer, frame)
     }
+    end_debug_info(writer)
   }
   }
 }
@@ -1022,6 +1038,20 @@ write_transform :: proc(writer: ^Writer, transform: Transform, debug_name: strin
   if isset(flags, 4) do write_prop_scalar(writer, transform.o, "o")
   if isset(flags, 5) do write_prop_scalar(writer, transform.sk, "sk")
   if isset(flags, 6) do write_prop_scalar(writer, transform.sa, "sa")
+  end_debug_info(writer)
+}
+
+write_path :: proc(writer: ^Writer, path: Path, debug_name: string = "path") {
+  flags := transmute(Bit64)path._flags
+  begin_debug_info(writer, debug_name, .meta)
+  write_flags(writer, flags, PATH_FIELDS)
+  if isset(flags, 0) do write_string(writer, path.nm, "nm")
+  if isset(flags, 1) do write_bool(writer, path.hd, "hd")
+  graphic_elem_type := conv_graphic_elem_type_to_enum(path.ty)
+  write_enum(writer, u8(graphic_elem_type), GRAPHIC_ELEM_TYPE_BITS, "ty")
+
+  if isset(flags, 3) do write_enum(writer, u8(path.d), SHAPE_DIR_ENUM_BITS, "d")
+  if isset(flags, 4) do write_prop_bezier_shape(writer, path.ks, "ks")
   end_debug_info(writer)
 }
 

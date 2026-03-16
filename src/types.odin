@@ -308,6 +308,7 @@ Transform :: struct {
 }
 
 // Shapes
+SHAPE_DIR_ENUM_BITS :: 2
 ShapeDirection :: enum {
   Normal = 1,
   Reversed = 3,
@@ -334,6 +335,7 @@ Rectangle :: struct {
   _flags: u64,
 }
 
+PATH_FIELDS :: fields(Path) - 1
 Path :: struct {
   nm: string,
   hd: bool,
@@ -504,6 +506,7 @@ TrimPath :: struct {
   _flags: u64,
 }
 
+GRAPHIC_ELEM_TYPE_BITS :: 4
 GraphicElemType :: enum {
   el = 0,  // Ellipse
   fl = 1,  // Fill

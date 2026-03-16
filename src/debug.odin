@@ -92,6 +92,35 @@ gen_html_for_byte_sequence_types :: proc(builder: ^str.Builder, info: DebugInfo,
   str.write_string(builder, "</div>")
 }
 
+gen_html_for_enum :: proc(builder: ^str.Builder, info: DebugInfo, writer: ^Writer) {
+  str.write_string(builder, "<div class=\"enum\">")
+  ptr := cast(^int)raw_data(writer.data[info.start_byte:])
+  enum_bits := calc_bits_from(info.start_byte, info.end_byte, info.start_bit, info.end_bit)
+  enum_val := bits.bitfield_extract_int(ptr^, info.start_bit, uint(enum_bits))
+  enum_bitset := transmute(Bit64)enum_val
+  for bit in 0..<enum_bits {
+    str.write_string(builder, "<span>")
+    if int(bit) in enum_bitset {
+      str.write_int(builder, 1)   
+    } else {
+      str.write_int(builder, 0)   
+    }
+    str.write_string(builder, "</span>")
+  }
+  str.write_string(builder, "</div>") 
+}
+
+gen_html_for_bool :: proc(builder: ^str.Builder, info: DebugInfo, writer: ^Writer) {
+  str.write_string(builder, "<div class=\"bool\">")
+  ptr := cast(^byte)raw_data(writer.data[info.start_byte:])
+  bool_bits := calc_bits_from(info.start_byte, info.end_byte, info.start_bit, info.end_bit)
+  bool_val := bits.bitfield_extract_u8(ptr^, info.start_bit, uint(bool_bits))
+  assert(bool_val == 0 || bool_val == 1, "bool has only two possibiilites")
+  assert(bool_bits == 1, "why is a bool more than 1 bit") 
+  str.write_int(builder, int(bool_val))
+  str.write_string(builder, "</div>") 
+}
+
 gen_html_for_info :: proc(builder: ^str.Builder, info: DebugInfo, writer: ^Writer, allocator := context.allocator) {
 
   switch info.type {
@@ -141,10 +170,10 @@ gen_html_for_info :: proc(builder: ^str.Builder, info: DebugInfo, writer: ^Write
   case .u16:    gen_prim_div_tag_for_type(builder, info, writer, "uint16", u16)
   case .u32:    gen_prim_div_tag_for_type(builder, info, writer, "uint32", u32)
   case .u64:    gen_prim_div_tag_for_type(builder, info, writer, "uint64", u64)
-  case .bool:   gen_prim_div_tag_for_type(builder, info, writer, "bool", bool)
+  case .bool:   gen_html_for_bool(builder, info, writer)
   case .varint: gen_html_for_byte_sequence_types(builder, info, writer, "varint") 
   case .string: gen_html_for_byte_sequence_types(builder, info, writer, "string") 
-  case .Enum:
+  case .Enum:   gen_html_for_enum(builder, info, writer)
   case:
 
   }
@@ -275,6 +304,30 @@ INJECTED_HTML_HEADER :: `<!DOCTYPE html>
     }
     .flags::after {
       content: "flags";
+      font-size: x-small;
+      position: absolute;
+      bottom: var(--type-text-bottom);
+      font-weight: bold;
+      text-transform: uppercase;
+      left: var(--type-text-right);
+    }
+
+    .enum {
+      text-align: center;
+      position: relative;
+      padding: 0.5em;
+      height: var(--prim-height);
+      border: 3px solid var(--enum-border-color);
+      background-color: var(--enum-background);
+      min-width: var(--prim-height);
+      display: flex;
+      justify-content: center;
+      gap: 5px;
+      line-height: var(--prim-height);
+      font-size: large;
+    }
+    .enum::after {
+      content: "enum";
       font-size: x-small;
       position: absolute;
       bottom: var(--type-text-bottom);
