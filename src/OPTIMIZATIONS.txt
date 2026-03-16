@@ -18,3 +18,4 @@
     https://lottie.github.io/lottie-spec/latest/specs/properties/#easing-handle
     From the x and y values maybe we can infer what kind of function it is and Use
     and index into a table
+9. Remove hidden shapes hd: true

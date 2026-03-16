@@ -57,6 +57,12 @@ Animation :: struct {
   slots:   json.Object,
 }
 
+// note(iyaan): The structs that are defined here, are in
+// a way that allows easy unmarshalling of from their JSON
+// counterparts. They are in no way the final encoded data
+// layout and can undergo various transformations and will be
+// very different from the layout defined here.
+
 // Values
 Vec4 :: distinct [4]f64
 Vec3 :: distinct [3]f64

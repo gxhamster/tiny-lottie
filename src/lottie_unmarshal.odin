@@ -11,7 +11,6 @@ import "base:intrinsics"
 // to take json values and convert them or unmarshal
 // them into lottie structs as best as possible
 
-
 // Takes a json value and try to convert it into
 // a primitive type given in `p`. Can support converting
 // arbitary values into enum values if possible
@@ -89,90 +88,110 @@ unmarshal_array :: proc(
 ) {
   type_info := reflect.type_info_base(type_info_of(p.id))
   ptr := p.data
-
-  if json_array, ok := val.(json.Array); ok {
-    json_array_len := len(json_array)
-
-    #partial switch array_type in type_info.variant {
-    case runtime.Type_Info_Slice:
-    {
-      internal_elem_type_info := array_type.elem
-      internal_elem_size := internal_elem_type_info.size
-      internal_elem_alignment := internal_elem_type_info.align
-      raw := (^mem.Raw_Slice)(p.data)
-
-      // note(iyaan): This memory will be tricky to free
-      // in a normal heap allocator. Maybe everything related
-      // to JsonLottie_* structs should be in one memory space,
-      // that will be freed together (arena)
-      data, alloc_err := mem.alloc_bytes(
-        internal_elem_size * int(json_array_len),
-        internal_elem_alignment,
-        allocator,
-      )
-
-      if alloc_err != .None {
-        return .Unmarshal_Allocation_Error
-      }
-
-      raw.data = raw_data(data)
-      raw.len = int(json_array_len)
-      for elem, idx in json_array {
-        elem_ptr := rawptr(
-          uintptr(raw.data) + uintptr(idx) * uintptr(internal_elem_size),
-        )
-        elem_any := any{elem_ptr, internal_elem_type_info.id}
-        elem_type_base := reflect.type_info_base(
-          type_info_of(internal_elem_type_info.id),
-        )
-
-        #partial switch base_t in elem_type_base.variant {
-        case runtime.Type_Info_Struct, runtime.Type_Info_Union:
-          unmarshal_object(elem, elem_any) or_return
-        case runtime.Type_Info_Integer,
-             runtime.Type_Info_Float,
-             runtime.Type_Info_Boolean,
-             runtime.Type_Info_String,
-             runtime.Type_Info_Enum:
-          unmarshal_value(elem, elem_any) or_return
-        case runtime.Type_Info_Slice, runtime.Type_Info_Array:
-          unmarshal_array(elem, elem_any) or_return
-        case:
-          if err := delete(data); err != .None {
-            return .Unmarshal_Deallocation_Error
-          } else {
-            return .Unmarshal_Unknown_Array_Inner_Type
-          }
-        }
-      }
-      return .None
-    }
-    case runtime.Type_Info_Array:
-    {
-      if json_array_len <= array_type.count {
-        internal_elem_type_info := array_type.elem
-        internal_elem_size := internal_elem_type_info.size
-        for elem, idx in json_array {
-          elem_ptr := rawptr(
-            uintptr(p.data) + uintptr(idx) * uintptr(internal_elem_size),
-          )
-          elem_any := any{elem_ptr, internal_elem_type_info.id}
-          unmarshal_value(elem, elem_any) or_return
-        }
-      } else {
-        return .Too_Large_Vector
-      }
-    }
-    case runtime.Type_Info_Dynamic_Array:
-    {
-      return .Unmarshal_Unsupported_Array_Type
-    }
-    case:
-      return .Unmarshal_Unknown_Array_Type
-    }
-  } else {
+  
+  if _, ok := val.(json.Array); !ok {
     return .Incompatible_Array_Type
   }
+
+  json_array := val.(json.Array)
+  json_array_len := len(json_array)
+
+  #partial switch array_type in type_info.variant {
+  case runtime.Type_Info_Slice:
+  {
+    internal_elem_type_info := array_type.elem
+    internal_elem_size := internal_elem_type_info.size
+    internal_elem_alignment := internal_elem_type_info.align
+    raw := (^mem.Raw_Slice)(p.data)
+
+    // note(iyaan): This memory will be tricky to free
+    // in a normal heap allocator. Maybe everything related
+    // to JsonLottie_* structs should be in one memory space,
+    // that will be freed together (arena)
+    data, alloc_err := mem.alloc_bytes(
+      internal_elem_size * int(json_array_len),
+      internal_elem_alignment,
+      allocator,
+    )
+
+    if alloc_err != .None {
+      return .Unmarshal_Allocation_Error
+    }
+
+    raw.data = raw_data(data)
+    raw.len = int(json_array_len)
+    for elem, idx in json_array {
+      elem_ptr := rawptr(
+        uintptr(raw.data) + uintptr(idx) * uintptr(internal_elem_size),
+      )
+      elem_any := any{elem_ptr, internal_elem_type_info.id}
+      elem_type_base := reflect.type_info_base(
+        type_info_of(internal_elem_type_info.id),
+      )
+
+      #partial switch base_t in elem_type_base.variant {
+      case runtime.Type_Info_Struct, runtime.Type_Info_Union: unmarshal_object(elem, elem_any) or_return
+      case runtime.Type_Info_Integer,
+           runtime.Type_Info_Float,
+           runtime.Type_Info_Boolean,
+           runtime.Type_Info_String,
+           runtime.Type_Info_Enum: unmarshal_value(elem, elem_any) or_return
+      case runtime.Type_Info_Slice, runtime.Type_Info_Array: unmarshal_array(elem, elem_any) or_return
+      case:
+      {
+        if err := delete(data); err != .None {
+          return .Unmarshal_Deallocation_Error
+        } else {
+          return .Unmarshal_Unknown_Array_Inner_Type
+        }
+      }
+      }
+    }
+    return .None
+  }
+  case runtime.Type_Info_Array:
+  {
+    if json_array_len <= array_type.count {
+      internal_elem_type_info := array_type.elem
+      internal_elem_size := internal_elem_type_info.size
+      for elem, idx in json_array {
+        elem_ptr := rawptr(
+          uintptr(p.data) + uintptr(idx) * uintptr(internal_elem_size),
+        )
+        elem_any := any{elem_ptr, internal_elem_type_info.id}
+        unmarshal_value(elem, elem_any) or_return
+      }
+    } else {
+      return .Too_Large_Vector
+    }
+  }
+  case runtime.Type_Info_Dynamic_Array: 
+    return .Unmarshal_Unsupported_Array_Type
+  case: 
+    return .Unmarshal_Unknown_Array_Type
+  }
+
+  return .None
+}
+
+
+
+_unmarshal_prop_union :: proc(object: json.Object, field_ptr: rawptr, $union_type, $single_variant, $anim_variant: typeid) -> (err: JL_Error){
+  animated := parse_bool(object["a"]) or_return
+  field_val_ptr := transmute(^union_type)field_ptr
+  if animated {
+    // note(iyaan): It important to initialize that union field location
+    // with its expected type before you set it to the correct
+    // variant. This is true for all the cases of this switch statement
+    field_val_ptr^ = anim_variant{}
+    field_value_any := any{field_ptr, typeid_of(anim_variant)}
+    unmarshal_object(object, field_value_any) or_return
+  } else {
+    field_val_ptr^ = single_variant{}
+    field_value_any := any{field_ptr, typeid_of(single_variant)}
+    unmarshal_object(object, field_value_any)
+  }
+
   return .None
 }
 
@@ -210,28 +229,19 @@ unmarshal_object :: proc(
     if _, field_exists := json_obj[field.name]; field_exists {
       flags += {idx}
     }
+    
+    field_value_any := any{field_ptr, field.type.id}
+    
     #partial switch struct_type in field_type_as_base.variant {
     case runtime.Type_Info_Integer,
          runtime.Type_Info_Float,
          runtime.Type_Info_String,
          runtime.Type_Info_Boolean,
-         runtime.Type_Info_Enum:
-    {
-      field_value_any := any{field_ptr, field.type.id}
-      unmarshal_value(json_obj[field.name], field_value_any) or_return
-    }
-    case runtime.Type_Info_Array,
-         runtime.Type_Info_Slice,
-         runtime.Type_Info_Dynamic_Array:
-    {
-      field_value_any := any{field_ptr, field.type.id}
-      unmarshal_array(json_obj[field.name], field_value_any) or_return
-    }
-    case runtime.Type_Info_Struct:
-    {
-      field_value_any := any{field_ptr, field.type.id}
-      unmarshal_object(json_obj[field.name], field_value_any) or_return
-    }
+         runtime.Type_Info_Enum:   unmarshal_value(json_obj[field.name], field_value_any) or_return
+    case runtime.Type_Info_Dynamic_Array,
+         runtime.Type_Info_Array,
+         runtime.Type_Info_Slice : unmarshal_array(json_obj[field.name], field_value_any) or_return
+    case runtime.Type_Info_Struct: unmarshal_object(json_obj[field.name], field_value_any) or_return
     case runtime.Type_Info_Union:
     {
       if _, ok := json_obj[field.name].(json.Object); !ok {
@@ -239,74 +249,11 @@ unmarshal_object :: proc(
       }
       object := json_obj[field.name].(json.Object)
       switch field.type.id {
-      case PropScalar:
-      {
-        animated := parse_bool(object["a"]) or_return
-        // note(iyaan): It important to initialize that union field location
-        // with its expected type before you set it to the correct
-        // variant. This is true for all the cases of this switch statement
-        field_val_ptr := transmute(^PropScalar)field_ptr
-        field_val_ptr^ = PropScalarSingle{}
-        if animated {
-          field_value_any := any{field_ptr, typeid_of(PropScalarAnim)}
-          unmarshal_object(object, field_value_any) or_return
-        } else {
-          field_value_any := any{field_ptr, typeid_of(PropScalarSingle)}
-          unmarshal_object(json_obj[field.name], field_value_any)
-        }
-      }
-      case PropVector:
-      {
-        animated := parse_bool(object["a"]) or_return
-        field_val_ptr := transmute(^PropVector)field_ptr
-        field_val_ptr^ = PropVectorSingle{}
-        if animated {
-          field_value_any := any{field_ptr, typeid_of(PropVectorAnim)}
-          unmarshal_object(object, field_value_any) or_return
-        } else {
-          field_value_any := any{field_ptr, typeid_of(PropVectorSingle)}
-          unmarshal_object(json_obj[field.name], field_value_any)
-        }
-      }
-      case PropBezier:
-      {
-        animated := parse_bool(object["a"]) or_return
-        field_val_ptr := transmute(^PropBezier)field_ptr
-        field_val_ptr^ = PropBezierSingle{}
-        if animated {
-          field_value_any := any{field_ptr, typeid_of(PropBezierAnim)}
-          unmarshal_object(object, field_value_any) or_return
-        } else {
-          field_value_any := any{field_ptr, typeid_of(PropBezierSingle)}
-          unmarshal_object(json_obj[field.name], field_value_any)
-        }
-      }
-      case PropPosition:
-      {
-        animated := parse_bool(object["a"]) or_return
-        field_val_ptr := transmute(^PropPosition)field_ptr
-        field_val_ptr^ = PropPositionSingle{}
-        if animated {
-          field_value_any := any{field_ptr, typeid_of(PropPositionAnim)}
-          unmarshal_object(object, field_value_any) or_return
-        } else {
-          field_value_any := any{field_ptr, typeid_of(PropPositionSingle)}
-          unmarshal_object(json_obj[field.name], field_value_any)
-        }
-      }
-      case PropColor:
-      {
-        animated := parse_bool(object["a"]) or_return
-        field_val_ptr := transmute(^PropColor)field_ptr
-        field_val_ptr^ = PropColorSingle{}
-        if animated {
-          field_value_any := any{field_ptr, typeid_of(PropColorAnim)}
-          unmarshal_object(object, field_value_any) or_return
-        } else {
-          field_value_any := any{field_ptr, typeid_of(PropColorSingle)}
-          unmarshal_object(json_obj[field.name], field_value_any)
-        }
-      }
+      case PropScalar:   _unmarshal_prop_union(object, field_ptr, PropScalar, PropScalarSingle, PropScalarAnim)
+      case PropVector:   _unmarshal_prop_union(object, field_ptr, PropVector, PropVectorSingle, PropVectorAnim)
+      case PropBezier:   _unmarshal_prop_union(object, field_ptr, PropBezier, PropBezierSingle, PropBezierAnim)
+      case PropPosition: _unmarshal_prop_union(object, field_ptr, PropPosition, PropPositionSingle, PropPositionAnim)
+      case PropColor:    _unmarshal_prop_union(object, field_ptr, PropColor, PropColorSingle, PropColorAnim)
       case:
         return .Unmarshal_Unknown_Union_Field_Type
       }
