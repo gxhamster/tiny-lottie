@@ -83,11 +83,13 @@ gen_html :: proc(writer: ^Writer, allocator := context.allocator) -> str.Builder
 }
 
 gen_prim_div_tag_for_type :: proc(builder: ^str.Builder, info: DebugInfo, writer: ^Writer, class_name: string, $T: typeid, allocator := context.temp_allocator) {
+  count := calc_bits_from(info.start_byte, info.end_byte, info.start_bit, info.end_bit)
   str.write_string(builder, "<div class=\"")
   str.write_string(builder, class_name)
-  str.write_string(builder, "\">")
+  str.write_string(builder, "\" title=\"")
+  str.write_int(builder, count)
+  str.write_string(builder, " bits\">")
   ptr := cast(^int)raw_data(writer.data[info.start_byte:])
-  count := calc_bits_from(info.start_byte, info.end_byte, info.start_bit, info.end_bit)
   assert(count > 0, "count of bits is probably incorrect")
   int_val := bits.bitfield_extract_int(ptr^, info.start_bit, uint(count))
 
@@ -112,11 +114,13 @@ gen_prim_div_tag_for_type :: proc(builder: ^str.Builder, info: DebugInfo, writer
 
 // For types such as varint or strings which have byte sequences
 gen_html_for_byte_sequence_types :: proc(builder: ^str.Builder, info: DebugInfo, writer: ^Writer, class_name: string, allocator := context.temp_allocator) {
-  str.write_string(builder, "<div class=\"")
-  str.write_string(builder, class_name)
-  str.write_string(builder, "\">")
   count := calc_bits_from(info.start_byte, info.end_byte, info.start_bit, info.end_bit)
   bit_offset := info.start_bit
+  str.write_string(builder, "<div class=\"")
+  str.write_string(builder, class_name)
+  str.write_string(builder, "\" title=\"")
+  str.write_int(builder, count)
+  str.write_string(builder, " bits\">")
 
   end := int(count / BYTE_BITS)
   for cur_byte := 0; cur_byte < end; cur_byte += 1 {
@@ -135,9 +139,12 @@ gen_html_for_byte_sequence_types :: proc(builder: ^str.Builder, info: DebugInfo,
 }
 
 gen_html_for_enum :: proc(builder: ^str.Builder, info: DebugInfo, writer: ^Writer) {
-  str.write_string(builder, "<div class=\"enum\">")
   ptr := cast(^int)raw_data(writer.data[info.start_byte:])
   enum_bits := calc_bits_from(info.start_byte, info.end_byte, info.start_bit, info.end_bit)
+  str.write_string(builder, "<div class=\"enum\"")
+  str.write_string(builder, " title=\"")
+  str.write_int(builder, enum_bits)
+  str.write_string(builder, " bits\">")
   enum_val := bits.bitfield_extract_int(ptr^, info.start_bit, uint(enum_bits))
   enum_bitset := transmute(Bit64)enum_val
   for bit in 0..<enum_bits {
@@ -153,9 +160,12 @@ gen_html_for_enum :: proc(builder: ^str.Builder, info: DebugInfo, writer: ^Write
 }
 
 gen_html_for_bool :: proc(builder: ^str.Builder, info: DebugInfo, writer: ^Writer) {
-  str.write_string(builder, "<div class=\"bool\">")
   ptr := cast(^byte)raw_data(writer.data[info.start_byte:])
   bool_bits := calc_bits_from(info.start_byte, info.end_byte, info.start_bit, info.end_bit)
+  str.write_string(builder, "<div class=\"bool\"")
+  str.write_string(builder, " title=\"")
+  str.write_int(builder, bool_bits)
+  str.write_string(builder, " bits\">")
   bool_val := bits.bitfield_extract_u8(ptr^, info.start_bit, uint(bool_bits))
   assert(bool_val == 0 || bool_val == 1, "bool has only two possibiilites")
   assert(bool_bits == 1, "why is a bool more than 1 bit") 
@@ -190,13 +200,17 @@ gen_html_for_info :: proc(builder: ^str.Builder, info: DebugInfo, writer: ^Write
   switch info.type {
   case .meta:
   {
-    str.write_string(builder, "<div class=\"meta\">")
+    bits := calc_bits_from(info.start_byte, info.end_byte, info.start_bit, info.end_bit)
+    str.write_string(builder, "<div class=\"meta\"")
+    str.write_string(builder, " title=\"")
+    str.write_int(builder, bits)
+    str.write_string(builder, " bits\">")
     str.write_string(builder, "<div class=\"meta_title\">")
     str.write_string(builder, "<span>")
     str.write_string(builder, info.name)
     str.write_string(builder, "</span>")
     str.write_string(builder, "<span class=\"bit_count\">")
-    str.write_int(builder, calc_bits_from(info.start_byte, info.end_byte, info.start_bit, info.end_bit))
+    str.write_int(builder, bits)
     str.write_string(builder, " bits</span>")
     str.write_string(builder, "</div>")
     str.write_string(builder, "<div class=\"meta_content\">")
@@ -205,9 +219,12 @@ gen_html_for_info :: proc(builder: ^str.Builder, info: DebugInfo, writer: ^Write
   }
   case .flags:
   {
-    str.write_string(builder, "<div class=\"flags\">")
     ptr := cast(^int)raw_data(writer.data[info.start_byte:])
     flag_bits := calc_bits_from(info.start_byte, info.end_byte, info.start_bit, info.end_bit)
+    str.write_string(builder, "<div class=\"flags\"")
+    str.write_string(builder, " title=\"")
+    str.write_int(builder, flag_bits)
+    str.write_string(builder, " bits\">")
     flags := bits.bitfield_extract_int(ptr^, info.start_bit, uint(flag_bits))
     flags_bitset := transmute(Bit64)flags
     for bit in 0..<flag_bits {
