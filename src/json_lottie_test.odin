@@ -363,3 +363,38 @@ path_unmarshal_test :: proc(t: ^testing.T) {
    }
  }
 }
+
+
+@(test)
+gradient_stroke_unmarshal_test :: proc(t: ^testing.T) {
+  source := `{"ty":"gs","nm":"Stroke","o":{"a":0,"k":100},"c":{"a":0,"k":[1,0.98,0.28]},"lc":2,"lj":2,"ml":3,"w":{"a":0,"k":30},"d":[{"n":"d","nm":"dash","v":{"a":0,"k":100}},{"n":"g","nm":"gap","v":{"a":0,"k":0}},{"n":"o","nm":"offset","v":{"a":0,"k":0}}],"r":1,"s":{"a":0,"k":[256,496]},"e":{"a":0,"k":[256,16]},"t":1,"g":{"p":3,"k":{"a":0,"k":[0,0.7686274509803922,0.8509803921568627,0.9607843137254902,0.5,0.19600213626306554,0.31400015259021896,0.6899977111467155,1,0.16099794003204396,0.18399328603036547,0.45900663767452504,0,1,0.5,1,1,1]}}}`
+
+ value, err := json.parse_string(source, parse_integers = true, allocator = context.temp_allocator)
+ if err != .None {
+  log.fatalf("json.parse returned error = %v", err)
+ } else {
+   gradient := GradientStroke{}
+   err := unmarshal_object(value, gradient)
+   if err != .None {
+    log.fatalf("unmarshal_object returned error = %v, %v", err, gradient)
+   } else {
+     log.debug(gradient)
+     writer := Writer{}
+     writer_init(&writer, allocator = context.temp_allocator)
+     write_gradient_stroke(&writer, gradient)
+     total_bits := 0
+     for d, idx in writer.debug {
+      bits := (d.end_byte - d.start_byte) * 8 + int(d.end_bit - d.start_bit)
+      total_bits += bits
+      log.debug(idx, d, "SIZE:", bits) 
+     }
+     builder := gen_html(&writer)
+     builder_str := strings.to_string(builder)
+     FILE_NAME :: "data.debug"
+     succ := os.write_entire_file(FILE_NAME, transmute([]u8)builder_str)
+     if !succ {
+      panic("something went very wrong while file writing") 
+     }
+   }
+ }
+}

@@ -19,6 +19,7 @@ JL_Error :: enum {
   Incompatible_Array_Type,
   Incompatible_Number_Type,
   Incompatible_Boolean_Type,
+  Incompatible_Enum_Type,
   Incompatible_String_Type,
   Incompatible_Position_Type,
   Incompatible_Prop_Scalar_Type,
@@ -408,24 +409,28 @@ Fill :: struct {
   _flags: u64,
 }
 
+LINE_CAP_BITS :: 2
 LineCap :: enum {
   Butt = 1,
   Round = 2,
   Square = 3
 }
 
+LINE_JOIN_BITS :: 2
 LineJoin :: enum {
   Miter = 1,
   Round = 2,
   Bevel = 3
 }
 
+STROKE_DASH_TYPE_BITS :: 2
 StrokeDashType :: enum {
   Dash = 'd',
   Gap = 'g',
   Offset = 'o'
 }
 
+STROKE_DASH_FIELDS :: fields(StrokeDash) - 1
 StrokeDash :: struct {
   nm: string,
   n: StrokeDashType,
@@ -448,6 +453,7 @@ Stroke :: struct {
   _flags: u64,
 }
 
+GRADIENT_TYPE_BITS :: 2
 GradientType :: enum {
   Linear = 1,
   Radial = 2
@@ -468,6 +474,7 @@ GradientFill :: struct {
   _flags: u64,
 }
 
+GRADIENT_STROKE_FIELDS :: fields(GradientStroke) - 1
 GradientStroke :: struct {
   nm: string,
   hd: bool,

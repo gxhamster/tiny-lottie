@@ -133,6 +133,210 @@ write_bits :: proc(writer: ^Writer, value: int, num_bits: uint) {
   ptr^ = res
 }
 
+// note(iyaan): I want to be able to take the control points
+// from https://lottie.github.io/lottie-spec/latest/specs/properties/#easing-handle
+// and figure out what kind of curve it could be most related to. I have
+// seen that a lot of the sample files have mostly linear or ease-in-out easing functions
+// Maybe we can figure out what kind of curve it is and refrain from serializing the actual
+// control points each time and just encode some enum.
+cubic_bezier :: #force_inline proc(t: f64, p0, p1, p2, p3: f64) -> f64 {
+  // Cubic bezier parametric formula
+  // P = (1-t)**3 * p0 + t*p1*(3*(1-t)**2) + p2*(3*(1-t)*t**2) + p3*t**3
+  return math.pow(1 - t, 3) * p0 \ 
+  + t * p1 * (3 * math.pow(1 - t, 2)) \ 
+  + p2 * (3 * (1 - t) * math.pow(t, 2)) \ 
+  + p3 * math.pow(t, 3)
+}
+
+SAMPLING_RATE :: 8
+LINEAR_THRESHOLD :: 0.10
+cubic_curve_approx :: cubic_curve_approx_simd
+cubic_curve_approx_scalar :: proc(p1, p2: Vec2) -> EasingFunction {
+  p0 := Vec2{0, 0}
+  p3 := Vec2{1, 1}
+  
+  // Linear check
+  y_grad := p2.y - p1.y
+  x_grad := p2.x - p1.x
+  thresh := math.abs(f64(1.0) - (y_grad / x_grad))
+
+  if x_grad != 0 && thresh < LINEAR_THRESHOLD {
+    return .Linear
+  }
+
+  t: f64 = 0.0
+  sampled_points := [SAMPLING_RATE]Vec2{}
+  for i in 0..<SAMPLING_RATE {
+    x := cubic_bezier(t, p0.x, p1.x, p2.x, p3.x) 
+    y := cubic_bezier(t, p0.y, p1.y, p2.y, p3.y) 
+    sampled_points[i] = Vec2{x, y}
+    t += 1.0 / SAMPLING_RATE
+  }
+
+  // TODO(iyaan): Do this in a more simd friendly way
+  least_diff := f64(1_000_000.0)
+  most_probable := EasingFunction.Error 
+  for i in 0..<len(cubic_easing_functions_tbl) {
+    sum := f64(0.0)
+    for j := 0; j < SAMPLING_RATE*2; j += 2 {
+      vec := Vec2{f64(cubic_easing_functions_tbl[i][j]), f64(cubic_easing_functions_tbl[i][j+1])}
+      diff := vec.xy - sampled_points[j/2].xy
+      sum += math.abs(diff.x) + math.abs(diff.y)
+    }
+    if (sum) < least_diff {
+      least_diff = sum
+      most_probable = EasingFunction(i)
+    }
+  }
+  
+  return most_probable
+}
+
+cubic_curve_approx_simd :: proc(p1, p2: Vec2) -> EasingFunction {
+  p0 := Vec2{0, 0}
+  p3 := Vec2{1, 1}
+  
+  // Linear check
+  y_grad := p2.y - p1.y
+  x_grad := p2.x - p1.x
+  thresh := math.abs(f64(1.0) - (y_grad / x_grad))
+
+  if x_grad != 0 && thresh < LINEAR_THRESHOLD {
+    return .Linear
+  }
+
+  t: f64 = 0.0
+  sx: [SAMPLING_RATE]f32
+  sy: [SAMPLING_RATE]f32
+
+  for i in 0..<SAMPLING_RATE {
+    sx[i] = f32(cubic_bezier(t, p0.x, p1.x, p2.x, p3.x))
+    sy[i] = f32(cubic_bezier(t, p0.y, p1.y, p2.y, p3.y))
+    t += 1.0 / SAMPLING_RATE
+  }
+
+  sx_simd := simd.from_array(sx)
+  sy_simd := simd.from_array(sy)
+  
+  MAX_MAGNITUDE_THRESH :: 0.25
+  for i in 0..<len(cubic_easing_functions_tbl) {
+    cubic : simd.f32x16 = simd.from_array(cubic_easing_functions_tbl[i])
+    x := simd.swizzle(cubic, 0, 2, 4, 6, 8, 10, 12, 14)
+    y := simd.swizzle(cubic, 1, 3, 5, 7, 9, 11, 13, 15)
+    diff_x := simd.sub(x, sx_simd)
+    diff_y := simd.sub(y, sy_simd)
+    diff_x2 := simd.mul(diff_x, diff_x)
+    diff_y2 := simd.mul(diff_y, diff_y)
+    r1 := simd.add(diff_x2, diff_y2)
+    mag := simd.sqrt(r1)
+    mag_thresh := #simd[SAMPLING_RATE]f32{}
+    mag_thresh = MAX_MAGNITUDE_THRESH
+    largest_mag := simd.lanes_gt(mag, mag_thresh)
+    is_zero := simd.reduce_or(largest_mag)
+    if is_zero == 0 {
+      return EasingFunction(i)
+    }
+  }
+  return EasingFunction.Error
+}
+
+
+// note(iyaan): generated using cubic_curve_gen tool in
+// tools directory. Parameters for function taken from 
+// https://easings.net, add more easig functions here later
+EasingFunction :: enum u8 {
+  Ease,
+  EaseIn,
+  EaseOut,
+  EaseInOut,
+  Linear = 32,
+  Error = 255
+}
+// note(iyaan): Blindly increasing the sampling rate would
+// increase computation time.
+cubic_easing_functions_tbl := [?][SAMPLING_RATE*2]f32{
+  { // ease
+    0.0000, 0.0000, 0.0840, 0.0717, 0.1562, 0.1984, 0.2285, 0.3604,
+    0.3125, 0.5375, 0.4199, 0.7100, 0.5625, 0.8578, 0.7520, 0.961
+  },
+  { // ease-in (0.32, 0, 0.67, 0)
+    0.0000, 0.0000, 0.1213, 0.0020, 0.2448, 0.0156, 0.3700, 0.0527, 
+    0.4963, 0.1250, 0.6229, 0.2441, 0.7495, 0.4219, 0.8754, 0.6699
+  },
+
+  { // ease-out
+    0.0000, 0.0000, 0.1246, 0.3301, 0.2505, 0.5781, 0.3771, 0.7559, 
+    0.5038, 0.8750, 0.6300, 0.9473, 0.7552, 0.9844, 0.8787, 0.9980
+  },
+  { // ease-in-out
+    0.0000, 0.0000, 0.2029, 0.0430, 0.3391, 0.1562, 0.4307, 0.3164, 
+    0.5000, 0.5000, 0.5693, 0.6836, 0.6609, 0.8438, 0.7971, 0.9570
+  },
+}
+
+
+@(test)
+cubic_curve_simd_test :: proc(t: ^testing.T) {
+  {
+    // Ease-out curve
+    p0 := Vec2{0.0,0.919}
+    p1 := Vec2{0.535,1.079}
+    r0 := cubic_curve_approx_scalar(p0, p1)
+    r1 := cubic_curve_approx(p0, p1)
+    testing.expect(t, r0 == r1, "simd and scalar approach gave different results (not .Linear)")
+  }
+
+  {
+    // Invalid curve
+    p0 := Vec2{0.158, 0.919}
+    p1 := Vec2{0.0, 0.0}
+    r := cubic_curve_approx(p0, p1)
+  }
+
+  {
+    // Random curve
+    p0 := Vec2{0, 0.865}
+    p1 := Vec2{1, 0.124}
+    r := cubic_curve_approx(p0, p1)
+  }
+  {
+    // Ease-in
+    p0 := Vec2{0.32, 0.0}
+    p1 := Vec2{0.67, 0.0}
+    r := cubic_curve_approx(p0, p1)
+  }
+
+}
+
+
+@(test)
+write_bits_test :: proc(t: ^testing.T) {
+  writer := Writer{}
+  buf := make([]byte, 4096, context.temp_allocator)
+  writer.data = buf
+  write_bits(&writer, 1, 2)
+  write_bits(&writer, 2, 2)
+  write_bits(&writer, 3, 2)
+
+  testing.expect_value(t, (buf[0] & 0x03) >> 0, 1)
+  testing.expect_value(t, (buf[0] & 0x0c) >> 2, 2)
+  testing.expect_value(t, (buf[0] & 0x30) >> 4, 3)
+
+  writer_reset(&writer)
+  write_bits(&writer, 2002, 23)
+  write_bits(&writer, 10, 4)
+  write_bits(&writer, 16, 5)
+
+
+  testing.expect_value(t, (^u16)(&buf[0])^ & 0x7ff, 2002)
+  testing.expect_value(t,  (buf[3] & 0x07) << 1 | (buf[2] & 0x80) >> 7, 10)
+  testing.expect_value(t,  (buf[3] & 0x07) << 1 | (buf[2] & 0x80) >> 7, 10)
+  testing.expect_value(t, (buf[3] & 0xf8) >> 3, 16)
+
+  testing.expect(t, writer.offset == 4, "next byte offset is 4")
+  testing.expect(t, writer.bits == 0, "next bit offset is 0")
+}
+
 writer_write_string :: proc(writer: ^Writer, str: string) {
   begin_debug_info(writer, "string", .string) 
   for idx in 0..<len(str) {
@@ -576,7 +780,7 @@ can_be_vec2_generic :: proc(vec: [$T]f64) -> bool {
   }
 }
 
-write_bezier :: proc(writer: ^Writer, bezier_shape: BezierShapeValue, debug_name: string = "") {
+write_bezier :: proc(writer: ^Writer, bezier_shape: BezierShapeValue, debug_name := "bezier") {
 
   begin_debug_info(writer, debug_name, .meta) 
   expected_len := len(bezier_shape.i)
@@ -602,7 +806,6 @@ write_bezier :: proc(writer: ^Writer, bezier_shape: BezierShapeValue, debug_name
   if truncate_to_vec2 do flags += {1}
   if bezier_shape.c do flags += {0}
   
-  // TODO: Why are we wasting 1 whole byte just for 2 flags?
   write_flags(writer, flags, BEZIER_FLAG_BITS, "flags")
   
   write_varint(writer, i128(len(bezier_shape.i)), "length")
@@ -673,7 +876,7 @@ write_prop_vector_keyframe :: proc(writer: ^Writer, vec_keyframe: PropVectorKeyf
   end_debug_info(writer)
 }
 
-write_prop_vector :: proc(writer: ^Writer, vector: PropVector, debug_name: string = "prop_vector") {
+write_prop_vector :: proc(writer: ^Writer, vector: PropVector, debug_name := "prop_vector") {
   switch type in vector {
   case PropVectorSingle:
   {
@@ -741,7 +944,7 @@ write_scalar_value :: proc(writer: ^Writer, scalar_number: f64, debug_name: stri
   end_debug_info(writer)
 }
 
-write_prop_scalar :: proc(writer: ^Writer, scalar: PropScalar, debug_name: string = "prop_scalar") {
+write_prop_scalar :: proc(writer: ^Writer, scalar: PropScalar, debug_name := "prop_scalar") {
   switch type in scalar {
   case PropScalarSingle:
   {
@@ -855,7 +1058,7 @@ write_prop_position_keyframe :: proc(writer: ^Writer, position_keyframe: PropPos
   end_debug_info(writer)
 }
 
-write_prop_position :: proc(writer: ^Writer, position: PropPosition, debug_name: string = "prop_position") {
+write_prop_position :: proc(writer: ^Writer, position: PropPosition, debug_name := "prop_position") {
   switch type in position {
   case PropPositionSingle:
   {
@@ -902,7 +1105,7 @@ write_prop_bezier_keyframe :: proc(writer: ^Writer, bezier_keyframe: PropBezierK
   write_bezier(writer, bezier_keyframe.s)
 }
 
-write_prop_bezier_shape :: proc(writer: ^Writer, bezier: PropBezier, debug_name: string = "PropBezier") {
+write_prop_bezier_shape :: proc(writer: ^Writer, bezier: PropBezier, debug_name := "PropBezier") {
   switch _ in bezier {
   case PropBezierSingle:
   {
@@ -937,7 +1140,7 @@ write_prop_color_keyframe :: proc(writer: ^Writer, color_keyframe: PropColorKeyf
   write_color4(writer, color_keyframe.s)
 }
 
-write_prop_color :: proc(writer: ^Writer, color: PropColor, debug_name: string = "PropColor") {
+write_prop_color :: proc(writer: ^Writer, color: PropColor, debug_name := "PropColor") {
   switch _ in color {
   case PropColorSingle:
   {
@@ -982,7 +1185,7 @@ write_prop_gradient_keyframe :: proc(writer: ^Writer, gradient_keyframe: Gradien
   write_gradient(writer, gradient_keyframe.s)
 }
 
-write_prop_gradient :: proc(writer: ^Writer, gradient: PropGradient, debug_name: string = "PropGradient") {
+write_prop_gradient :: proc(writer: ^Writer, gradient: PropGradient, debug_name := "PropGradient") {
   write_varint(writer, i128(gradient.p))
   switch _ in gradient.k {
   case GradientStopSingle:
@@ -1027,7 +1230,7 @@ write_keyframe_easing_handle :: proc(writer: ^Writer, easing: PropKeyframeEasing
 }
 
 
-write_transform :: proc(writer: ^Writer, transform: Transform, debug_name: string = "transform") {
+write_transform :: proc(writer: ^Writer, transform: Transform, debug_name := "transform") {
   flags := transmute(Bit64)transform._flags
   begin_debug_info(writer, debug_name, .meta)
   write_flags(writer, flags, TRANSFORM_FIELDS)
@@ -1041,7 +1244,7 @@ write_transform :: proc(writer: ^Writer, transform: Transform, debug_name: strin
   end_debug_info(writer)
 }
 
-write_path :: proc(writer: ^Writer, path: Path, debug_name: string = "path") {
+write_path :: proc(writer: ^Writer, path: Path, debug_name := "path") {
   flags := transmute(Bit64)path._flags
   begin_debug_info(writer, debug_name, .meta)
   write_flags(writer, flags, PATH_FIELDS)
@@ -1055,206 +1258,52 @@ write_path :: proc(writer: ^Writer, path: Path, debug_name: string = "path") {
   end_debug_info(writer)
 }
 
-// note(iyaan): I want to be able to take the control points
-// from https://lottie.github.io/lottie-spec/latest/specs/properties/#easing-handle
-// and figure out what kind of curve it could be most related to. I have
-// seen that a lot of the sample files have mostly linear or ease-in-out easing functions
-// Maybe we can figure out what kind of curve it is and refrain from serializing the actual
-// control points each time and just encode some enum.
-cubic_bezier :: #force_inline proc(t: f64, p0, p1, p2, p3: f64) -> f64 {
-  // Cubic bezier parametric formula
-  // P = (1-t)**3 * p0 + t*p1*(3*(1-t)**2) + p2*(3*(1-t)*t**2) + p3*t**3
-  return math.pow(1 - t, 3) * p0 \ 
-  + t * p1 * (3 * math.pow(1 - t, 2)) \ 
-  + p2 * (3 * (1 - t) * math.pow(t, 2)) \ 
-  + p3 * math.pow(t, 3)
+write_stroke_dash :: proc(writer: ^Writer, dash: StrokeDash, debug_name := "StrokeDash") {
+  begin_debug_info(writer, debug_name, .meta)
+  flags := transmute(Bit64)dash._flags
+  write_flags(writer, flags, STROKE_DASH_FIELDS)
+  if isset(flags, 0) do write_string(writer, dash.nm, "nm")
+  if isset(flags, 1) {
+    // mapping the char enums to a range of 0 - 2
+    enum_val : u8
+    switch dash.n {
+    case .Dash:   enum_val = 0
+    case .Gap:    enum_val = 1
+    case .Offset: enum_val = 2
+    }
+    write_enum(writer, enum_val, STROKE_DASH_TYPE_BITS, "n")
+  }
+  if isset(flags, 2) do write_prop_scalar(writer, dash.v, "v")
+  end_debug_info(writer)
 }
 
-SAMPLING_RATE :: 8
-LINEAR_THRESHOLD :: 0.10
-cubic_curve_approx :: cubic_curve_approx_simd
-cubic_curve_approx_scalar :: proc(p1, p2: Vec2) -> EasingFunction {
-  p0 := Vec2{0, 0}
-  p3 := Vec2{1, 1}
-  
-  // Linear check
-  y_grad := p2.y - p1.y
-  x_grad := p2.x - p1.x
-  thresh := math.abs(f64(1.0) - (y_grad / x_grad))
+write_gradient_stroke :: proc(writer: ^Writer, stroke: GradientStroke, debug_name := "GradientStroke") {
+  flags := transmute(Bit64)stroke._flags
+  begin_debug_info(writer, debug_name, .meta)
+  write_flags(writer, flags, GRADIENT_STROKE_FIELDS)
 
-  if x_grad != 0 && thresh < LINEAR_THRESHOLD {
-    return .Linear
-  }
+  if isset(flags, 0) do write_string(writer, stroke.nm, "nm")
+  if isset(flags, 1) do write_bool(writer, stroke.hd, "hd")
+  graphic_elem_type := conv_graphic_elem_type_to_enum(stroke.ty)
+  write_enum(writer, u8(graphic_elem_type), GRAPHIC_ELEM_TYPE_BITS, "ty")
 
-  t: f64 = 0.0
-  sampled_points := [SAMPLING_RATE]Vec2{}
-  for i in 0..<SAMPLING_RATE {
-    x := cubic_bezier(t, p0.x, p1.x, p2.x, p3.x) 
-    y := cubic_bezier(t, p0.y, p1.y, p2.y, p3.y) 
-    sampled_points[i] = Vec2{x, y}
-    t += 1.0 / SAMPLING_RATE
-  }
-
-  // TODO(iyaan): Do this in a more simd friendly way
-  least_diff := f64(1_000_000.0)
-  most_probable := EasingFunction.Error 
-  for i in 0..<len(cubic_easing_functions_tbl) {
-    sum := f64(0.0)
-    for j := 0; j < SAMPLING_RATE*2; j += 2 {
-      vec := Vec2{f64(cubic_easing_functions_tbl[i][j]), f64(cubic_easing_functions_tbl[i][j+1])}
-      diff := vec.xy - sampled_points[j/2].xy
-      sum += math.abs(diff.x) + math.abs(diff.y)
-    }
-    if (sum) < least_diff {
-      least_diff = sum
-      most_probable = EasingFunction(i)
+  if isset(flags, 3) do write_prop_scalar(writer, stroke.o, "o")
+  if isset(flags, 4) do write_enum(writer, u8(stroke.lc), LINE_CAP_BITS, "lc")
+  if isset(flags, 5) do write_enum(writer, u8(stroke.lj), LINE_JOIN_BITS, "lj")
+  if isset(flags, 6) do write_varint(writer, i128(stroke.ml), "ml")
+  if isset(flags, 7) do write_prop_scalar(writer, stroke.ml2, "ml2")
+  if isset(flags, 8) do write_prop_scalar(writer, stroke.w, "w")
+  if isset(flags, 9) {
+    write_varint(writer, i128(len(stroke.d)), "len")
+    for stroke_dash in stroke.d {
+      write_stroke_dash(writer, stroke_dash) 
     }
   }
-  
-  return most_probable
-}
-
-cubic_curve_approx_simd :: proc(p1, p2: Vec2) -> EasingFunction {
-  p0 := Vec2{0, 0}
-  p3 := Vec2{1, 1}
-  
-  // Linear check
-  y_grad := p2.y - p1.y
-  x_grad := p2.x - p1.x
-  thresh := math.abs(f64(1.0) - (y_grad / x_grad))
-
-  if x_grad != 0 && thresh < LINEAR_THRESHOLD {
-    return .Linear
-  }
-
-  t: f64 = 0.0
-  sx: [SAMPLING_RATE]f32
-  sy: [SAMPLING_RATE]f32
-
-  for i in 0..<SAMPLING_RATE {
-    sx[i] = f32(cubic_bezier(t, p0.x, p1.x, p2.x, p3.x))
-    sy[i] = f32(cubic_bezier(t, p0.y, p1.y, p2.y, p3.y))
-    t += 1.0 / SAMPLING_RATE
-  }
-
-  sx_simd := simd.from_array(sx)
-  sy_simd := simd.from_array(sy)
-  
-  MAX_MAGNITUDE_THRESH :: 0.25
-  for i in 0..<len(cubic_easing_functions_tbl) {
-    cubic : simd.f32x16 = simd.from_array(cubic_easing_functions_tbl[i])
-    x := simd.swizzle(cubic, 0, 2, 4, 6, 8, 10, 12, 14)
-    y := simd.swizzle(cubic, 1, 3, 5, 7, 9, 11, 13, 15)
-    diff_x := simd.sub(x, sx_simd)
-    diff_y := simd.sub(y, sy_simd)
-    diff_x2 := simd.mul(diff_x, diff_x)
-    diff_y2 := simd.mul(diff_y, diff_y)
-    r1 := simd.add(diff_x2, diff_y2)
-    mag := simd.sqrt(r1)
-    mag_thresh := #simd[SAMPLING_RATE]f32{}
-    mag_thresh = MAX_MAGNITUDE_THRESH
-    largest_mag := simd.lanes_gt(mag, mag_thresh)
-    is_zero := simd.reduce_or(largest_mag)
-    if is_zero == 0 {
-      return EasingFunction(i)
-    }
-  }
-  return EasingFunction.Error
-}
-
-
-// note(iyaan): generated using cubic_curve_gen tool in
-// tools directory. Parameters for function taken from 
-// https://easings.net, add more easig functions here later
-EasingFunction :: enum u8 {
-  Ease,
-  EaseIn,
-  EaseOut,
-  EaseInOut,
-  Linear = 32,
-  Error = 255
-}
-// note(iyaan): Blindly increasing the sampling rate would
-// increase computation time.
-cubic_easing_functions_tbl := [?][SAMPLING_RATE*2]f32{
-  { // ease
-    0.0000, 0.0000, 0.0840, 0.0717, 0.1562, 0.1984, 0.2285, 0.3604,
-    0.3125, 0.5375, 0.4199, 0.7100, 0.5625, 0.8578, 0.7520, 0.961
-  },
-  { // ease-in (0.32, 0, 0.67, 0)
-    0.0000, 0.0000, 0.1213, 0.0020, 0.2448, 0.0156, 0.3700, 0.0527, 
-    0.4963, 0.1250, 0.6229, 0.2441, 0.7495, 0.4219, 0.8754, 0.6699
-  },
-
-  { // ease-out
-    0.0000, 0.0000, 0.1246, 0.3301, 0.2505, 0.5781, 0.3771, 0.7559, 
-    0.5038, 0.8750, 0.6300, 0.9473, 0.7552, 0.9844, 0.8787, 0.9980
-  },
-  { // ease-in-out
-    0.0000, 0.0000, 0.2029, 0.0430, 0.3391, 0.1562, 0.4307, 0.3164, 
-    0.5000, 0.5000, 0.5693, 0.6836, 0.6609, 0.8438, 0.7971, 0.9570
-  },
-}
-
-
-@(test)
-cubic_curve_simd_test :: proc(t: ^testing.T) {
-  {
-    // Ease-out curve
-    p0 := Vec2{0.0,0.919}
-    p1 := Vec2{0.535,1.079}
-    r0 := cubic_curve_approx_scalar(p0, p1)
-    r1 := cubic_curve_approx(p0, p1)
-    testing.expect(t, r0 == r1, "simd and scalar approach gave different results (not .Linear)")
-  }
-
-  {
-    // Invalid curve
-    p0 := Vec2{0.158, 0.919}
-    p1 := Vec2{0.0, 0.0}
-    r := cubic_curve_approx(p0, p1)
-  }
-
-  {
-    // Random curve
-    p0 := Vec2{0, 0.865}
-    p1 := Vec2{1, 0.124}
-    r := cubic_curve_approx(p0, p1)
-  }
-  {
-    // Ease-in
-    p0 := Vec2{0.32, 0.0}
-    p1 := Vec2{0.67, 0.0}
-    r := cubic_curve_approx(p0, p1)
-  }
-
-}
-
-
-@(test)
-write_bits_test :: proc(t: ^testing.T) {
-  writer := Writer{}
-  buf := make([]byte, 4096, context.temp_allocator)
-  writer.data = buf
-  write_bits(&writer, 1, 2)
-  write_bits(&writer, 2, 2)
-  write_bits(&writer, 3, 2)
-
-  testing.expect_value(t, (buf[0] & 0x03) >> 0, 1)
-  testing.expect_value(t, (buf[0] & 0x0c) >> 2, 2)
-  testing.expect_value(t, (buf[0] & 0x30) >> 4, 3)
-
-  writer_reset(&writer)
-  write_bits(&writer, 2002, 23)
-  write_bits(&writer, 10, 4)
-  write_bits(&writer, 16, 5)
-
-
-  testing.expect_value(t, (^u16)(&buf[0])^ & 0x7ff, 2002)
-  testing.expect_value(t,  (buf[3] & 0x07) << 1 | (buf[2] & 0x80) >> 7, 10)
-  testing.expect_value(t,  (buf[3] & 0x07) << 1 | (buf[2] & 0x80) >> 7, 10)
-  testing.expect_value(t, (buf[3] & 0xf8) >> 3, 16)
-
-  testing.expect(t, writer.offset == 4, "next byte offset is 4")
-  testing.expect(t, writer.bits == 0, "next bit offset is 0")
+  if isset(flags, 10) do write_prop_gradient(writer, stroke.g, "g")
+  if isset(flags, 11) do write_prop_position(writer, stroke.s, "s")
+  if isset(flags, 12) do write_prop_position(writer, stroke.e, "e")
+  if isset(flags, 13) do write_enum(writer, u8(stroke.t), GRADIENT_TYPE_BITS, "t")
+  if isset(flags, 14) do write_prop_scalar(writer, stroke.h, "h")
+  if isset(flags, 15) do write_prop_scalar(writer, stroke.a, "a")
+  end_debug_info(writer)
 }

@@ -11,6 +11,33 @@ import "base:intrinsics"
 // to take json values and convert them or unmarshal
 // them into lottie structs as best as possible
 
+
+_parse_enum_internal :: proc(
+  value: json.Value,
+  loc := #caller_location,
+) -> (
+  i64,
+  JL_Error,
+) {
+  #partial switch elem_type in value {
+  case json.Float:
+    return i64(value.(json.Float)), .None
+  case json.Integer:
+    return i64(value.(json.Integer)), .None
+  case json.String:
+  {
+    str := value.(json.String)
+    if len(str) == 1 {
+      return i64(str[0]), .None
+    } else {
+      return 0, .Incompatible_Enum_Type
+    }
+  }
+  case:
+    return 0, .Incompatible_Enum_Type
+  }
+}
+
 // Takes a json value and try to convert it into
 // a primitive type given in `p`. Can support converting
 // arbitary values into enum values if possible
@@ -57,7 +84,10 @@ unmarshal_value :: proc(
     // be found from Type_Info_Enum (t) t.base. Ofcourse have
     // to make sure whatever json value we are receiving does
     // not exceed the size limits of the backing type
-    val := parse_integer(val, true) or_return
+    val, enum_parse_err := _parse_enum_internal(val)
+    if enum_parse_err != .None {
+      log.fatalf("could not parse enum")
+    }
     val_in_enum := false
     for enum_val in t.values {
       if val == i64(enum_val) {
@@ -286,7 +316,6 @@ unmarshal_object :: proc(
     }
     
     field_value_any := any{field_ptr, field.type.id}
-    
     #partial switch struct_type in field_type_as_base.variant {
     case runtime.Type_Info_Integer,
          runtime.Type_Info_Float,
@@ -300,7 +329,7 @@ unmarshal_object :: proc(
     case runtime.Type_Info_Union:
     {
       if _, ok := json_obj[field.name].(json.Object); !ok {
-        return .Unmarshal_Unknown_Struct_Field_Type
+        continue
       }
       object := json_obj[field.name].(json.Object)
       switch field.type.id {
@@ -309,9 +338,10 @@ unmarshal_object :: proc(
       case PropBezier:     _unmarshal_prop_union(object, field_ptr, PropBezier, PropBezierSingle, PropBezierAnim)
       case PropPosition:   _unmarshal_prop_union(object, field_ptr, PropPosition, PropPositionSingle, PropPositionAnim)
       case PropColor:      _unmarshal_prop_union(object, field_ptr, PropColor, PropColorSingle, PropColorAnim)
+      case GradientStop:   _unmarshal_prop_union(object, field_ptr, GradientStop, GradientStopSingle, GradientStopAnim)
       case GraphicElement: _unmarshal_graphic_element_union(object, field_ptr)
       case:
-        return .Unmarshal_Unknown_Union_Field_Type
+        log.fatalf("unknown union type encountered for field = %v, type = %v", field.name, field.type.id)
       }
     } 
     case:
