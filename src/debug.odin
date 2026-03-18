@@ -331,6 +331,7 @@ INJECTED_HTML_HEADER :: `<!DOCTYPE html>
       text-transform: uppercase;
       display: flex;
       letter-spacing: 1px;
+      gap: 2em;
       justify-content: space-between;
       margin-bottom: 1px;
     }
@@ -340,6 +341,7 @@ INJECTED_HTML_HEADER :: `<!DOCTYPE html>
       font-weight: bold;
     }
     .meta {
+      align-self: flex-start;
       position: relative;
       background-color: var(--meta-background-color);
       display: flex;
