@@ -17,7 +17,7 @@ _parse_enum_internal :: proc(
   loc := #caller_location,
 ) -> (
   i64,
-  JL_Error,
+  LottieError,
 ) {
   #partial switch elem_type in value {
   case json.Float:
@@ -30,11 +30,11 @@ _parse_enum_internal :: proc(
     if len(str) == 1 {
       return i64(str[0]), .None
     } else {
-      return 0, .Incompatible_Enum_Type
+      return 0, .IncompatibleEnumType
     }
   }
   case:
-    return 0, .Incompatible_Enum_Type
+    return 0, .IncompatibleEnumType
   }
 }
 
@@ -47,7 +47,7 @@ unmarshal_value :: proc(
   allocator := context.allocator,
   loc := #caller_location,
 ) -> (
-  err: JL_Error,
+  err: LottieError,
 ) {
   type_info := reflect.type_info_base(type_info_of(p.id))
   ptr := p.data
@@ -97,13 +97,13 @@ unmarshal_value :: proc(
     }
 
     if !val_in_enum {
-      return .Unmarshal_Out_Of_Bound_Enum_Value
+      return .UnmarshalOutOfBoundEnumValue
     }
   }
   case:
   {
     log.fatalf("unknown type: %v, called from %v", t, loc)
-    return .Unmarshal_Unknown_Value_Type
+    return .UnmarshalUnknownValue_Type
   }
   }
   return .None
@@ -114,13 +114,13 @@ unmarshal_array :: proc(
   p: any,
   allocator := context.allocator,
 ) -> (
-  err: JL_Error,
+  err: LottieError,
 ) {
   type_info := reflect.type_info_base(type_info_of(p.id))
   ptr := p.data
   
   if _, ok := val.(json.Array); !ok {
-    return .Incompatible_Array_Type
+    return .IncompatibleArrayType
   }
 
   json_array := val.(json.Array)
@@ -145,7 +145,7 @@ unmarshal_array :: proc(
     )
 
     if alloc_err != .None {
-      return .Unmarshal_Allocation_Error
+      return .UnmarshalAllocationError
     }
 
     raw.data = raw_data(data)
@@ -170,9 +170,9 @@ unmarshal_array :: proc(
       case:
       {
         if err := delete(data); err != .None {
-          return .Unmarshal_Deallocation_Error
+          return .UnmarshalDeallocationError
         } else {
-          return .Unmarshal_Unknown_Array_Inner_Type
+          return .UnmarshalUnknownArrayInnerType
         }
       }
       }
@@ -192,13 +192,13 @@ unmarshal_array :: proc(
         unmarshal_value(elem, elem_any) or_return
       }
     } else {
-      return .Too_Large_Vector
+      return .TooLargeVector
     }
   }
   case runtime.Type_Info_Dynamic_Array: 
-    return .Unmarshal_Unsupported_Array_Type
+    return .UnmarshalUnsupportedArrayType
   case: 
-    return .Unmarshal_Unknown_Array_Type
+    return .UnmarshalUnknownArrayType
   }
 
   return .None
@@ -206,7 +206,7 @@ unmarshal_array :: proc(
 
 
 
-_unmarshal_prop_union :: proc(object: json.Object, field_ptr: rawptr, $union_type, $single_variant, $anim_variant: typeid) -> (err: JL_Error){
+_unmarshal_prop_union :: proc(object: json.Object, field_ptr: rawptr, $union_type, $single_variant, $anim_variant: typeid) -> (err: LottieError){
   animated := parse_bool(object["a"]) or_return
   field_val_ptr := transmute(^union_type)field_ptr
   if animated {
@@ -248,7 +248,7 @@ conv_graphic_elem_type_to_enum :: proc(str: string) -> GraphicElemType {
   }
 }
 
-_unmarshal_graphic_elem_internal :: proc(object: json.Object, field_ptr: rawptr, $intern_type: typeid) -> (err: JL_Error) {
+_unmarshal_graphic_elem_internal :: proc(object: json.Object, field_ptr: rawptr, $intern_type: typeid) -> (err: LottieError) {
   field_val_ptr := transmute(^GraphicElement)field_ptr
   field_val_ptr^ = intern_type{}
   field_value_any := any{field_ptr, typeid_of(intern_type)}
@@ -257,7 +257,7 @@ _unmarshal_graphic_elem_internal :: proc(object: json.Object, field_ptr: rawptr,
 }
 
 
-_unmarshal_graphic_element_union :: proc(object: json.Object, field_ptr: rawptr) -> (err: JL_Error) {
+_unmarshal_graphic_element_union :: proc(object: json.Object, field_ptr: rawptr) -> (err: LottieError) {
   graphic_elem_type_str := parse_string(object["ty"]) or_return
   // Map the string `type` to an enum
   graphic_elem_type := conv_graphic_elem_type_to_enum(graphic_elem_type_str)
@@ -285,17 +285,17 @@ unmarshal_object :: proc(
   p: any,
   allocator := context.allocator,
 ) -> (
-  err: JL_Error,
+  err: LottieError,
 ) {
   type_info := reflect.type_info_base(type_info_of(p.id))
   ptr := p.data
 
   if _, ok := type_info.variant.(reflect.Type_Info_Struct); !ok {
-    return .Incompatible_Object_Type
+    return .IncompatibleObjectType
   }
 
   if _, ok := val.(json.Object); !ok {
-    return .Incompatible_Object_Type
+    return .IncompatibleObjectType
   }
 
   fields := reflect.struct_fields_zipped(p.id)
@@ -345,7 +345,7 @@ unmarshal_object :: proc(
       }
     } 
     case:
-      return .Unmarshal_Unknown_Struct_Field_Type
+      return .UnmarshalUnknownStructFieldType
     }
   }
   // Set the flags of the struct as a mask

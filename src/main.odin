@@ -67,7 +67,7 @@ parse_layers :: proc(
   layer_json_array: json.Array,
   allocator := context.allocator,
   loc := #caller_location,
-) -> JL_Error {
+) -> LottieError {
   p := (layer_json_array[0].(json.Object)["ks"])
 
   transform, err := parse_transform(p)
@@ -81,7 +81,7 @@ parse_prop_scalar :: proc(
   loc := #caller_location,
 ) -> (
   scalar: PropScalar,
-  err: JL_Error,
+  err: LottieError,
 ) {
   #partial switch type in value {
   case json.Object:
@@ -117,14 +117,14 @@ parse_prop_scalar :: proc(
         anim_scalar.k = keyframes[:]
         return anim_scalar, .None
       case:
-        return scalar, .Incompatible_Array_Type
+        return scalar, .IncompatibleArrayType
       }
     }
   case:
     return req_or_err(
       required,
       scalar,
-      .Incompatible_Prop_Scalar_Type,
+      .IncompatiblePropScalarType,
     )
   }
 
@@ -137,7 +137,7 @@ parse_prop_vector :: proc(
   loc := #caller_location,
 ) -> (
   vector_prop: PropVector,
-  err: JL_Error,
+  err: LottieError,
 ) {
 
   #partial switch type in value {
@@ -175,17 +175,17 @@ parse_prop_vector :: proc(
         anim_vector.k = keyframes[:]
         return anim_vector, .None
       case:
-        return vector_prop, .Incompatible_Array_Type
+        return vector_prop, .IncompatibleArrayType
       }
     } else {
-      return vector_prop, .Incompatible_Boolean_Type
+      return vector_prop, .IncompatibleBooleanType
     }
 
   case:
     return req_or_err(
       required,
       vector_prop,
-      .Incompatible_Object_Type,
+      .IncompatibleObjectType,
     )
   }
 }
@@ -197,7 +197,7 @@ parse_color_keyframe :: proc(
   loc := #caller_location,
 ) -> (
   color_keyframe: PropColorKeyframe,
-  err: JL_Error,
+  err: LottieError,
 ) {
 
   if err := unmarshal_object(value, color_keyframe); err != .None {
@@ -214,7 +214,7 @@ parse_prop_color :: proc(
   loc := #caller_location,
 ) -> (
   color_prop: PropColor,
-  err: JL_Error,
+  err: LottieError,
 ) {
   #partial switch type in value {
   case json.Object:
@@ -256,21 +256,21 @@ parse_prop_color :: proc(
         return req_or_err(
           required,
           color_prop,
-          .Incompatible_Array_Type,
+          .IncompatibleArrayType,
         )
       }
     } else {
       return req_or_err(
         required,
         color_prop,
-        .Incompatible_Boolean_Type,
+        .IncompatibleBooleanType,
       )
     }
   case:
     return req_or_err(
       required,
       color_prop,
-      .Incompatible_Object_Type,
+      .IncompatibleObjectType,
     )
   }
 }
@@ -282,7 +282,7 @@ parse_bezier_keyframe :: proc(
   loc := #caller_location,
 ) -> (
   bezier_keyframe: PropBezierKeyframe,
-  err: JL_Error,
+  err: LottieError,
 ) {
 
   if err := unmarshal_object(value, bezier_keyframe);
@@ -300,7 +300,7 @@ parse_prop_bezier :: proc(
   loc := #caller_location,
 ) -> (
   bezier_prop: PropBezier,
-  err: JL_Error,
+  err: LottieError,
 ) {
   #partial switch type in value {
   case json.Object:
@@ -339,21 +339,21 @@ parse_prop_bezier :: proc(
         return req_or_err(
           required,
           bezier_prop,
-          .Incompatible_Array_Type,
+          .IncompatibleArrayType,
         )
       }
     } else {
       return req_or_err(
         required,
         bezier_prop,
-        .Incompatible_Boolean_Type,
+        .IncompatibleBooleanType,
       )
     }
   case:
     return req_or_err(
       required,
       bezier_prop,
-      .Incompatible_Object_Type,
+      .IncompatibleObjectType,
     )
   }
 }
@@ -366,14 +366,14 @@ parse_value_vector :: proc(
   loc := #caller_location,
 ) -> (
   vec: Vec3,
-  err: JL_Error,
+  err: LottieError,
 ) {
   #partial switch value_type in value {
   case json.Array:
     vec: Vec3
     value_as_arr := value.(json.Array)
     if len(value_as_arr) > len(vec) {
-      return req_or_err(required, Vec3{}, .Too_Large_Vector)
+      return req_or_err(required, Vec3{}, .TooLargeVector)
     }
 
     for idx in 0 ..< len(value_as_arr) {
@@ -383,7 +383,7 @@ parse_value_vector :: proc(
 
     return vec, .None
   case:
-    return req_or_err(required, Vec3{}, .Incompatible_Vector_Type)
+    return req_or_err(required, Vec3{}, .IncompatibleVectorType)
   }
 
 }
@@ -395,13 +395,13 @@ parse_string :: proc(
   loc := #caller_location,
 ) -> (
   string,
-  JL_Error,
+  LottieError,
 ) {
   #partial switch elem_type in value {
   case json.String:
     return value.(json.String), .None
   case:
-    return req_or_err(required, "", .Incompatible_String_Type)
+    return req_or_err(required, "", .IncompatibleStringType)
   }
 }
 
@@ -413,7 +413,7 @@ try_float :: proc(
   loc := #caller_location,
 ) -> (
   float_val: f64,
-  err: JL_Error,
+  err: LottieError,
 ) {
   #partial switch elem_type in value {
   case json.Float:
@@ -421,7 +421,7 @@ try_float :: proc(
   case json.Integer:
     return f64(value.(json.Integer)), .None
   case:
-    return req_or_err(required, f64(0), .Incompatible_Number_Type)
+    return req_or_err(required, f64(0), .IncompatibleNumberType)
   }
 }
 
@@ -434,7 +434,7 @@ parse_integer :: proc(
   loc := #caller_location,
 ) -> (
   i64,
-  JL_Error,
+  LottieError,
 ) {
   #partial switch elem_type in value {
   case json.Float:
@@ -442,7 +442,7 @@ parse_integer :: proc(
   case json.Integer:
     return i64(value.(json.Integer)), .None
   case:
-    return req_or_err(required, i64(0), .Incompatible_Integer_Type)
+    return req_or_err(required, i64(0), .IncompatibleIntegerType)
   }
 }
 
@@ -452,10 +452,10 @@ parse_integer :: proc(
 req_or_err :: #force_inline proc(
   required: bool,
   ret_value: $T,
-  error_type: JL_Error,
+  error_type: LottieError,
 ) -> (
   T,
-  JL_Error,
+  LottieError,
 ) {
   if required {
     return ret_value, error_type
@@ -471,7 +471,7 @@ parse_bool :: proc(
   loc := #caller_location,
 ) -> (
   bool,
-  JL_Error,
+  LottieError,
 ) {
   #partial switch elem_type in value {
   case json.Boolean:
@@ -495,7 +495,7 @@ parse_bool :: proc(
     }
 
   case:
-    return req_or_err(required, false, .Incompatible_Boolean_Type)
+    return req_or_err(required, false, .IncompatibleBooleanType)
   }
 }
 
@@ -507,7 +507,7 @@ parse_keyframe_easing_vec :: proc(
   loc := #caller_location,
 ) -> (
   easing_vec: PropKeyframeEasingVec,
-  err: JL_Error,
+  err: LottieError,
 ) {
   #partial switch value_type in value {
   case json.Object:
@@ -528,7 +528,7 @@ parse_keyframe_easing_vec :: proc(
     return req_or_err(
       required,
       easing_vec,
-      .Incompatible_Object_Type,
+      .IncompatibleObjectType,
     )
 
   }
@@ -540,7 +540,7 @@ parse_keyframe_easing_scalar :: proc(
   loc := #caller_location,
 ) -> (
   ease_scalar: PropKeyframeEasingScalar,
-  err: JL_Error,
+  err: LottieError,
 ) {
   #partial switch value_type in value {
   case json.Object:
@@ -550,7 +550,7 @@ parse_keyframe_easing_scalar :: proc(
     for field in required_fields {
       if ok := field in value_as_obj; ok == false {
         return PropKeyframeEasingScalar{},
-          .Missing_Required_Value
+          .MissingRequiredValue
       }
     }
 
@@ -564,7 +564,7 @@ parse_keyframe_easing_scalar :: proc(
     ) or_return
     return r_keyframe_easing, .None
   case:
-    return PropKeyframeEasingScalar{}, .Incompatible_Object_Type
+    return PropKeyframeEasingScalar{}, .IncompatibleObjectType
 
   }
 }
@@ -576,19 +576,19 @@ check_missing_required :: proc(
   allocator := context.allocator,
   loc := #caller_location,
 ) -> (
-  err: JL_Error,
+  err: LottieError,
 ) {
   #partial switch type in value {
   case json.Object:
     value_as_obj := value.(json.Object)
     for field in required_fields {
       if ok := field in value_as_obj; ok == false {
-        return .Missing_Required_Value
+        return .MissingRequiredValue
       }
     }
     return .None
   case:
-    return .Incompatible_Object_Type
+    return .IncompatibleObjectType
   }
 }
 
@@ -600,7 +600,7 @@ parse_split_position :: proc(
   loc := #caller_location,
 ) -> (
   pos: PropPosition,
-  err: JL_Error,
+  err: LottieError,
 ) {
   #partial switch type in value {
   case json.Object:
@@ -620,7 +620,7 @@ parse_split_position :: proc(
       return pos, .None
     }
   case:
-    return req_or_err(required, pos, .Incompatible_Position_Type)
+    return req_or_err(required, pos, .IncompatiblePositionType)
   }
 }
 
@@ -631,7 +631,7 @@ parse_scalar_keyframe :: proc(
   loc := #caller_location,
 ) -> (
   scalar_keyframe: PropScalarKeyframe,
-  err: JL_Error,
+  err: LottieError,
 ) {
   #partial switch value_type in value {
   case json.Object:
@@ -653,7 +653,7 @@ parse_scalar_keyframe :: proc(
     return req_or_err(
       required,
       scalar_keyframe,
-      .Incompatible_Object_Type,
+      .IncompatibleObjectType,
     )
   }
 }
@@ -666,7 +666,7 @@ parse_vector_keyframe :: proc(
   loc := #caller_location,
 ) -> (
   vec_keyframe: PropVectorKeyframe,
-  err: JL_Error,
+  err: LottieError,
 ) {
   #partial switch value_type in value {
   case json.Object:
@@ -687,7 +687,7 @@ parse_vector_keyframe :: proc(
     return req_or_err(
       required,
       vec_keyframe,
-      .Incompatible_Object_Type,
+      .IncompatibleObjectType,
     )
   }
 }
@@ -699,7 +699,7 @@ parse_position_keyframe :: proc(
   loc := #caller_location,
 ) -> (
   pos_keyframe: PropPositionKeyframe,
-  err: JL_Error,
+  err: LottieError,
 ) {
   #partial switch value_type in value {
   case json.Object:
@@ -722,7 +722,7 @@ parse_position_keyframe :: proc(
     return req_or_err(
       required,
       pos_keyframe,
-      .Incompatible_Object_Type,
+      .IncompatibleObjectType,
     )
   }
 }
@@ -735,7 +735,7 @@ parse_position :: proc(
   loc := #caller_location,
 ) -> (
   position: PropPosition,
-  err: JL_Error,
+  err: LottieError,
 ) {
   #partial switch type in value {
   case json.Object:
@@ -769,7 +769,7 @@ parse_position :: proc(
         position_anim.k = keyframes[:]
         return position_anim, .None
       case:
-        return position_anim, .Incompatible_Array_Type
+        return position_anim, .IncompatibleArrayType
       }
 
       return position_anim, .None
@@ -786,7 +786,7 @@ parse_transform :: proc(
   loc := #caller_location,
 ) -> (
   transform: Transform,
-  err: JL_Error,
+  err: LottieError,
 ) {
   transform_struct := Transform{}
   unmarshal_object(value, transform_struct) or_return
@@ -822,7 +822,7 @@ read_file_handle :: proc(
      root["fr"] == nil ||
      root["op"] == nil ||
      root["ip"] == nil {
-    return JsonLottie{}, JL_Error.Missing_Required_Value
+    return JsonLottie{}, LottieError.MissingRequiredValue
   }
 
   data.animation.nm = root["nm"].(json.String)
@@ -833,17 +833,17 @@ read_file_handle :: proc(
   data.animation.h = i64(root["h"].(json.Float))
 
   if data.animation.h < 0 {
-    return JsonLottie{}, JL_Error.Outof_Range_Value
+    return JsonLottie{}, LottieError.OutofRangeValue
   }
   if data.animation.w < 0 {
-    return JsonLottie{}, JL_Error.Outof_Range_Value
+    return JsonLottie{}, LottieError.OutofRangeValue
   }
   if data.animation.fr < 1 {
-    return JsonLottie{}, JL_Error.Outof_Range_Value
+    return JsonLottie{}, LottieError.OutofRangeValue
   }
   LOTTIE_VERSION_MIN :: 10000
   if root["ver"] != nil && root["ver"].(json.Integer) < LOTTIE_VERSION_MIN {
-    return JsonLottie{}, JL_Error.Outof_Range_Value
+    return JsonLottie{}, LottieError.OutofRangeValue
   } else if root["ver"] != nil &&
      root["ver"].(json.Integer) > LOTTIE_VERSION_MIN {
     data.animation.ver = root["ver"].(json.Integer)
@@ -867,7 +867,7 @@ read_file_handle :: proc(
   if slots_ok {
     data.animation.slots = root["slots"].(json.Object)
   }
-  return data, JL_Error.None
+  return data, LottieError.None
 }
 
 read_file_name :: proc(
@@ -937,7 +937,7 @@ main :: proc() {
     "../data/Fire.json",
     context.allocator,
   )
-  if err != nil && err != JL_Error.None {
+  if err != nil && err != LottieError.None {
     fmt.eprintf("Could not read lottie json file due to %s\n", err)
     panic("Could not read lottie json file")
   }

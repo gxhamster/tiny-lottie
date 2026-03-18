@@ -6,41 +6,41 @@ import "base:intrinsics"
 
 fields :: intrinsics.type_struct_field_count
 
-JL_Error :: enum {
+LottieError :: enum {
   None,
-  Missing_Required_Value,
-  Outof_Range_Value,
-  Unmarshal_Err,
-  Incompatible_Vector_Type,
-  Incompatible_Vector_Inner_Type,
-  Incompatible_Object_Type,
-  Incompatible_Scalar_Type,
-  Incompatible_Integer_Type,
-  Incompatible_Array_Type,
-  Incompatible_Number_Type,
-  Incompatible_Boolean_Type,
-  Incompatible_Enum_Type,
-  Incompatible_String_Type,
-  Incompatible_Position_Type,
-  Incompatible_Prop_Scalar_Type,
-  Incompatible_Transform_Type,
-  Too_Large_Vector,
-  Too_Small_Vector,
-  Unmarshal_Unknown_Value_Type,
-  Unmarshal_Unknown_Array_Type,
-  Unmarshal_Unsupported_Array_Type,
-  Unmarshal_Unknown_Object_Type,
-  Unmarshal_Unknown_Array_Inner_Type,
-  Unmarshal_Unknown_Struct_Field_Type,
-  Unmarshal_Unknown_Union_Field_Type,
-  Unmarshal_Out_Of_Bound_Enum_Value,
-  Unmarshal_Allocation_Error,
-  Unmarshal_Deallocation_Error,
+  MissingRequiredValue,
+  OutofRangeValue,
+  UnmarshalErr,
+  IncompatibleVectorType,
+  IncompatibleVectorInnerType,
+  IncompatibleObjectType,
+  IncompatibleScalarType,
+  IncompatibleIntegerType,
+  IncompatibleArrayType,
+  IncompatibleNumberType,
+  IncompatibleBooleanType,
+  IncompatibleEnumType,
+  IncompatibleStringType,
+  IncompatiblePositionType,
+  IncompatiblePropScalarType,
+  IncompatibleTransformType,
+  TooLargeVector,
+  TooSmallVector,
+  UnmarshalUnknownValue_Type,
+  UnmarshalUnknownArrayType,
+  UnmarshalUnsupportedArrayType,
+  UnmarshalUnknownObjectType,
+  UnmarshalUnknownArrayInnerType,
+  UnmarshalUnknownStructFieldType,
+  UnmarshalUnknownUnionFieldType,
+  UnmarshalOutOfBoundEnumValue,
+  UnmarshalAllocationError,
+  UnmarshalDeallocationError,
 }
 
 Error :: union {
   os.Error,
-  JL_Error,
+  LottieError,
   json.Error,
 }
 
@@ -346,6 +346,7 @@ Path :: struct {
   _flags: u64,
 }
 
+STAR_TYPE_BITS :: 2
 StarType :: enum {
   Star  = 1,
   Polygon = 2

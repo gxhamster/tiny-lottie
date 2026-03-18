@@ -148,18 +148,18 @@ lottie_enum_unmarshal_test :: proc(t: ^testing.T) {
 
   testing.expect(
     t,
-    unmarshal_value(m["sid"], mm) == JL_Error.Incompatible_Integer_Type,
+    unmarshal_value(m["sid"], mm) == LottieError.IncompatibleIntegerType,
     "Cannot convert non-integer value to enum",
   )
   testing.expect(
     t,
-    unmarshal_value(m["id"], mm) == JL_Error.None,
+    unmarshal_value(m["id"], mm) == LottieError.None,
     "Corrrect value for MatteMode enum",
   )
   testing.expect(
     t,
     unmarshal_value(m["id1"], mm) ==
-    JL_Error.Unmarshal_Out_Of_Bound_Enum_Value,
+    LottieError.UnmarshalOutOfBoundEnumValue,
     "An integer value that is not an enumeration for MatteMode",
   )
 
