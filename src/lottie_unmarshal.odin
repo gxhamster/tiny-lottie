@@ -160,7 +160,12 @@ unmarshal_array :: proc(
       )
 
       #partial switch base_t in elem_type_base.variant {
-      case runtime.Type_Info_Struct, runtime.Type_Info_Union: unmarshal_object(elem, elem_any) or_return
+      case runtime.Type_Info_Struct: 
+        err := unmarshal_object(elem, elem_any)
+        if err != .None {
+          log.fatalf("unmarshal_object returned error %v for %v %v", err, elem, internal_elem_type_info.id)
+        }
+      case runtime.Type_Info_Union:  unmarshal_union(elem, elem_any) or_return
       case runtime.Type_Info_Integer,
            runtime.Type_Info_Float,
            runtime.Type_Info_Boolean,
@@ -225,29 +230,6 @@ _unmarshal_prop_union :: proc(object: json.Object, field_ptr: rawptr, $union_typ
   return .None
 }
 
-graphic_elem_type_conv_tbl := [34]i8{
-    -1, -1, -1, -1, -1, -1, -1,  2,
-    -1, -1, -1,  0,  1, -1, -1,  7,
-    -1, -1, -1,  4,  3,  5, -1, -1,
-    -1, -1, -1, 10, -1, -1, -1,  6,
-     9,  8
-}
-
-conv_graphic_elem_type_to_enum :: proc(str: string) -> GraphicElemType {
-  if len(str) == 2 {
-    OFFSET :: 99
-    MAX :: 17
-
-    b0 := (str[0] - OFFSET) <= MAX ? (str[0] - OFFSET) : 0
-    b1 := (str[1] - OFFSET) <= MAX ? (str[1] - OFFSET) : 0
-    hs := b0 + b1
-    state := graphic_elem_type_conv_tbl[hs]
-    return GraphicElemType(state)
-  } else {
-    return .Error
-  }
-}
-
 _unmarshal_graphic_elem_internal :: proc(object: json.Object, field_ptr: rawptr, $intern_type: typeid) -> (err: LottieError) {
   field_val_ptr := transmute(^GraphicElement)field_ptr
   field_val_ptr^ = intern_type{}
@@ -262,17 +244,17 @@ _unmarshal_graphic_element_union :: proc(object: json.Object, field_ptr: rawptr)
   // Map the string `type` to an enum
   graphic_elem_type := conv_graphic_elem_type_to_enum(graphic_elem_type_str)
   switch graphic_elem_type {
-  case .el: _unmarshal_graphic_elem_internal(object, field_ptr, Ellipse)
-  case .fl: _unmarshal_graphic_elem_internal(object, field_ptr, Fill)
-  case .gf: _unmarshal_graphic_elem_internal(object, field_ptr, GradientFill)
-  case .gs: _unmarshal_graphic_elem_internal(object, field_ptr, GradientStroke)
-  case .gr: _unmarshal_graphic_elem_internal(object, field_ptr, Group)
-  case .sh: _unmarshal_graphic_elem_internal(object, field_ptr, Path)
-  case .sr: _unmarshal_graphic_elem_internal(object, field_ptr, Polystar)
-  case .rc: _unmarshal_graphic_elem_internal(object, field_ptr, Rectangle)
-  case .st: _unmarshal_graphic_elem_internal(object, field_ptr, Stroke)
-  case .tr: _unmarshal_graphic_elem_internal(object, field_ptr, TransformShape)
-  case .tm: _unmarshal_graphic_elem_internal(object, field_ptr, TrimPath)
+  case .el: _unmarshal_graphic_elem_internal(object, field_ptr, Ellipse) or_return
+  case .fl: _unmarshal_graphic_elem_internal(object, field_ptr, Fill) or_return
+  case .gf: _unmarshal_graphic_elem_internal(object, field_ptr, GradientFill) or_return
+  case .gs: _unmarshal_graphic_elem_internal(object, field_ptr, GradientStroke) or_return
+  case .gr: _unmarshal_graphic_elem_internal(object, field_ptr, Group) or_return
+  case .sh: _unmarshal_graphic_elem_internal(object, field_ptr, Path) or_return
+  case .sr: _unmarshal_graphic_elem_internal(object, field_ptr, Polystar) or_return
+  case .rc: _unmarshal_graphic_elem_internal(object, field_ptr, Rectangle) or_return
+  case .st: _unmarshal_graphic_elem_internal(object, field_ptr, Stroke) or_return
+  case .tr: _unmarshal_graphic_elem_internal(object, field_ptr, TransformShape) or_return
+  case .tm: _unmarshal_graphic_elem_internal(object, field_ptr, TrimPath) or_return
   case .Error:
     panic("unknown graphic element type")
   }
@@ -280,13 +262,56 @@ _unmarshal_graphic_element_union :: proc(object: json.Object, field_ptr: rawptr)
   return .None
 }
 
-unmarshal_object :: proc(
-  val: json.Value,
-  p: any,
-  allocator := context.allocator,
-) -> (
-  err: LottieError,
-) {
+unmarshal_union :: proc(val: json.Value, p: any, allocator := context.allocator) -> ( err: LottieError) {
+  type_info := reflect.type_info_base(type_info_of(p.id))
+  ptr := p.data
+
+  if _, ok := type_info.variant.(reflect.Type_Info_Union); !ok {
+    return .IncompatibleObjectType
+  }
+
+  if _, ok := val.(json.Object); !ok {
+    return .IncompatibleObjectType
+  }
+
+  object := val.(json.Object)
+  switch p.id {
+  case PropScalar:     _unmarshal_prop_union(object, ptr, PropScalar, PropScalarSingle, PropScalarAnim) or_return
+  case PropVector:     _unmarshal_prop_union(object, ptr, PropVector, PropVectorSingle, PropVectorAnim) or_return
+  case PropBezier:     _unmarshal_prop_union(object, ptr, PropBezier, PropBezierSingle, PropBezierAnim) or_return
+  case PropPosition:   _unmarshal_prop_union(object, ptr, PropPosition, PropPositionSingle, PropPositionAnim) or_return
+  case PropColor:      _unmarshal_prop_union(object, ptr, PropColor, PropColorSingle, PropColorAnim) or_return
+  case GradientStop:   _unmarshal_prop_union(object, ptr, GradientStop, GradientStopSingle, GradientStopAnim) or_return
+  case PropKeyframeEasing:
+  {
+    is_vector_type := false
+    _, okX := object["x"].(json.Array)
+    _, okY := object["y"].(json.Array)
+    if okX && okY do is_vector_type = true
+    if is_vector_type {
+      easing_ptr := transmute(^PropKeyframeEasing)ptr
+      easing_ptr^ = PropKeyframeEasingVec{}
+      easing_vector := any{ptr, typeid_of(PropKeyframeEasingVec)}
+      unmarshal_object(object, easing_vector) or_return
+    } else {
+      easing_ptr := transmute(^PropKeyframeEasing)ptr
+      easing_ptr^ = PropKeyframeEasingScalar{}
+      easing_scalar := any{ptr, typeid_of(PropKeyframeEasingScalar)}
+      unmarshal_object(object, easing_scalar) or_return
+    }
+  }
+  case GraphicElement:
+  {
+    if "ty" in object {
+      _unmarshal_graphic_element_union(object, ptr) or_return
+    }
+  }
+  }
+
+  return .None
+}
+
+unmarshal_object :: proc(val: json.Value, p: any, allocator := context.allocator) -> ( err: LottieError) {
   type_info := reflect.type_info_base(type_info_of(p.id))
   ptr := p.data
 
@@ -313,6 +338,8 @@ unmarshal_object :: proc(
     }
     if _, field_exists := json_obj[field.name]; field_exists {
       flags += {idx}
+    } else {
+      continue
     }
     
     field_value_any := any{field_ptr, field.type.id}
@@ -328,21 +355,11 @@ unmarshal_object :: proc(
     case runtime.Type_Info_Struct: unmarshal_object(json_obj[field.name], field_value_any) or_return
     case runtime.Type_Info_Union:
     {
+      // note(iyaan): Are we deadass ignoring any union which has no struct variants
       if _, ok := json_obj[field.name].(json.Object); !ok {
         continue
       }
-      object := json_obj[field.name].(json.Object)
-      switch field.type.id {
-      case PropScalar:     _unmarshal_prop_union(object, field_ptr, PropScalar, PropScalarSingle, PropScalarAnim)
-      case PropVector:     _unmarshal_prop_union(object, field_ptr, PropVector, PropVectorSingle, PropVectorAnim)
-      case PropBezier:     _unmarshal_prop_union(object, field_ptr, PropBezier, PropBezierSingle, PropBezierAnim)
-      case PropPosition:   _unmarshal_prop_union(object, field_ptr, PropPosition, PropPositionSingle, PropPositionAnim)
-      case PropColor:      _unmarshal_prop_union(object, field_ptr, PropColor, PropColorSingle, PropColorAnim)
-      case GradientStop:   _unmarshal_prop_union(object, field_ptr, GradientStop, GradientStopSingle, GradientStopAnim)
-      case GraphicElement: _unmarshal_graphic_element_union(object, field_ptr)
-      case:
-        log.fatalf("unknown union type encountered for field = %v, type = %v", field.name, field.type.id)
-      }
+      unmarshal_union(json_obj[field.name], field_value_any) or_return
     } 
     case:
       return .UnmarshalUnknownStructFieldType

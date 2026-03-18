@@ -155,9 +155,9 @@ PropBezierSingle :: struct {
 PropBezierKeyframe :: struct {
   t: u64,
   h: i64,
-  i: PropKeyframeEasingVec,
-  o: PropKeyframeEasingVec,
-  s: BezierShapeValue,
+  i: PropKeyframeEasing,
+  o: PropKeyframeEasing,
+  s: []BezierShapeValue,
   _flags: u64,
 }
 
@@ -183,8 +183,8 @@ PropColorSingle :: struct {
 PropColorKeyframe :: struct {
   t: u64,
   h: i64,
-  i: PropKeyframeEasingVec,
-  o: PropKeyframeEasingVec,
+  i: PropKeyframeEasing,
+  o: PropKeyframeEasing,
   s: Color4,
   _flags: u64,
 }
@@ -214,8 +214,8 @@ GradientStopSingle :: struct {
 GradientKeyframe :: struct {
   t: i64,
   h: i64,
-  i: PropKeyframeEasingVec,
-  o: PropKeyframeEasingVec,
+  i: PropKeyframeEasing,
+  o: PropKeyframeEasing,
   s: Gradient,
   _flags: u64,
   
@@ -244,8 +244,8 @@ PROP_VECTOR_KEYFRAME_FIELDS :: fields(PropVectorKeyframe) - 1
 PropVectorKeyframe :: struct {
   t: u64,
   h: i64,
-  i: PropKeyframeEasingVec,
-  o: PropKeyframeEasingVec,
+  i: PropKeyframeEasing,
+  o: PropKeyframeEasing,
   s: Vec3,
   _flags: u64,
 
@@ -272,8 +272,8 @@ PROP_POSITION_KEYFRAME_FIELDS :: fields(PropPositionKeyframe) - 1
 PropPositionKeyframe :: struct {
   t:  u64,
   h:  i64,
-  i:  PropKeyframeEasingVec,
-  o:  PropKeyframeEasingVec,
+  i:  PropKeyframeEasing,
+  o:  PropKeyframeEasing,
   s:  Vec3,
   ti: Vec3,
   to: Vec3,
@@ -370,6 +370,7 @@ Polystar :: struct {
 
 // Grouping
 
+GROUP_FIELDS :: fields(Group) - 1
 Group :: struct {
   nm: string,
   hd: bool,
@@ -395,11 +396,13 @@ TransformShape :: struct {
 
 // Style
 
+FILL_RULE_BITS :: 2
 FillRule :: enum {
   NonZero = 1,
   EvenOdd = 2
 }
 
+FILL_FIELDS :: fields(Fill) - 1
 Fill :: struct {
   nm: string,
   hd: bool,
@@ -439,6 +442,7 @@ StrokeDash :: struct {
   _flags: u64,
 }
 
+STROKE_FIELDS :: fields(Stroke) - 1
 Stroke :: struct {
   nm: string,
   hd: bool,
@@ -498,11 +502,13 @@ GradientStroke :: struct {
 
 // Modifiers
 
+TRIM_MULTIPLE_SHAPES_BITS :: 2
 TrimMultipleShapes :: enum {
   Parallel = 1,
   Sequential = 2
 }
 
+TRIM_PATH_FIELDS :: fields(TrimPath) - 1
 TrimPath :: struct {
   nm: string,
   hd: bool,
