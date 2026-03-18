@@ -244,13 +244,14 @@ cubic_curve_approx_simd :: proc(p1, p2: Vec2) -> EasingFunction {
 // note(iyaan): generated using cubic_curve_gen tool in
 // tools directory. Parameters for function taken from 
 // https://easings.net, add more easig functions here later
+EASING_FUNCTION_BITS :: 3
 EasingFunction :: enum u8 {
-  Ease,
-  EaseIn,
-  EaseOut,
-  EaseInOut,
-  Linear = 32,
-  Error = 255
+  Ease      = 0,
+  EaseIn    = 1,
+  EaseOut   = 2,
+  EaseInOut = 3,
+  Linear    = 4,
+  Error     = 5
 }
 // note(iyaan): Blindly increasing the sampling rate would
 // increase computation time.
@@ -471,7 +472,8 @@ write_string :: proc(writer: ^Writer, s: string, debug_name: string = "") {
   end_debug_info(writer)
 }
 
-write_enum :: proc(writer: ^Writer, e: u8, enum_bits: uint = size_of(u8), debug_name: string = "") {
+ENUM_DEFAULT_BITS :: size_of(u8) * BYTE_BITS
+write_enum :: proc(writer: ^Writer, e: u8, enum_bits: uint = ENUM_DEFAULT_BITS, debug_name: string = "") {
   // note(iyaan): Lottie does not have any enums that requires
   // more than 1 byte of storage.
   
@@ -983,7 +985,8 @@ write_easing_curve :: proc(writer: ^Writer, p0, p1: PropKeyframeEasing) {
   p0_vector, p0_vector_ok := p0.(PropKeyframeEasingVec)
   p1_vector, p1_vector_ok := p1.(PropKeyframeEasingVec)
   
-  FLAG_COUNT :: 3 // Number of enums must match this bit width
+  FLAG_COUNT :: 3 // Number of enums must match this bit width. Enough
+                  // to hold the EasingCurveFlag_Set
   EasingCurveFlag :: enum {
     Vector, // if not set it is a scalar
     Enum,   // If this flag is set no other values except the enum is set
@@ -999,12 +1002,12 @@ write_easing_curve :: proc(writer: ^Writer, p0, p1: PropKeyframeEasing) {
     flags : EasingCurveFlag_Set
     if easing != .Error {
       flags = {.Enum}
-      write_bits(writer, transmute(int)flags, FLAG_COUNT)
-      write_enum(writer, u8(easing))
+      write_flags(writer, transmute(Bit64)flags, FLAG_COUNT)
+      write_enum(writer, u8(easing), EASING_FUNCTION_BITS)
     } else {
       // just write the point information
       flags = {}
-      write_bits(writer, transmute(int)flags, FLAG_COUNT)
+      write_flags(writer, transmute(Bit64)flags, FLAG_COUNT)
       write_vector2(writer, v1)
       write_vector2(writer, v2)
     }
@@ -1024,12 +1027,12 @@ write_easing_curve :: proc(writer: ^Writer, p0, p1: PropKeyframeEasing) {
       easing := cubic_curve_approx(point0, point1)
       if easing != .Error {
         flags += {.Enum}
-        write_bits(writer, transmute(int)flags, FLAG_COUNT)
+        write_flags(writer, transmute(Bit64)flags, FLAG_COUNT)
         flags -= {.Enum}
-        write_enum(writer, u8(easing))
+        write_enum(writer, u8(easing), EASING_FUNCTION_BITS)
       } else {
         flags += {.Vector}
-        write_bits(writer, transmute(int)flags, FLAG_COUNT)
+        write_flags(writer, transmute(Bit64)flags, FLAG_COUNT)
         flags -= {.Vector}
         write_vector2(writer, point0)
         write_vector2(writer, point1)
@@ -1348,84 +1351,25 @@ write_group :: proc(writer: ^Writer, group: Group, debug_name := "group") {
   if isset(flags, 1) do write_bool(writer, group.hd, "hd")
   graphic_elem_type := conv_graphic_elem_type_to_enum(group.ty)
   write_enum(writer, u8(graphic_elem_type), GRAPHIC_ELEM_TYPE_BITS, "ty")
-  write_varint(writer, i128(group.np), "np")
+  if isset(flags, 3) do write_varint(writer, i128(group.np), "np")
 
   // Group can store any GraphicElement
   begin_debug_info(writer, "it", .meta)
   write_varint(writer, i128(len(group.it)))
   for graphic_elem in group.it {
     switch _ in graphic_elem {
-    case Ellipse:
-      write_ellipse(writer, graphic_elem.(Ellipse))
-    case Rectangle:
-      write_rectangle(writer, graphic_elem.(Rectangle))
-    case Path:
-      write_path(writer, graphic_elem.(Path))
-    case Polystar:
-      write_polystar(writer, graphic_elem.(Polystar))
-    case Group:
-      write_group(writer, graphic_elem.(Group))
-    case TransformShape:
-      write_transform_shape(writer, graphic_elem.(TransformShape))
-    case Fill:
-      write_fill(writer, graphic_elem.(Fill))
-    case Stroke:
-      write_stroke(writer, graphic_elem.(Stroke))
-    case GradientFill:
-      write_gradient_fill(writer, graphic_elem.(GradientFill))
-    case GradientStroke:
-      write_gradient_stroke(writer, graphic_elem.(GradientStroke)) 
-    case TrimPath:
-      write_trim_path(writer, graphic_elem.(TrimPath))
+    case Ellipse:        write_ellipse(writer, graphic_elem.(Ellipse))
+    case Rectangle:      write_rectangle(writer, graphic_elem.(Rectangle))
+    case Path:           write_path(writer, graphic_elem.(Path))
+    case Polystar:       write_polystar(writer, graphic_elem.(Polystar))
+    case Group:          write_group(writer, graphic_elem.(Group))
+    case TransformShape: write_transform_shape(writer, graphic_elem.(TransformShape))
+    case Fill:           write_fill(writer, graphic_elem.(Fill))
+    case Stroke:         write_stroke(writer, graphic_elem.(Stroke))
+    case GradientFill:   write_gradient_fill(writer, graphic_elem.(GradientFill))
+    case GradientStroke: write_gradient_stroke(writer, graphic_elem.(GradientStroke)) 
+    case TrimPath:       write_trim_path(writer, graphic_elem.(TrimPath))
     }
-    //type := conv_graphic_elem_type_to_enum(graphic_elem.ty)
-    //switch type {
-    //case .el: 
-    //  _, ok := graphic_elem.(Ellipse)
-    //  assert(ok, "not an ellipse")
-    //  write_ellipse(writer, graphic_elem.(Ellipse))
-    //case .fl: 
-    //  _, ok := graphic_elem.(Fill)
-    //  assert(ok, "not a fill")
-    //  write_fill(writer, graphic_elem.(Fill))
-    //case .gf: 
-    //  _, ok := graphic_elem.(GradientFill)
-    //  assert(ok, "not a gradient fill")
-    //  write_gradient_fill(writer, graphic_elem.(GradientFill))
-    //case .gs:
-    //  _, ok := graphic_elem.(GradientStroke)
-    //  assert(ok, "not a gradient stroke")
-    //  write_gradient_stroke(writer, graphic_elem.(GradientStroke)) 
-    //case .gr:
-    //  //_, ok := graphic_elem.(Group)
-    //  //assert(ok == true, "not a group")
-    //  write_group(writer, graphic_elem.(Group))
-    //case .sh:
-    //  _, ok := graphic_elem.(Path)
-    //  assert(ok, "not a path")
-    //  write_path(writer, graphic_elem.(Path))
-    //case .sr:
-    //  _, ok := graphic_elem.(Polystar)
-    //  assert(ok, "not a polystar")
-    //  write_polystar(writer, graphic_elem.(Polystar))
-    //case .rc:
-    //  _, ok := graphic_elem.(Rectangle)
-    //  assert(ok, "not a rectangle")
-    //  write_rectangle(writer, graphic_elem.(Rectangle))
-    //case .st:
-    //  _, ok := graphic_elem.(Stroke)
-    //  assert(ok, "not a stroke")
-    //  write_stroke(writer, graphic_elem.(Stroke))
-    //case .tr: 
-    //  _, ok := graphic_elem.(TransformShape)
-    //  assert(ok, "not a transform shape")
-    //  write_transform_shape(writer, graphic_elem.(TransformShape))
-    //case .tm:
-    //  _, ok := graphic_elem.(TrimPath)
-    //  assert(ok, "not a trim path")
-    //  write_trim_path(writer, graphic_elem.(TrimPath))
-    //case .Error:
-    //}
   }
 
   end_debug_info(writer)
