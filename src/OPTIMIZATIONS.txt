@@ -19,3 +19,5 @@
     From the x and y values maybe we can infer what kind of function it is and Use
     and index into a table
 9. Remove hidden shapes hd: true
+10. If a value is a default value such as a vector3 value having Vec3{0, 0, 0} avoid 
+    encoding that value

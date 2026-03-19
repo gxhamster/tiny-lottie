@@ -4,6 +4,7 @@ import "core:slice"
 import "core:math/bits"
 import "base:intrinsics"
 import "core:encoding/varint"
+import "base:runtime"
 import "core:math"
 import "core:mem"
 import "core:testing"
@@ -1045,8 +1046,43 @@ write_easing_curve :: proc(writer: ^Writer, p0, p1: PropKeyframeEasing) {
   end_debug_info(writer)
 }
 
+StructInfo :: struct {
+  offset: uintptr,
+  size: int
+}
+
+remove_zero_default_value_optim :: proc(flags: ^Bit64, struct_ptr: rawptr, table: [$T]StructInfo) {
+
+  for field, idx in table {
+    offset := rawptr(uintptr(struct_ptr) + field.offset)
+    is_zero := runtime.memory_compare_zero(offset, field.size) == 0
+    if is_zero {
+      flags^ -= {idx}
+    }
+  }
+}
+
 write_prop_position_keyframe :: proc(writer: ^Writer, position_keyframe: PropPositionKeyframe) {
   flags := transmute(Bit64)position_keyframe._flags
+  // We can do somekind of preliminary check before writing out
+  // the flags where we check each field of a struct and check if zero initialized
+  // and set the corresponding flag to 0. Gosh i dont want to bring in reflection
+  // into the core encoder and decoder portion
+  position_keyframe_offset_tbl :: [?]StructInfo{
+    { offset_of_by_string(PropPositionKeyframe, "t"),  size_of(position_keyframe.t) },
+    { offset_of_by_string(PropPositionKeyframe, "h"),  size_of(position_keyframe.h) },
+    { offset_of_by_string(PropPositionKeyframe, "i"),  size_of(position_keyframe.i) },
+    { offset_of_by_string(PropPositionKeyframe, "o"),  size_of(position_keyframe.o) },
+    { offset_of_by_string(PropPositionKeyframe, "s"),  size_of(position_keyframe.s) },
+    { offset_of_by_string(PropPositionKeyframe, "ti"), size_of(position_keyframe.ti) },
+    //{ offset_of_by_string(PropPositionKeyframe, "to"), size_of(position_keyframe.to) },
+  }
+
+  #assert(PROP_POSITION_KEYFRAME_FIELDS == len(position_keyframe_offset_tbl), "Not equal")
+  temp_struct := position_keyframe
+  remove_zero_default_value_optim(&flags, &temp_struct, position_keyframe_offset_tbl)
+
+
   begin_debug_info(writer, "position_keyframe", .meta)
   write_flags(writer, flags, PROP_POSITION_KEYFRAME_FIELDS)
   if isset(flags, 0) do write_varint(writer, i128(position_keyframe.t), "t")
@@ -1057,9 +1093,9 @@ write_prop_position_keyframe :: proc(writer: ^Writer, position_keyframe: PropPos
   // TODO(iyaan): In the base lottie spec there are no 3d dimensional
   // animations therefore positions are always 2d vectors. Need to change
   // later
-  write_vector2(writer, position_keyframe.s.xy, "s")
-  write_vector2(writer, position_keyframe.ti.xy, "ti")
-  write_vector2(writer, position_keyframe.to.xy, "to")
+  if isset(flags, 4) do write_vector2(writer, position_keyframe.s.xy, "s")
+  if isset(flags, 5) do write_vector2(writer, position_keyframe.ti.xy, "ti")
+  if isset(flags, 6) do write_vector2(writer, position_keyframe.to.xy, "to")
   end_debug_info(writer)
 }
 
