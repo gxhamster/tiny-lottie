@@ -326,6 +326,7 @@ INJECTED_HTML_HEADER :: `<!DOCTYPE html>
       display: flex;
       gap: 20px 10px;
       flex-wrap: wrap;
+      align-items: center;
     }
     .meta_title {
       text-transform: uppercase;
@@ -341,7 +342,7 @@ INJECTED_HTML_HEADER :: `<!DOCTYPE html>
       font-weight: bold;
     }
     .meta {
-      align-self: flex-start;
+      align-self: flex-center;
       position: relative;
       background-color: var(--meta-background-color);
       display: flex;
