@@ -22,7 +22,20 @@ gen_html_alt :: proc(writer: ^Writer, allocator := context.allocator) -> str.Bui
     if info.end_idx != cur_idx {
       append(&end_tag_idxs, info.end_idx)
       append(&start_tag_idxs, cur_idx)
-    }   
+    } else {
+      // note(iyaan): Handle case where meta blocks has no
+      // internal things in it. So need to insert the ending
+      // divs
+      if info.type == .meta {
+        str.write_string(&builder, "<div class=\"meta_closing\">") 
+        str.write_string(&builder, info.name)
+        str.write_string(&builder, " (")
+        str.write_int(&builder, cur_idx)
+        str.write_string(&builder, ")")
+        str.write_string(&builder, "</div>") 
+      }
+    }
+
     gen_html_for_info_alt(&builder, info, writer, cur_idx, allocator)
 
     // Insert the closing meta identifier
@@ -62,7 +75,14 @@ gen_html :: proc(writer: ^Writer, allocator := context.allocator) -> str.Builder
   for info, cur_idx in infos {
     if info.end_idx != cur_idx {
       append(&end_tag_idxs, info.end_idx)
-    }   
+    } else {
+      // note(iyaan): Handle case where meta blocks has no
+      // internal things in it. So need to insert the ending
+      // divs
+      if info.type == .meta {
+        str.write_string(&builder, "</div></div>") 
+      }
+    }
     gen_html_for_info(&builder, info, writer, allocator)
 
     // Insert closing tags for all those that need closing
@@ -180,9 +200,13 @@ gen_html_for_info_alt :: proc(builder: ^str.Builder, info: DebugInfo, writer: ^W
     // note(iyaan): Wull only change the meta type rendering
     // others are just the same
 
-    str.write_string(builder, "<div class=\"meta\">")
+    bits := calc_bits_from(info.start_byte, info.end_byte, info.start_bit, info.end_bit)
+    str.write_string(builder, "<div class=\"meta\"")
+    str.write_string(builder, " title=\"")
+    str.write_int(builder, bits)
+    str.write_string(builder, " bits\">")
     str.write_string(builder, "<span class=\"bit_count\">")
-    str.write_int(builder, calc_bits_from(info.start_byte, info.end_byte, info.start_bit, info.end_bit))
+    str.write_int(builder, bits)
     str.write_string(builder, " bits</span>")
     str.write_string(builder, info.name)
     str.write_string(builder, " (")
@@ -324,6 +348,7 @@ INJECTED_HTML_HEADER :: `<!DOCTYPE html>
 
     .meta_content {
       display: flex;
+      min-height: var(--prim-height);
       gap: 20px 10px;
       flex-wrap: wrap;
       align-items: center;
