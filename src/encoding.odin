@@ -490,12 +490,13 @@ write_bool :: proc(writer: ^Writer, b: bool, debug_name: string = "") {
 }
 
 VecInternType :: enum int {
-  F32 = 2,
-  F16 = 1,
+  F32 = 3,
+  F16 = 2,
   // note(iyaan): If a vector value is zero it an I8 would
   // be selected as the internal type. Therefore the 2-bit
   // flags value of the vector would also be zero. This will
   // allow for us to perform the zero default value optimization.
+  U8  = 1,
   I8  = 0,
 }
 
@@ -518,6 +519,11 @@ check_optimal_intern_size :: proc(vec: [$Y]f64) -> VecInternType {
       // Can be considered an integer, if the fractional
       // part is so insignificant
       as_int := (int)(i)
+
+      if as_int  < int(max(u8)) && as_int > int(min(u8)) {
+        opt[idx] = .U8
+      }
+
       if as_int < int(max(i8)) && as_int > int(min(i8)) {
         opt[idx] = .I8
       }
@@ -541,9 +547,9 @@ check_optimal_intern_size_test :: proc(t: ^testing.T) {
   testing.expect_value(t, check_optimal_intern_size(v2), VecInternType.I8)
   testing.expect_value(t, check_optimal_intern_size(v3), VecInternType.F32)
   testing.expect_value(t, check_optimal_intern_size(v3), VecInternType.F32)
-  testing.expect_value(t, check_optimal_intern_size(v5), VecInternType.F16)
+  testing.expect_value(t, check_optimal_intern_size(v5), VecInternType.U8)
   testing.expect_value(t, check_optimal_intern_size(v6), VecInternType.I8)
-  testing.expect_value(t, check_optimal_intern_size(v7), VecInternType.F16)
+  testing.expect_value(t, check_optimal_intern_size(v7), VecInternType.U8)
 }
 
 VECTOR_INTERN_FLAG_BITS :: 2
@@ -559,6 +565,10 @@ write_vector_intern :: proc(writer: ^Writer, vec: [$Y]f64) {
   case .F32:
     for i in 0..<Y {
       write_float32(writer, f32(vec[i]))
+    }
+  case .U8:
+    for i in 0..<Y {
+      write_uint8(writer, u8(vec[i]))
     }
   case .I8:
     for i in 0..<Y {
