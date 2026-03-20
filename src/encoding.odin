@@ -511,11 +511,12 @@ check_optimal_intern_size :: proc(vec: [$Y]f64) -> VecInternType {
     opt[idx] = .F32
 
     f := vec[idx]
-    if f < math.F16_MAX && f > math.F16_MIN {
+    f_abs := abs(f)
+    if f_abs < math.F16_MAX && f_abs > math.F16_MIN {
       opt[idx] = .F16
     }
     i, frac := math.modf_f64(f)
-    if frac < FLOAT_THRESHOLD {
+    if abs(frac) < FLOAT_THRESHOLD {
       // Can be considered an integer, if the fractional
       // part is so insignificant
       as_int := (int)(i)
