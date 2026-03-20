@@ -94,6 +94,7 @@ MatteMode :: enum {
   InvertedLuma,
 }
 
+KEYFRAME_EASING_UNION_TAG_SIZE :: size_of(intrinsics.type_union_tag_type(PropKeyframeEasing))
 PropKeyframeEasing :: union {
   PropKeyframeEasingScalar,
   PropKeyframeEasingVec
@@ -110,6 +111,7 @@ PropKeyframeEasingScalar :: struct {
   y: f64,
 }
 
+SCALAR_TAG_SIZE :: size_of(intrinsics.type_union_tag_type(PropScalar))
 PropScalar :: union {
   PropScalarSingle,
   PropScalarAnim,
@@ -127,8 +129,8 @@ PROP_SCALAR_KEYFRAME_FIELDS :: fields(PropScalarKeyframe) - 1
 PropScalarKeyframe :: struct {
   t: i64,
   h: i64,
-  i: PropKeyframeEasingScalar,
-  o: PropKeyframeEasingScalar,
+  i: PropKeyframeEasing,
+  o: PropKeyframeEasing,
   s: f64,
   _flags: u64,
 }
@@ -146,12 +148,14 @@ PropBezier :: union {
   PropBezierAnim,
 }
 
+PROP_BEZIER_SINGLE_FIELDS :: fields(PropBezierSingle) - 1
 PropBezierSingle :: struct {
   a: bool,
   k: BezierShapeValue,
   _flags: u64,
 }
 
+PROP_BEZIER_KEYFRAME_FIELDS :: fields(PropBezierKeyframe) - 1
 PropBezierKeyframe :: struct {
   t: u64,
   h: i64,
@@ -161,18 +165,20 @@ PropBezierKeyframe :: struct {
   _flags: u64,
 }
 
+PROP_BEZIER_ANIM_FIELDS :: fields(PropBezierAnim) - 1
 PropBezierAnim :: struct {
   a: bool,
   k: []PropBezierKeyframe,
   _flags: u64,
 }
 
-
+COLOR_UNION_TAG_SIZE :: size_of(intrinsics.type_union_tag_type(PropColor))
 PropColor :: union {
   PropColorSingle,
   PropColorAnim,
 }
 
+PROP_COLOR_SINGLE_FIELDS :: fields(PropColorSingle) - 1
 PropColorSingle :: struct {
   sid: string,
   a:   bool,
@@ -180,6 +186,7 @@ PropColorSingle :: struct {
   _flags: u64,
 }
 
+PROP_COLOR_KEYFRAME_FIELDS :: fields(PropColorKeyframe) - 1
 PropColorKeyframe :: struct {
   t: u64,
   h: i64,
@@ -189,6 +196,7 @@ PropColorKeyframe :: struct {
   _flags: u64,
 }
 
+PROP_COLOR_ANIM_FIELDS :: fields(PropColorAnim) - 1
 PropColorAnim :: struct {
   sid: string,
   a:   bool,
@@ -211,6 +219,7 @@ GradientStopSingle :: struct {
   k: Gradient,
 }
 
+PROP_GRADIENT_KEYFRAME_FIELDS :: fields(GradientKeyframe) - 1
 GradientKeyframe :: struct {
   t: i64,
   h: i64,
@@ -218,7 +227,6 @@ GradientKeyframe :: struct {
   o: PropKeyframeEasing,
   s: Gradient,
   _flags: u64,
-  
 }
 
 GradientStopAnim :: struct {
@@ -288,6 +296,7 @@ PropPositionAnim :: struct {
   _flags: u64,
 }
 
+PROP_SPLIT_POSITION_FIELDS :: fields(PropSplitPosition) - 1
 PropSplitPosition :: struct {
   s: bool,
   x: PropScalar,
@@ -380,6 +389,7 @@ Group :: struct {
   _flags: u64,
 }
 
+TRANSFORM_SHAPE_FIELDS :: fields(TransformShape) - 1
 TransformShape :: struct {
   nm: string,
   hd: bool,
@@ -464,6 +474,7 @@ GradientType :: enum {
   Radial = 2
 }
 
+GRADIENT_FILL_FIELDS :: fields(GradientFill) - 1
 GradientFill :: struct {
   nm: string,
   hd: bool,

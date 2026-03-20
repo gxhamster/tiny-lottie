@@ -1,0 +1,15 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "type": "shell",
+      "command": "odin build src/ -build-mode:test -debug && ${workspaceFolder}/src.bin",
+      "label": "Odin Test Build",
+      "detail": "Compile all the test procs into an executable",
+      "presentation": {
+        "panel": "dedicated"
+      },
+      "problemMatcher": []
+    }
+  ]
+}
