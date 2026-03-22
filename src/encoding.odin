@@ -1597,24 +1597,27 @@ write_group :: proc(writer: ^Writer, group: Group, debug_name := "group") {
   begin_debug_info(writer, "it", .meta)
   write_varint(writer, i128(len(group.it)))
   for graphic_elem in group.it {
-    switch _ in graphic_elem {
-    case Ellipse:        write_ellipse(writer, graphic_elem.(Ellipse))
-    case Rectangle:      write_rectangle(writer, graphic_elem.(Rectangle))
-    case Path:           write_path(writer, graphic_elem.(Path))
-    case Polystar:       write_polystar(writer, graphic_elem.(Polystar))
-    case Group:          write_group(writer, graphic_elem.(Group))
-    case TransformShape: write_transform_shape(writer, graphic_elem.(TransformShape))
-    case Fill:           write_fill(writer, graphic_elem.(Fill))
-    case Stroke:         write_stroke(writer, graphic_elem.(Stroke))
-    case GradientFill:   write_gradient_fill(writer, graphic_elem.(GradientFill))
-    case GradientStroke: write_gradient_stroke(writer, graphic_elem.(GradientStroke)) 
-    case TrimPath:       write_trim_path(writer, graphic_elem.(TrimPath))
-    }
+    write_graphic_elem(writer, graphic_elem)
   }
 
   end_debug_info(writer)
-
   end_debug_info(writer)
+}
+
+write_graphic_elem :: proc(writer: ^Writer, graphic_elem: GraphicElement, debug_name := "") {
+  switch _ in graphic_elem {
+  case Ellipse:        write_ellipse(writer, graphic_elem.(Ellipse))
+  case Rectangle:      write_rectangle(writer, graphic_elem.(Rectangle))
+  case Path:           write_path(writer, graphic_elem.(Path))
+  case Polystar:       write_polystar(writer, graphic_elem.(Polystar))
+  case Group:          write_group(writer, graphic_elem.(Group))
+  case TransformShape: write_transform_shape(writer, graphic_elem.(TransformShape))
+  case Fill:           write_fill(writer, graphic_elem.(Fill))
+  case Stroke:         write_stroke(writer, graphic_elem.(Stroke))
+  case GradientFill:   write_gradient_fill(writer, graphic_elem.(GradientFill))
+  case GradientStroke: write_gradient_stroke(writer, graphic_elem.(GradientStroke)) 
+  case TrimPath:       write_trim_path(writer, graphic_elem.(TrimPath))
+  }
 }
 
 write_transform_shape :: proc(writer: ^Writer, transform_shape: TransformShape, debug_name := "Transform_Shape") {
@@ -1754,7 +1757,6 @@ write_gradient_stroke :: proc(writer: ^Writer, stroke: GradientStroke, debug_nam
   end_debug_info(writer)
 }
 
-
 write_trim_path :: proc(writer: ^Writer, trim_path: TrimPath, debug_name := "TrimPath") {
   flags := transmute(Bit64)trim_path._flags
   begin_debug_info(writer, debug_name, .meta)
@@ -1772,3 +1774,58 @@ write_trim_path :: proc(writer: ^Writer, trim_path: TrimPath, debug_name := "Tri
 
   end_debug_info(writer)
 }
+
+write_mask :: proc(writer: ^Writer, mask: Mask, debug_name := "mask") {
+  flags := transmute(Bit64)mask._flags
+  begin_debug_info(writer, debug_name, .meta)
+  write_flags(writer, flags, MASK_FIELDS)
+
+  if isset(flags, 0) {
+    enum_val := u8(0)
+    switch mask.mode {
+    case .None:      enum_val = 0
+    case .Add:       enum_val = 1
+    case .Subtract:  enum_val = 2
+    case .Intersect: enum_val = 3
+    }
+    
+    write_enum(writer, enum_val, MASK_MODE_BITS, "mode")
+  }
+  if isset(flags, 1) do write_prop_scalar(writer, mask.o, "o")
+  if isset(flags, 2) do write_prop_bezier_shape(writer, mask.pt, "pt")
+}
+
+write_shape_layer :: proc(writer: ^Writer, shape_layer: ShapeLayer, debug_name := "shape_layer") {
+  flags := transmute(Bit64)shape_layer._flags
+  begin_debug_info(writer, debug_name, .meta)
+  write_flags(writer, flags, SHAPE_LAYER_FIELDS)
+
+  if isset(flags, 0) do write_string(writer, shape_layer.nm, "nm")
+  if isset(flags, 1) do write_bool(writer, shape_layer.hd, "hd")
+  if isset(flags, 2) do write_enum(writer, u8(shape_layer.ty), LAYER_TYPE_BITS, "ty")
+  if isset(flags, 3) do write_varint(writer, i128(shape_layer.ind), "ind")
+  if isset(flags, 4) do write_varint(writer, i128(shape_layer.parent), "parent")
+  if isset(flags, 5) do write_varint(writer, i128(shape_layer.ip), "ip")
+  if isset(flags, 6) do write_varint(writer, i128(shape_layer.op), "op")
+  if isset(flags, 7) do write_transform(writer, shape_layer.ks, "ks")
+  if isset(flags, 8) do write_varint(writer, i128(shape_layer.ao), "ao")
+  if isset(flags, 9) do write_enum(writer, u8(shape_layer.tt), MATTE_MODE_BITS, "tt")
+  if isset(flags, 10) do write_varint(writer, i128(shape_layer.tp), "tp")
+
+  begin_debug_info(writer, "masksProperties", .meta)
+  write_varint(writer, i128(len(shape_layer.masksProperties)), "len")
+  for mask in shape_layer.masksProperties {
+    write_mask(writer, mask)
+  }
+  end_debug_info(writer)
+
+  begin_debug_info(writer, "shapes", .meta)
+  write_varint(writer, i128(len(shape_layer.shapes)), "shapes")
+  for shape in shape_layer.shapes {
+    write_graphic_elem(writer, shape)
+  }
+  end_debug_info(writer)
+
+  end_debug_info(writer)
+}
+

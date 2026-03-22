@@ -86,6 +86,7 @@ BezierShapeValue :: struct {
 
 
 // Enumerations
+MATTE_MODE_BITS :: 3
 MatteMode :: enum {
   Normal,
   Alpha,
@@ -561,25 +562,123 @@ GraphicElement :: union {
   TrimPath
 }
 
-Layer :: struct {
-  nm:     string,
-  hd:     bool,
-  ty:     i64,
-  ind:    i64,
-  parent: i64,
-  ip:     f64,
-  op:     f64,
+LAYER_TYPE_BITS :: 3
+LayerType :: enum {
+  PrecompLayer = 0,
+  ImageLayer = 2,
+  NullLayer = 3,
+  SolidLayer = 1,
+  ShapeLayer = 4
 }
 
-ShapeLayer :: struct {}
+MASK_MODE_BITS :: 2
+MaskMode :: enum {
+  None = 'n',     // 0
+  Add = 'a',      // 1
+  Subtract = 's', // 2
+  Intersect = 'i' // 3
+}
 
-ImageLayer :: struct {}
+MASK_FIELDS :: fields(Mask) - 1
+Mask :: struct {
+  mode: MaskMode,
+  o: PropScalar,
+  pt: PropBezier,
+  _flags: u64
+}
 
-NullLayer :: struct {}
+SHAPE_LAYER_FIELDS :: fields(ShapeLayer) - 1
+ShapeLayer :: struct {
+  nm: string,
+  hd: bool,
+  ty: LayerType,
+  ind: i64,
+  parent: i64,
+  ip: i64,
+  op: i64,
+  ks: Transform,
+  ao: i64,
+  tt: MatteMode,
+  tp: i64,
+  masksProperties: []Mask,
+  shapes: []GraphicElement,
+  _flags: u64
+}
 
-SolidLayer :: struct {}
+IMAGE_LAYER_FIELDS :: fields(ImageLayer) - 1
+ImageLayer :: struct {
+  nm: string,
+  hd: bool,
+  ty: LayerType,
+  ind: i64,
+  parent: i64,
+  ip: i64,
+  op: i64,
+  ks: Transform,
+  ao: i64,
+  tt: MatteMode,
+  tp: i64,
+  masksProperties: []Mask,
+  refId: string,
+  _flags: u64
+}
 
-PrecompLayer :: struct {}
+NULL_LAYER_FIELDS :: fields(NullLayer) - 1
+NullLayer :: struct {
+  nm: string,
+  hd: bool,
+  ty: LayerType,
+  ind: i64,
+  parent: i64,
+  ip: i64,
+  op: i64,
+  ks: Transform,
+  ao: i64,
+  tt: MatteMode,
+  tp: i64,
+  masksProperties: []Mask,
+}
+
+SOLID_LAYER_FIELDS :: fields(SolidLayer) - 1
+SolidLayer :: struct {
+  nm: string,
+  hd: bool,
+  ty: LayerType,
+  ind: i64,
+  parent: i64,
+  ip: i64,
+  op: i64,
+  ks: Transform,
+  ao: i64,
+  tt: MatteMode,
+  tp: i64,
+  masksProperties: []Mask,
+  sw: i64,
+  sh: i64,
+  sc: HexColor
+}
+
+PRECOMP_LAYER_FIELDS :: fields(PrecompLayer) - 1
+PrecompLayer :: struct {
+  nm: string,
+  hd: bool,
+  ty: LayerType,
+  ind: i64,
+  parent: i64,
+  ip: i64,
+  op: i64,
+  ks: Transform,
+  ao: i64,
+  tt: MatteMode,
+  tp: i64,
+  masksProperties: []Mask,
+  refId: string,
+  w: i64,
+  h: i64,
+  sr: i64,
+  st: i64,
+  tm: PropScalar
+}
 
 JsonLottie :: struct {
   animation: Animation,
