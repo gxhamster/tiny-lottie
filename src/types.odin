@@ -561,14 +561,28 @@ GraphicElement :: union {
   TrimPath
 }
 
-Layer :: struct {
-  nm:     string,
-  hd:     bool,
-  ty:     i64,
-  ind:    i64,
-  parent: i64,
-  ip:     f64,
-  op:     f64,
+LAYER_TYPE_BITS :: 3
+LayerType :: enum {
+  PrecompLayer = 0,
+  ImageLayer   = 2,
+  NullLayer    = 3,
+  SoildLayer   = 1,
+  ShapeLayer   = 4,
+}
+
+MaskMode :: enum {
+  None      = 'n',
+  Add       = 'a',
+  Subtract  = 's',
+  Intersect = 'i'
+}
+
+
+Mask :: struct {
+  mode: MaskMode,
+  o: PropScalar,
+  pt: PropBezier,
+  _flags: u64
 }
 
 ShapeLayer :: struct {}
@@ -577,21 +591,50 @@ ImageLayer :: struct {}
 
 NullLayer :: struct {}
 
-SolidLayer :: struct {}
+SOLID_LAYER_FIELDS :: fields(SolidLayer) - 1
+SolidLayer :: struct {
+  nm: string,
+  hd: bool,
+  ty: LayerType,
+  ind: i64,
+  parent: i64,
+  ip: i64,
+  op: i64,
+  ks: Transform,
+  ao: i64,
+  tt: MatteMode,
+  tp: i64,
+  masksProperties: []Mask,
+  sw: i64,
+  sh: i64,
+  sc: HexColor,
+  _flags: u64,
+}
 
-PrecompLayer :: struct {}
+PRECOMP_LAYER_FIELDS :: fields(PrecompLayer) - 1
+PrecompLayer :: struct {
+  nm: string,
+  hd: bool,
+  ty: LayerType,
+  ind: i64,
+  parent: i64,
+  ip: i64,
+  op: i64,
+  ks: Transform,
+  ao: i64,
+  tt: MatteMode,
+  tp: i64,
+  masksProperties: []Mask,
+  refId: string,
+  w: i64,
+  h: i64,
+  sr: i64,
+  st: i64,
+  tm: PropScalar,
+  _flags: u64
+}
 
 JsonLottie :: struct {
   animation: Animation,
   raw:       []u8,
-}
-
-CoreTypes :: enum {
-  Null,
-  Array,
-  Object,
-  Float,
-  Integer,
-  Bool,
-  String,
 }
