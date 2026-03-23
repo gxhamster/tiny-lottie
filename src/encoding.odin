@@ -1863,3 +1863,97 @@ write_image_layer :: proc(writer: ^Writer, image_layer: ImageLayer, debug_name :
 
   end_debug_info(writer)
 }
+
+write_null_layer :: proc(writer: ^Writer, null_layer: NullLayer, debug_name := "null_layer") {
+  flags := transmute(Bit64)null_layer._flags
+  begin_debug_info(writer, debug_name, .meta)
+  write_flags(writer, flags, NULL_LAYER_FIELDS)
+
+  if isset(flags, 0) do write_string(writer, null_layer.nm, "nm")
+  if isset(flags, 1) do write_bool(writer, null_layer.hd, "hd")
+  if isset(flags, 2) do write_enum(writer, u8(null_layer.ty), LAYER_TYPE_BITS, "ty")
+  if isset(flags, 3) do write_varint(writer, i128(null_layer.ind), "ind")
+  if isset(flags, 4) do write_varint(writer, i128(null_layer.parent), "parent")
+  if isset(flags, 5) do write_varint(writer, i128(null_layer.ip), "ip")
+  if isset(flags, 6) do write_varint(writer, i128(null_layer.op), "op")
+  if isset(flags, 7) do write_transform(writer, null_layer.ks, "ks")
+  if isset(flags, 8) do write_varint(writer, i128(null_layer.ao), "ao")
+  if isset(flags, 9) do write_enum(writer, u8(null_layer.tt), MATTE_MODE_BITS, "tt")
+  if isset(flags, 10) do write_varint(writer, i128(null_layer.tp), "tp")
+  if isset(flags, 11) {
+    begin_debug_info(writer, "masksProperties", .meta)
+    write_varint(writer, i128(len(null_layer.masksProperties)), "len")
+    for mask in null_layer.masksProperties {
+      write_mask(writer, mask)
+    }
+    end_debug_info(writer)
+  }
+
+  end_debug_info(writer)
+}
+
+write_solid_layer :: proc(writer: ^Writer, solid_layer: SolidLayer, debug_name := "solid_layer") {
+  flags := transmute(Bit64)solid_layer._flags
+  begin_debug_info(writer, debug_name, .meta)
+  write_flags(writer, flags, SOLID_LAYER_FIELDS)
+
+  if isset(flags, 0) do write_string(writer, solid_layer.nm, "nm")
+  if isset(flags, 1) do write_bool(writer, solid_layer.hd, "hd")
+  if isset(flags, 2) do write_enum(writer, u8(solid_layer.ty), LAYER_TYPE_BITS, "ty")
+  if isset(flags, 3) do write_varint(writer, i128(solid_layer.ind), "ind")
+  if isset(flags, 4) do write_varint(writer, i128(solid_layer.parent), "parent")
+  if isset(flags, 5) do write_varint(writer, i128(solid_layer.ip), "ip")
+  if isset(flags, 6) do write_varint(writer, i128(solid_layer.op), "op")
+  if isset(flags, 7) do write_transform(writer, solid_layer.ks, "ks")
+  if isset(flags, 8) do write_varint(writer, i128(solid_layer.ao), "ao")
+  if isset(flags, 9) do write_enum(writer, u8(solid_layer.tt), MATTE_MODE_BITS, "tt")
+  if isset(flags, 10) do write_varint(writer, i128(solid_layer.tp), "tp")
+  if isset(flags, 11) {
+    begin_debug_info(writer, "masksProperties", .meta)
+    write_varint(writer, i128(len(solid_layer.masksProperties)), "len")
+    for mask in solid_layer.masksProperties {
+      write_mask(writer, mask)
+    }
+    end_debug_info(writer)
+  }
+  if isset(flags, 12) do write_varint(writer, i128(solid_layer.sw), "sw")
+  if isset(flags, 13) do write_varint(writer, i128(solid_layer.sh), "sh")
+  if isset(flags, 14) do write_hexcolor(writer, solid_layer.sc, "sc")
+
+  end_debug_info(writer)
+}
+
+write_precomp_layer :: proc(writer: ^Writer, precomp_layer: PrecompLayer, debug_name := "precomp_layer") {
+  flags := transmute(Bit64)precomp_layer._flags
+  begin_debug_info(writer, debug_name, .meta)
+  write_flags(writer, flags, PRECOMP_LAYER_FIELDS)
+
+  if isset(flags, 0) do write_string(writer, precomp_layer.nm, "nm")
+  if isset(flags, 1) do write_bool(writer, precomp_layer.hd, "hd")
+  if isset(flags, 2) do write_enum(writer, u8(precomp_layer.ty), LAYER_TYPE_BITS, "ty")
+  if isset(flags, 3) do write_varint(writer, i128(precomp_layer.ind), "ind")
+  if isset(flags, 4) do write_varint(writer, i128(precomp_layer.parent), "parent")
+  if isset(flags, 5) do write_varint(writer, i128(precomp_layer.ip), "ip")
+  if isset(flags, 6) do write_varint(writer, i128(precomp_layer.op), "op")
+  if isset(flags, 7) do write_transform(writer, precomp_layer.ks, "ks")
+  if isset(flags, 8) do write_varint(writer, i128(precomp_layer.ao), "ao")
+  if isset(flags, 9) do write_enum(writer, u8(precomp_layer.tt), MATTE_MODE_BITS, "tt")
+  if isset(flags, 10) do write_varint(writer, i128(precomp_layer.tp), "tp")
+  if isset(flags, 11) {
+    begin_debug_info(writer, "masksProperties", .meta)
+    write_varint(writer, i128(len(precomp_layer.masksProperties)), "len")
+    for mask in precomp_layer.masksProperties {
+      write_mask(writer, mask)
+    }
+    end_debug_info(writer)
+  }
+
+  if isset(flags, 12) do write_string(writer, precomp_layer.refId, "refId")
+  if isset(flags, 13) do write_varint(writer, i128(precomp_layer.w), "w")
+  if isset(flags, 14) do write_varint(writer, i128(precomp_layer.h), "h")
+  if isset(flags, 15) do write_varint(writer, i128(precomp_layer.sr), "sr")
+  if isset(flags, 16) do write_varint(writer, i128(precomp_layer.st), "st")
+
+
+  end_debug_info(writer)
+}

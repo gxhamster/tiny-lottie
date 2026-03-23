@@ -571,6 +571,7 @@ LayerType :: enum {
   ShapeLayer   = 4,
 }
 
+MASK_MODE_BITS :: 2
 MaskMode :: enum {
   None      = 'n',
   Add       = 'a',
@@ -578,7 +579,7 @@ MaskMode :: enum {
   Intersect = 'i'
 }
 
-
+MASK_FIELDS :: fields(Mask) - 1 
 Mask :: struct {
   mode: MaskMode,
   o: PropScalar,
@@ -586,13 +587,60 @@ Mask :: struct {
   _flags: u64
 }
 
-ShapeLayer :: struct {}
+SHAPE_LAYER_FIELDS :: fields(ShapeLayer) - 1
+ShapeLayer :: struct {
+  nm: string,
+  hd: bool,
+  ty: LayerType,
+  ind: i64,
+  parent: i64,
+  ip: i64,
+  op: i64,
+  ks: Transform,
+  ao: i64,
+  tt: MatteMode,
+  tp: i64,
+  masksProperties: []Mask,
+  shapes: []GraphicElement,
+  _flags: u64
+}
 
-ImageLayer :: struct {}
+IMAGE_LAYER_FIELDS :: fields(ImageLayer) - 1
+ImageLayer :: struct {
+  nm: string,
+  hd: bool,
+  ty: LayerType,
+  ind: i64,
+  parent: i64,
+  ip: i64,
+  op: i64,
+  ks: Transform,
+  ao: i64,
+  tt: MatteMode,
+  tp: i64,
+  masksProperties: []Mask,
+  refId: string,
+  _flags: u64
+}
 
-NullLayer :: struct {}
+NULL_LAYER_FIELDS :: fields(NullLayer) - 1
+NullLayer :: struct {
+  nm: string,
+  hd: bool,
+  ty: LayerType,
+  ind: i64,
+  parent: i64,
+  ip: i64,
+  op: i64,
+  ks: Transform,
+  ao: i64,
+  tt: MatteMode,
+  tp: i64,
+  masksProperties: []Mask,
+  _flags: u64
+}
 
-SOLID_LAYER_FIELDS :: fields(SolidLayer) - 1
+SOLID_LAYER_FIELDS :: fields(PrecompLayer) - 1
 SolidLayer :: struct {
   nm: string,
   hd: bool,
