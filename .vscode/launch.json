@@ -24,20 +24,5 @@
       ],
       "cwd": "${workspaceRoot}/"
     },
-    {
-      "name": "Launch",
-      "type": "lldb",
-      "request": "launch",
-      "program": "${workspaceRoot}/tiny-lottie",
-      "args": [],
-      "cwd": "${workspaceRoot}"
-    },
-    {
-      "type": "lldb-dap",
-      "request": "launch",
-      "name": "Debug",
-      "program": "${workspaceRoot}/tiny-lottie",
-      "args": [],
-    }
   ]
 }

@@ -1812,20 +1812,54 @@ write_shape_layer :: proc(writer: ^Writer, shape_layer: ShapeLayer, debug_name :
   if isset(flags, 9) do write_enum(writer, u8(shape_layer.tt), MATTE_MODE_BITS, "tt")
   if isset(flags, 10) do write_varint(writer, i128(shape_layer.tp), "tp")
 
-  begin_debug_info(writer, "masksProperties", .meta)
-  write_varint(writer, i128(len(shape_layer.masksProperties)), "len")
-  for mask in shape_layer.masksProperties {
-    write_mask(writer, mask)
+  if isset(flags, 11) {
+    begin_debug_info(writer, "masksProperties", .meta)
+    write_varint(writer, i128(len(shape_layer.masksProperties)), "len")
+    for mask in shape_layer.masksProperties {
+      write_mask(writer, mask)
+    }
+    end_debug_info(writer)
   }
-  end_debug_info(writer)
-
-  begin_debug_info(writer, "shapes", .meta)
-  write_varint(writer, i128(len(shape_layer.shapes)), "shapes")
-  for shape in shape_layer.shapes {
-    write_graphic_elem(writer, shape)
+  
+  if isset(flags, 12) {
+    begin_debug_info(writer, "shapes", .meta)
+    write_varint(writer, i128(len(shape_layer.shapes)), "shapes")
+    for shape in shape_layer.shapes {
+      write_graphic_elem(writer, shape)
+    }
+    end_debug_info(writer)
   }
-  end_debug_info(writer)
-
+  
   end_debug_info(writer)
 }
 
+write_image_layer :: proc(writer: ^Writer, image_layer: ImageLayer, debug_name := "image_layer") {
+  flags := transmute(Bit64)image_layer._flags
+  begin_debug_info(writer, debug_name, .meta)
+  write_flags(writer, flags, IMAGE_LAYER_FIELDS)
+
+  if isset(flags, 0) do write_string(writer, image_layer.nm, "nm")
+  if isset(flags, 1) do write_bool(writer, image_layer.hd, "hd")
+  if isset(flags, 2) do write_enum(writer, u8(image_layer.ty), LAYER_TYPE_BITS, "ty")
+  if isset(flags, 3) do write_varint(writer, i128(image_layer.ind), "ind")
+  if isset(flags, 4) do write_varint(writer, i128(image_layer.parent), "parent")
+  if isset(flags, 5) do write_varint(writer, i128(image_layer.ip), "ip")
+  if isset(flags, 6) do write_varint(writer, i128(image_layer.op), "op")
+  if isset(flags, 7) do write_transform(writer, image_layer.ks, "ks")
+  if isset(flags, 8) do write_varint(writer, i128(image_layer.ao), "ao")
+  if isset(flags, 9) do write_enum(writer, u8(image_layer.tt), MATTE_MODE_BITS, "tt")
+  if isset(flags, 10) do write_varint(writer, i128(image_layer.tp), "tp")
+  if isset(flags, 11) {
+    begin_debug_info(writer, "masksProperties", .meta)
+    write_varint(writer, i128(len(image_layer.masksProperties)), "len")
+    for mask in image_layer.masksProperties {
+      write_mask(writer, mask)
+    }
+    end_debug_info(writer)
+  }
+
+  // TODO: How we refer to images within the format will probably change later
+  if isset(flags, 12) do write_string(writer, image_layer.refId, "refId")
+
+  end_debug_info(writer)
+}

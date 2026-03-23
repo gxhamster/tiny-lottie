@@ -8,60 +8,6 @@ import "core:mem"
 import vmem "core:mem/virtual"
 import "core:os"
 
-json_obj_val_type :: proc(
-  root: ^json.Object,
-  key: string,
-) -> CoreTypes {
-  if root[key] == nil {
-    return .Null
-  }
-  data := root[key]
-  #partial switch type_val in data {
-  case json.Null:
-    return .Null
-  case json.Array:
-    return .Array
-  case json.Object:
-    return .Object
-  case json.Float:
-    return .Float
-  case json.Integer:
-    return .Integer
-  }
-  panic("unexpected type")
-}
-
-field_expect_type :: proc(
-  root: ^json.Object,
-  key: string,
-  expected: CoreTypes,
-) -> bool {
-  data := root[key]
-  union_type := CoreTypes.Null
-  switch type_val in data {
-  case json.Null:
-    union_type = .Null
-  case json.Array:
-    union_type = .Array
-  case json.Object:
-    union_type = .Object
-  case json.Boolean:
-    union_type = .Bool
-  case json.Integer:
-    union_type = .Integer
-  case json.Float:
-    union_type = .Float
-  case json.String:
-    union_type = .String
-  }
-
-  if union_type == expected {
-    return true
-  } else {
-    return false
-  }
-}
-
 parse_layers :: proc(
   anim: ^Animation,
   layer_json_array: json.Array,
@@ -816,57 +762,6 @@ read_file_handle :: proc(
   defer delete(data.raw, allocator)
   defer json.destroy_value(parsed_json)
 
-  root := parsed_json.(json.Object)
-  if root["h"] == nil ||
-     root["w"] == nil ||
-     root["fr"] == nil ||
-     root["op"] == nil ||
-     root["ip"] == nil {
-    return JsonLottie{}, LottieError.MissingRequiredValue
-  }
-
-  data.animation.nm = root["nm"].(json.String)
-  data.animation.fr = root["fr"].(json.Float)
-  data.animation.op = root["op"].(json.Float)
-  data.animation.ip = root["ip"].(json.Float)
-  data.animation.w = i64(root["w"].(json.Float))
-  data.animation.h = i64(root["h"].(json.Float))
-
-  if data.animation.h < 0 {
-    return JsonLottie{}, LottieError.OutofRangeValue
-  }
-  if data.animation.w < 0 {
-    return JsonLottie{}, LottieError.OutofRangeValue
-  }
-  if data.animation.fr < 1 {
-    return JsonLottie{}, LottieError.OutofRangeValue
-  }
-  LOTTIE_VERSION_MIN :: 10000
-  if root["ver"] != nil && root["ver"].(json.Integer) < LOTTIE_VERSION_MIN {
-    return JsonLottie{}, LottieError.OutofRangeValue
-  } else if root["ver"] != nil &&
-     root["ver"].(json.Integer) > LOTTIE_VERSION_MIN {
-    data.animation.ver = root["ver"].(json.Integer)
-  }
-
-  layer_ok := field_expect_type(&root, "layers", .Array)
-  marker_ok := field_expect_type(&root, "markers", .Array)
-  assets_ok := field_expect_type(&root, "assets", .Array)
-  slots_ok := field_expect_type(&root, "slots", .Object)
-
-
-  if layer_ok {
-    parse_layers(&data.animation, root["layers"].(json.Array))
-  }
-  if marker_ok {
-    data.animation.markers = root["markers"].(json.Array)
-  }
-  if assets_ok {
-    data.animation.assets = root["assets"].(json.Array)
-  }
-  if slots_ok {
-    data.animation.slots = root["slots"].(json.Object)
-  }
   return data, LottieError.None
 }
 

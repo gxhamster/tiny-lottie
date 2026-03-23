@@ -565,21 +565,20 @@ GraphicElement :: union {
 LAYER_TYPE_BITS :: 3
 LayerType :: enum {
   PrecompLayer = 0,
-  ImageLayer = 2,
-  NullLayer = 3,
-  SolidLayer = 1,
-  ShapeLayer = 4
+  ImageLayer   = 2,
+  NullLayer    = 3,
+  SoildLayer   = 1,
+  ShapeLayer   = 4,
 }
 
-MASK_MODE_BITS :: 2
 MaskMode :: enum {
-  None = 'n',     // 0
-  Add = 'a',      // 1
-  Subtract = 's', // 2
-  Intersect = 'i' // 3
+  None      = 'n',
+  Add       = 'a',
+  Subtract  = 's',
+  Intersect = 'i'
 }
 
-MASK_FIELDS :: fields(Mask) - 1
+
 Mask :: struct {
   mode: MaskMode,
   o: PropScalar,
@@ -587,57 +586,11 @@ Mask :: struct {
   _flags: u64
 }
 
-SHAPE_LAYER_FIELDS :: fields(ShapeLayer) - 1
-ShapeLayer :: struct {
-  nm: string,
-  hd: bool,
-  ty: LayerType,
-  ind: i64,
-  parent: i64,
-  ip: i64,
-  op: i64,
-  ks: Transform,
-  ao: i64,
-  tt: MatteMode,
-  tp: i64,
-  masksProperties: []Mask,
-  shapes: []GraphicElement,
-  _flags: u64
-}
+ShapeLayer :: struct {}
 
-IMAGE_LAYER_FIELDS :: fields(ImageLayer) - 1
-ImageLayer :: struct {
-  nm: string,
-  hd: bool,
-  ty: LayerType,
-  ind: i64,
-  parent: i64,
-  ip: i64,
-  op: i64,
-  ks: Transform,
-  ao: i64,
-  tt: MatteMode,
-  tp: i64,
-  masksProperties: []Mask,
-  refId: string,
-  _flags: u64
-}
+ImageLayer :: struct {}
 
-NULL_LAYER_FIELDS :: fields(NullLayer) - 1
-NullLayer :: struct {
-  nm: string,
-  hd: bool,
-  ty: LayerType,
-  ind: i64,
-  parent: i64,
-  ip: i64,
-  op: i64,
-  ks: Transform,
-  ao: i64,
-  tt: MatteMode,
-  tp: i64,
-  masksProperties: []Mask,
-}
+NullLayer :: struct {}
 
 SOLID_LAYER_FIELDS :: fields(SolidLayer) - 1
 SolidLayer :: struct {
@@ -655,7 +608,8 @@ SolidLayer :: struct {
   masksProperties: []Mask,
   sw: i64,
   sh: i64,
-  sc: HexColor
+  sc: HexColor,
+  _flags: u64,
 }
 
 PRECOMP_LAYER_FIELDS :: fields(PrecompLayer) - 1
@@ -677,20 +631,11 @@ PrecompLayer :: struct {
   h: i64,
   sr: i64,
   st: i64,
-  tm: PropScalar
+  tm: PropScalar,
+  _flags: u64
 }
 
 JsonLottie :: struct {
   animation: Animation,
   raw:       []u8,
-}
-
-CoreTypes :: enum {
-  Null,
-  Array,
-  Object,
-  Float,
-  Integer,
-  Bool,
-  String,
 }
