@@ -45,17 +45,17 @@ Error :: union {
 }
 
 Animation :: struct {
-  nm:      string,
-  ver:     i64,
-  fr:      f64,
-  ip:      f64,
-  op:      f64,
-  w:       i64,
-  h:       i64,
-  layers:  json.Array,
-  assets:  json.Array,
-  markers: json.Array,
-  slots:   json.Object,
+  nm: string,
+  ver: i64,
+  fr: i64,
+  ip: i64,
+  op: i64,
+  w: i64,
+  h: i64,
+  layers: []Layer,
+  assets: []Asset,
+  markers: []Marker,
+  // slots: 
 }
 
 // note(iyaan): The structs that are defined here, are in
@@ -144,6 +144,7 @@ PropScalarAnim :: struct {
   _flags: u64,
 }
 
+BEZIER_UNION_TAG_SIZE :: size_of(intrinsics.type_union_tag_type(PropBezier))
 PropBezier :: union {
   PropBezierSingle,
   PropBezierAnim,
@@ -587,6 +588,15 @@ Mask :: struct {
   _flags: u64
 }
 
+LAYER_UNION_TAG_SIZE :: size_of(intrinsics.type_union_tag_type(Layer))
+Layer :: union {
+  ShapeLayer,
+  ImageLayer,
+  NullLayer,
+  SolidLayer,
+  PrecompLayer
+}
+
 SHAPE_LAYER_FIELDS :: fields(ShapeLayer) - 1
 ShapeLayer :: struct {
   nm: string,
@@ -680,6 +690,44 @@ PrecompLayer :: struct {
   sr: i64,
   st: i64,
   tm: PropScalar,
+  _flags: u64
+}
+
+// Assets
+// TODO: for the future I hope to support packing all dependent
+// assets of an animation directly into the format
+
+Asset :: union {
+  PrecompAsset,
+  ImageAsset
+}
+
+PRECOMP_ASSET_FIELDS :: fields(PrecompAsset) - 1
+PrecompAsset :: struct {
+  nm: string,
+  id: string,
+  layers: []Layer,
+  _flags: u64
+}
+
+IMAGE_ASSET_FIELDS :: fields(ImageAsset) - 1
+ImageAsset :: struct {
+  nm: string,
+  id: string,
+  sid: string,
+  w: i64,
+  h: i64,
+  p: string,
+  u: string,
+  e: i64,
+  _flags: u64
+}
+
+// Marker
+Marker :: struct {
+  cm: string,
+  tm: i64,
+  dr: i64,
   _flags: u64
 }
 

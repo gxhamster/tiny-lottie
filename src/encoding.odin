@@ -1957,3 +1957,91 @@ write_precomp_layer :: proc(writer: ^Writer, precomp_layer: PrecompLayer, debug_
 
   end_debug_info(writer)
 }
+
+write_layer :: proc(writer: ^Writer, layer: Layer, debug_name := "") {
+  switch _ in layer {
+  case ShapeLayer:    write_shape_layer(writer, layer.(ShapeLayer))
+  case NullLayer:     write_null_layer(writer, layer.(NullLayer))   
+  case ImageLayer:    write_image_layer(writer, layer.(ImageLayer))
+  case SolidLayer:    write_solid_layer(writer, layer.(SolidLayer))
+  case PrecompLayer:  write_precomp_layer(writer, layer.(PrecompLayer))
+  }
+}
+
+write_precomp_asset :: proc(writer: ^Writer, precomp_asset: PrecompAsset, debug_name := "precomp_asset") {
+  flags := transmute(Bit64)precomp_asset._flags
+  begin_debug_info(writer, debug_name, .meta)
+  write_flags(writer, flags, PRECOMP_ASSET_FIELDS)
+
+  if isset(flags, 0) do write_string(writer, precomp_asset.nm, "nm")
+  if isset(flags, 1) do write_string(writer, precomp_asset.id, "id")
+  if isset(flags, 2) {
+    begin_debug_info(writer, "layers", .meta)
+    write_varint(writer, i128(len(precomp_asset.layers)))    
+    for layer in precomp_asset.layers {
+      write_layer(writer, layer)
+    }
+    end_debug_info(writer)
+  } 
+  end_debug_info(writer)
+}
+
+write_image_asset :: proc(writer: ^Writer, image_asset: ImageAsset, debug_name := "image_asset") {
+  flags := transmute(Bit64)image_asset._flags
+  begin_debug_info(writer, debug_name, .meta)
+  write_flags(writer, flags, IMAGE_ASSET_FIELDS)
+
+  if isset(flags, 0) do write_string(writer, image_asset.nm, "nm")
+  if isset(flags, 1) do write_string(writer, image_asset.id, "id")
+  if isset(flags, 2) do write_string(writer, image_asset.sid, "sid")
+  if isset(flags, 3) do write_uint32(writer, u32(image_asset.w), "w")  
+  if isset(flags, 4) do write_uint32(writer, u32(image_asset.h), "h")  
+  if isset(flags, 5) do write_string(writer, image_asset.p, "p")
+  if isset(flags, 6) do write_string(writer, image_asset.u, "u")
+  if isset(flags, 7) do write_bool(writer, bool(image_asset.e), "e")
+
+  end_debug_info(writer)
+}
+
+write_asset :: proc(writer: ^Writer, asset: Asset, debug_name := "asset") {
+  switch _ in asset {
+  case PrecompAsset:  write_precomp_asset(writer, asset.(PrecompAsset), debug_name)
+  case ImageAsset:    write_image_asset(writer, asset.(ImageAsset), debug_name)
+  }
+}
+
+write_animation :: proc(writer: ^Writer, animation: Animation, debug_name := "animation") {
+  begin_debug_info(writer, debug_name, .meta)
+  write_string(writer, animation.nm, "nm")
+  write_uint64(writer, u64(animation.ver), "ver")
+  write_uint32(writer, u32(animation.fr), "fr")
+  write_uint32(writer, u32(animation.ip), "ip")
+  write_uint32(writer, u32(animation.op), "op")    
+  write_uint32(writer, u32(animation.w), "w")
+  write_uint32(writer, u32(animation.h), "h")
+  
+  begin_debug_info(writer, "layers", .meta)
+  write_varint(writer, i128(len(animation.layers)))
+  for layer in animation.layers {
+    write_layer(writer, layer)
+  }
+  end_debug_info(writer)
+
+  begin_debug_info(writer, "assets", .meta)
+  write_varint(writer, i128(len(animation.assets)))
+  for asset in animation.assets {
+    write_asset(writer, asset)
+  }
+  end_debug_info(writer)
+
+  begin_debug_info(writer, "markers", .meta)
+  write_varint(writer, i128(len(animation.markers)))
+  for marker in animation.markers {
+
+  }
+  end_debug_info(writer)
+
+
+  end_debug_info(writer)
+
+}
