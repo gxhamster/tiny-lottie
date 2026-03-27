@@ -161,17 +161,17 @@ unmarshal_array :: proc(
 
       #partial switch base_t in elem_type_base.variant {
       case runtime.Type_Info_Struct: 
-        err := unmarshal_object(elem, elem_any)
+        err := unmarshal_object(elem, elem_any, allocator = allocator)
         if err != .None {
           log.fatalf("unmarshal_object returned error %v for %v %v", err, elem, internal_elem_type_info.id)
         }
-      case runtime.Type_Info_Union:  unmarshal_union(elem, elem_any) or_return
+      case runtime.Type_Info_Union:  unmarshal_union(elem, elem_any, allocator = allocator) or_return
       case runtime.Type_Info_Integer,
            runtime.Type_Info_Float,
            runtime.Type_Info_Boolean,
            runtime.Type_Info_String,
-           runtime.Type_Info_Enum: unmarshal_value(elem, elem_any) or_return
-      case runtime.Type_Info_Slice, runtime.Type_Info_Array: unmarshal_array(elem, elem_any) or_return
+           runtime.Type_Info_Enum: unmarshal_value(elem, elem_any, allocator = allocator) or_return
+      case runtime.Type_Info_Slice, runtime.Type_Info_Array: unmarshal_array(elem, elem_any, allocator = allocator) or_return
       case:
       {
         if err := delete(data); err != .None {
@@ -292,12 +292,12 @@ unmarshal_union :: proc(val: json.Value, p: any, allocator := context.allocator)
       easing_ptr := transmute(^PropKeyframeEasing)ptr
       easing_ptr^ = PropKeyframeEasingVec{}
       easing_vector := any{ptr, typeid_of(PropKeyframeEasingVec)}
-      unmarshal_object(object, easing_vector) or_return
+      unmarshal_object(object, easing_vector, allocator = allocator) or_return
     } else {
       easing_ptr := transmute(^PropKeyframeEasing)ptr
       easing_ptr^ = PropKeyframeEasingScalar{}
       easing_scalar := any{ptr, typeid_of(PropKeyframeEasingScalar)}
-      unmarshal_object(object, easing_scalar) or_return
+      unmarshal_object(object, easing_scalar, allocator = allocator) or_return
     }
   }
   case GraphicElement:
@@ -306,6 +306,54 @@ unmarshal_union :: proc(val: json.Value, p: any, allocator := context.allocator)
       _unmarshal_graphic_element_union(object, ptr) or_return
     }
   }
+  case Layer:
+  {
+    if "ty" in object {
+      if ty, ok := object["ty"].(json.Integer); ok {
+        enum_ty := LayerType(ty)
+        if enum_ty >= LayerType.PrecompLayer && enum_ty <= LayerType.ShapeLayer {
+          layer_ptr := transmute(^Layer)ptr
+          switch enum_ty {
+          case .PrecompLayer:
+          {
+            layer_ptr^ = PrecompLayer{}
+            layer_any := any{ptr, typeid_of(PrecompLayer)}
+            unmarshal_object(object, layer_any, allocator = allocator) or_return
+          }
+          case .ImageLayer:
+          {
+            layer_ptr^ = ImageLayer{}
+            layer_any := any{ptr, typeid_of(ImageLayer)}
+            unmarshal_object(object, layer_any, allocator = allocator) or_return
+          }
+          case .NullLayer:
+          {
+            layer_ptr^ = NullLayer{}
+            layer_any := any{ptr, typeid_of(NullLayer)}
+            unmarshal_object(object, layer_any, allocator = allocator) or_return
+          }
+          case .SoildLayer:
+          {
+            layer_ptr^ = SolidLayer{}
+            layer_any := any{ptr, typeid_of(SolidLayer)}
+            unmarshal_object(object, layer_any, allocator = allocator) or_return
+          }
+          case .ShapeLayer:
+          {
+            layer_ptr^ = ShapeLayer{}
+            layer_any := any{ptr, typeid_of(ShapeLayer)}
+            unmarshal_object(object, layer_any, allocator = allocator) or_return
+          }
+          }
+        }
+
+      } else {
+
+      }
+    }
+  }
+  case:
+    log.fatalf("unknown union type encountered %v", p.id)
   }
 
   return .None
@@ -348,18 +396,18 @@ unmarshal_object :: proc(val: json.Value, p: any, allocator := context.allocator
          runtime.Type_Info_Float,
          runtime.Type_Info_String,
          runtime.Type_Info_Boolean,
-         runtime.Type_Info_Enum:   unmarshal_value(json_obj[field.name], field_value_any) or_return
+         runtime.Type_Info_Enum:   unmarshal_value(json_obj[field.name], field_value_any, allocator = allocator) or_return
     case runtime.Type_Info_Dynamic_Array,
          runtime.Type_Info_Array,
-         runtime.Type_Info_Slice : unmarshal_array(json_obj[field.name], field_value_any) or_return
-    case runtime.Type_Info_Struct: unmarshal_object(json_obj[field.name], field_value_any) or_return
+         runtime.Type_Info_Slice : unmarshal_array(json_obj[field.name], field_value_any, allocator = allocator) or_return
+    case runtime.Type_Info_Struct: unmarshal_object(json_obj[field.name], field_value_any, allocator = allocator) or_return
     case runtime.Type_Info_Union:
     {
       // note(iyaan): Are we deadass ignoring any union which has no struct variants
       if _, ok := json_obj[field.name].(json.Object); !ok {
         continue
       }
-      unmarshal_union(json_obj[field.name], field_value_any) or_return
+      unmarshal_union(json_obj[field.name], field_value_any, allocator = allocator) or_return
     } 
     case:
       return .UnmarshalUnknownStructFieldType

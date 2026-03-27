@@ -2,6 +2,7 @@
 
 package main
 import "core:encoding/json"
+import vmem "core:mem/virtual"
 import "core:fmt"
 import "core:log"
 import "core:testing"
@@ -431,4 +432,52 @@ group_unmarshal_test :: proc(t: ^testing.T) {
      }
    }
  }
+}
+
+@(test)
+animation_unmarshal_test :: proc(t: ^testing.T) {
+  arena: vmem.Arena
+	arena_allocator := vmem.arena_allocator(&arena)
+
+  data, ok := os.read_entire_file_from_filename("./data/Fire.json")
+  
+  defer delete(data)
+
+  if !ok {
+    log.fatalf("could not read from file")
+  }
+
+  value, err := json.parse(data, parse_integers = true)
+  if err != .None {
+    log.fatalf("could not parse json due to %v", err)
+  }
+
+  defer json.destroy_value(value)
+
+
+  anim := Animation{}
+  unmarshal_err := unmarshal_object(value, anim, allocator = arena_allocator)
+  if unmarshal_err != .None {
+    log.fatalf("unmarshal_object returned error = %v, %v", unmarshal_err, anim)
+  }
+  // log.debug(anim)
+  writer := Writer{}
+  writer_init(&writer, data_len = 1 << 32, allocator = arena_allocator)
+  write_animation(&writer, anim)
+  total_bits := 0
+  for d, idx in writer.debug {
+  bits := (d.end_byte - d.start_byte) * 8 + int(d.end_bit - d.start_bit)
+  total_bits += bits
+  log.debug(idx, d, "SIZE:", bits) 
+  }
+  builder := gen_html(&writer)
+  builder_str := strings.to_string(builder)
+  FILE_NAME :: "data.debug"
+  succ := os.write_entire_file(FILE_NAME, transmute([]u8)builder_str)
+  if !succ {
+    panic("something went very wrong while file writing") 
+  }
+
+  vmem.arena_destroy(&arena)
+
 }
