@@ -45,11 +45,17 @@ DebugInfo :: struct {
   end_idx: int,   // Used to idenitfy the range of debug info in case of a meta (inclusive)
 }
 
+ColorsSeen :: struct {
+  color: Color4,
+  debug_idx: int   // The index to the debug info
+}
+
 DEBUG_STACK_SIZE :: 64
 Writer :: struct {
   data: []byte,
   offset: int,
   bits: uint,     // This is the bit offset within the current byte specified by `offset` in `data`
+  colors_seen: [dynamic]ColorsSeen,
   debug: [dynamic]DebugInfo,
   debug_stack: [DEBUG_STACK_SIZE]int,
   debug_stack_top: int,
@@ -59,6 +65,7 @@ DEFAULT_WRITER_DATA_LEN :: 1 << 15
 writer_init :: proc(writer: ^Writer, data_len := DEFAULT_WRITER_DATA_LEN, allocator := context.allocator) {
  writer.data = make([]byte, data_len, allocator)
  writer.debug = make([dynamic]DebugInfo, 0, data_len, allocator)
+ writer.colors_seen = make([dynamic]ColorsSeen, 0, data_len, allocator)
  writer.offset = 0
  writer.bits = 0
  writer.debug_stack_top = -1
@@ -70,6 +77,7 @@ writer_reset :: proc(writer: ^Writer) {
   writer.debug_stack_top = -1
   mem.zero(&writer.data[0], len(writer.data))
   clear(&writer.debug)
+  clear(&writer.colors_seen)
 }
 
 calc_bits_from :: proc(start_byte, end_byte: int, start_bit, end_bit: uint) -> int {
@@ -123,7 +131,9 @@ end_debug_info :: proc(writer: ^Writer) {
 // for each individual flag bit. Do it for the whole thing.
 // All writing functions must use this otherwise it will not respect
 // the bit offset
+MAX_NUM_WRITE_BITS :: 64
 write_bits :: proc(writer: ^Writer, value: int, num_bits: uint) {
+  assert(num_bits <= MAX_NUM_WRITE_BITS, "exceeding MAX_NUM_WRITE_BITS")
   ptr := cast(^int)raw_data(writer.data[writer.offset:])
   mask := int(1 << num_bits - 1)
   base := ptr^
@@ -133,6 +143,7 @@ write_bits :: proc(writer: ^Writer, value: int, num_bits: uint) {
   writer.bits = uint(total_bit_offset) % 8
   ptr^ = res
 }
+
 
 // note(iyaan): I want to be able to take the control points
 // from https://lottie.github.io/lottie-spec/latest/specs/properties/#easing-handle
@@ -337,6 +348,14 @@ write_bits_test :: proc(t: ^testing.T) {
 
   testing.expect(t, writer.offset == 4, "next byte offset is 4")
   testing.expect(t, writer.bits == 0, "next bit offset is 0")
+
+  reader := reader_from_writer(&writer)
+  v1, r1 := read_bits(&reader, 23)
+  v2, r2 := read_bits(&reader, 4)
+  v3, r3 := read_bits(&reader, 5)
+  testing.expect_value(t, v1, 2002)
+  testing.expect_value(t, v2, 10)
+  testing.expect_value(t, v3, 16)
 }
 
 writer_write_string :: proc(writer: ^Writer, str: string) {
@@ -664,10 +683,21 @@ write_hexcolor :: proc(writer: ^Writer, hex_color: HexColor, debug_name: string 
   end_debug_info(writer)
 }
 
+// note(iyaan): Yes, i am deciding that pallete tables
+// can only have unique 256 entries. Any pallete that has
+// more than that is not worth using indexes over
+write_pallete_idx :: proc(writer: ^Writer, pallete_idx: u8, debug_name := "pallete_idx") {
+  begin_debug_info(writer, debug_name, .meta)
+  write_uint8(writer, u8(pallete_idx))
+  end_debug_info(writer)
+} 
+
 write_color3 :: proc(writer: ^Writer, color3: Color3, debug_name: string = "color3") {
   color3_vec := transmute(Vec3)color3
+  color3_as_color4 := Color4{color3_vec.x, color3_vec.y, color3_vec.z, 0}
   begin_debug_info(writer, debug_name, .meta)
   write_vector3(writer, color3_vec)
+  append(&writer.colors_seen, ColorsSeen{color3_as_color4, len(writer.debug) - 1})
   end_debug_info(writer)
 }
 
@@ -675,6 +705,7 @@ write_color4 :: proc(writer: ^Writer, color4: Color4, debug_name: string = "colo
   color4_vec := transmute(Vec4)color4
   begin_debug_info(writer, debug_name, .meta)
   write_vector4(writer, color4_vec)
+  append(&writer.colors_seen, ColorsSeen{color4, len(writer.debug) - 1})
   end_debug_info(writer)
 }
 
@@ -2013,12 +2044,12 @@ write_asset :: proc(writer: ^Writer, asset: Asset, debug_name := "asset") {
 write_animation :: proc(writer: ^Writer, animation: Animation, debug_name := "animation") {
   begin_debug_info(writer, debug_name, .meta)
   write_string(writer, animation.nm, "nm")
-  write_uint64(writer, u64(animation.ver), "ver")
-  write_uint32(writer, u32(animation.fr), "fr")
-  write_uint32(writer, u32(animation.ip), "ip")
-  write_uint32(writer, u32(animation.op), "op")    
-  write_uint32(writer, u32(animation.w), "w")
-  write_uint32(writer, u32(animation.h), "h")
+  write_varint(writer, i128(animation.ver), "ver")
+  write_varint(writer, i128(animation.fr), "fr")
+  write_varint(writer, i128(animation.ip), "ip")
+  write_varint(writer, i128(animation.op), "op")    
+  write_varint(writer, i128(animation.w), "w")
+  write_varint(writer, i128(animation.h), "h")
   
   begin_debug_info(writer, "layers", .meta)
   write_varint(writer, i128(len(animation.layers)))
@@ -2044,4 +2075,69 @@ write_animation :: proc(writer: ^Writer, animation: Animation, debug_name := "an
 
   end_debug_info(writer)
 
+}
+
+Reader :: struct {
+  data: []byte,
+  cur_offset: int,
+  cur_bits: uint,
+  end_offset: int,  // end_offset and end_bits is the byte and bit offset
+  end_bits: uint    // at which the writer was at the moment
+}
+
+MAX_NUM_READ_BITS :: 64
+read_bits :: proc(reader: ^Reader, num_bits: uint) -> (v: u64, read_bits: uint) {
+  total_cur_bits := reader.cur_offset * BYTE_BITS + int(reader.cur_bits)
+  total_end_bits := reader.end_offset * BYTE_BITS + int(reader.end_bits)
+  if total_cur_bits > total_end_bits {
+    // note(iyaan): should i do an enum error here
+    return 0, 0
+  } 
+
+  ptr := cast(^u64)raw_data(reader.data[reader.cur_offset:])
+  val := ptr^
+  to_read := num_bits > MAX_NUM_READ_BITS ? MAX_NUM_READ_BITS : num_bits
+  v = bits.bitfield_extract_u64(val, reader.cur_bits, to_read)
+  total_bit_offset := int(reader.cur_bits + to_read)
+  reader.cur_offset += total_bit_offset / BYTE_BITS
+  reader.cur_bits = uint(total_bit_offset) % BYTE_BITS
+
+  return v, to_read
+}
+
+// No allocation variant
+reader_from_writer :: proc(writer: ^Writer) -> Reader {
+  reader := Reader{}
+  reader.data = writer.data[:]
+  reader.end_bits = writer.bits
+  reader.end_offset = writer.offset
+
+  return reader
+}
+
+// Does a copy of the writer's internal data buffer into the reader own
+// and will allocate its own slice
+reader_from_writer_owned :: proc(writer: ^Writer, allocator := context.allocator) -> Reader {
+  reader := Reader{}
+  reader.data = make([]byte, len(writer.data), allocator)
+  copy(reader.data[:], writer.data[:])
+  reader.end_bits = writer.bits
+  reader.end_offset = writer.offset
+
+  return reader
+}
+
+@(test)
+read_bits_test :: proc(t: ^testing.T) {
+  writer := Writer{}
+  writer_init(&writer)
+  write_color4(&writer, Color4{1,2,3,4})
+
+  reader := reader_from_writer(&writer)
+  v1, r1 := read_bits(&reader, 2)
+  v2, r2 := read_bits(&reader, 8)
+  v3, r3 := read_bits(&reader, 8)
+  v4, r4 := read_bits(&reader, 8)
+  v5, r5 := read_bits(&reader, 8)
+  testing.expect(t, v1 == 0 && v2 == 1 && v3 == 2 && v4 == 3 && v5 == 4, "not expected color values")
 }
