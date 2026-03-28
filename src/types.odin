@@ -44,6 +44,20 @@ Error :: union {
   json.Error,
 }
 
+OptimFlags :: enum {
+  ColorPallete,
+}
+
+PALLETE_MAX :: 256
+Header :: struct {
+  magic: string,
+  optimization_flags: bit_set[OptimFlags],
+  pallete: [PALLETE_MAX]Color4,
+  pallete_size: int,
+  layer_tbl: []int,  // An index which shows where you can find all the layers
+  layer_tbl_size: int,
+}
+
 Animation :: struct {
   nm: string,
   ver: i64,

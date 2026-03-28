@@ -462,14 +462,17 @@ animation_unmarshal_test :: proc(t: ^testing.T) {
   }
   // log.debug(anim)
   writer := Writer{}
-  writer_init(&writer, data_len = 1 << 32, allocator = arena_allocator)
+  optim_ok := color_pallete_optim_pass(&anim, &writer.header)
+  writer_init(&writer, data_len = 1 << 33, allocator = arena_allocator)
   write_animation(&writer, anim)
-  total_bits := 0
-  for d, idx in writer.debug {
-  bits := (d.end_byte - d.start_byte) * 8 + int(d.end_bit - d.start_bit)
-  total_bits += bits
-  log.debug(idx, d, "SIZE:", bits) 
-  }
+
+
+  // total_bits := 0
+  // for d, idx in writer.debug {
+  // bits := (d.end_byte - d.start_byte) * 8 + int(d.end_bit - d.start_bit)
+  // total_bits += bits
+  // log.debug(idx, d, "SIZE:", bits) 
+  // }
   builder := gen_html(&writer)
   builder_str := strings.to_string(builder)
   FILE_NAME :: "data.debug"

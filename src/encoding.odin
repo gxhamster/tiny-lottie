@@ -9,7 +9,6 @@ import "core:math"
 import "core:mem"
 import "core:testing"
 import "core:log"
-import "core:fmt"
 import "core:simd"
 
 BYTE_BITS :: 8
@@ -55,7 +54,7 @@ Writer :: struct {
   data: []byte,
   offset: int,
   bits: uint,     // This is the bit offset within the current byte specified by `offset` in `data`
-  colors_seen: [dynamic]ColorsSeen,
+  header: Header, // The lottie header (keeping for easy access to all methods)
   debug: [dynamic]DebugInfo,
   debug_stack: [DEBUG_STACK_SIZE]int,
   debug_stack_top: int,
@@ -63,12 +62,15 @@ Writer :: struct {
 
 DEFAULT_WRITER_DATA_LEN :: 1 << 15
 writer_init :: proc(writer: ^Writer, data_len := DEFAULT_WRITER_DATA_LEN, allocator := context.allocator) {
- writer.data = make([]byte, data_len, allocator)
- writer.debug = make([dynamic]DebugInfo, 0, data_len, allocator)
- writer.colors_seen = make([dynamic]ColorsSeen, 0, data_len, allocator)
- writer.offset = 0
- writer.bits = 0
- writer.debug_stack_top = -1
+  data, data_err := make([]byte, data_len, allocator)
+  if data_err != .None {
+    log.fatalf("Could not allocate for writer data error = %v", data_err)
+  }
+  writer.data = data
+  writer.debug = make([dynamic]DebugInfo, 0, data_len, allocator)
+  writer.offset = 0
+  writer.bits = 0
+  writer.debug_stack_top = -1
 }
 
 writer_reset :: proc(writer: ^Writer) {
@@ -77,7 +79,6 @@ writer_reset :: proc(writer: ^Writer) {
   writer.debug_stack_top = -1
   mem.zero(&writer.data[0], len(writer.data))
   clear(&writer.debug)
-  clear(&writer.colors_seen)
 }
 
 calc_bits_from :: proc(start_byte, end_byte: int, start_bit, end_bit: uint) -> int {
@@ -132,8 +133,12 @@ end_debug_info :: proc(writer: ^Writer) {
 // All writing functions must use this otherwise it will not respect
 // the bit offset
 MAX_NUM_WRITE_BITS :: 64
-write_bits :: proc(writer: ^Writer, value: int, num_bits: uint) {
+write_bits :: proc(writer: ^Writer, value: int, num_bits: uint, loc := #caller_location) {
   assert(num_bits <= MAX_NUM_WRITE_BITS, "exceeding MAX_NUM_WRITE_BITS")
+  if writer.offset >= len(writer.data) {
+    log.fatalf("writer buffer out of memory, offset: %v from %v", len(writer.data), loc)
+  }
+
   ptr := cast(^int)raw_data(writer.data[writer.offset:])
   mask := int(1 << num_bits - 1)
   base := ptr^
@@ -693,20 +698,38 @@ write_pallete_idx :: proc(writer: ^Writer, pallete_idx: u8, debug_name := "palle
 } 
 
 write_color3 :: proc(writer: ^Writer, color3: Color3, debug_name: string = "color3") {
-  color3_vec := transmute(Vec3)color3
-  color3_as_color4 := Color4{color3_vec.x, color3_vec.y, color3_vec.z, 0}
-  begin_debug_info(writer, debug_name, .meta)
-  write_vector3(writer, color3_vec)
-  append(&writer.colors_seen, ColorsSeen{color3_as_color4, len(writer.debug) - 1})
-  end_debug_info(writer)
+  if  .ColorPallete in writer.header.optimization_flags {
+    color3_as_color4 := Color4{color3.x, color3.y, color3.z, 0}
+    pallete_idx, found := slice.linear_search(writer.header.pallete[:writer.header.pallete_size], color3_as_color4)
+    if found {
+      begin_debug_info(writer, debug_name, .meta)
+      write_pallete_idx(writer, u8(pallete_idx))
+      end_debug_info(writer)
+    } else {
+      panic("has the color_pallete_optim_pass has been done yet")
+    }
+  } else {
+    begin_debug_info(writer, debug_name, .meta)
+    write_vector3(writer, color3.xyz)
+    end_debug_info(writer)
+  }
 }
 
 write_color4 :: proc(writer: ^Writer, color4: Color4, debug_name: string = "color4") {
-  color4_vec := transmute(Vec4)color4
-  begin_debug_info(writer, debug_name, .meta)
-  write_vector4(writer, color4_vec)
-  append(&writer.colors_seen, ColorsSeen{color4, len(writer.debug) - 1})
-  end_debug_info(writer)
+  if .ColorPallete in writer.header.optimization_flags {
+    pallete_idx, found := slice.linear_search(writer.header.pallete[:writer.header.pallete_size], color4)
+    if found {
+      begin_debug_info(writer, debug_name, .meta)
+      write_pallete_idx(writer, u8(pallete_idx))
+      end_debug_info(writer)
+    } else {
+      panic("has the color_pallete_optim_pass has been done yet")
+    }
+  } else {
+    begin_debug_info(writer, debug_name, .meta)
+    write_vector4(writer, color4)
+    end_debug_info(writer)
+  }
 }
 
 write_gradient :: proc(writer: ^Writer, gradient: Gradient, debug_name: string = "gradient_value") {
@@ -2077,6 +2100,89 @@ write_animation :: proc(writer: ^Writer, animation: Animation, debug_name := "an
 
 }
 
+color_pallete_optim_pass :: proc(animation: ^Animation, header: ^Header) -> (ok: bool) {
+  PalleteInfo :: struct {
+    color: Color4,
+    count: int,
+  }
+
+  pallete := #soa[PALLETE_MAX]PalleteInfo{}
+  cur_pallete_idx := 0
+
+  add_to_pallete :: proc(pallete: ^#soa[PALLETE_MAX]PalleteInfo, cur_len: ^int, color4: Color4) {
+    found_idx, found := slice.linear_search(pallete.color[:], color4)
+    if found {
+      pallete[found_idx].count += 1 
+    } else {
+      pallete[cur_len^] = {color4, 1}
+      cur_len^ += 1
+    }
+  }
+
+  process_elem :: proc(elem: GraphicElement, pallete: ^#soa[PALLETE_MAX]PalleteInfo, cur_pallete_idx: ^int) {
+    #partial switch _ in elem {
+    case Fill:
+    {
+      fill := elem.(Fill)
+      flags := transmute(Bit64)fill._flags
+      if isset(flags, 4) {
+        if fill_single, ok := fill.c.(PropColorSingle); ok {
+          add_to_pallete(pallete, cur_pallete_idx, fill_single.k)
+        } else if fill_anim, ok := fill.c.(PropColorAnim); ok {
+          for frame in fill_anim.k {
+            add_to_pallete(pallete, cur_pallete_idx, frame.s)              
+          }
+        }
+      }
+    }
+    case Stroke:
+    {
+      stroke := elem.(Stroke)
+      flags := transmute(Bit64)stroke._flags
+      if isset(flags, 10) {
+        if stroke_single, ok := stroke.c.(PropColorSingle); ok {
+          add_to_pallete(pallete, cur_pallete_idx, stroke_single.k)
+        } else if stroke_anim, ok := stroke.c.(PropColorAnim); ok {
+          for frame in stroke_anim.k {
+            add_to_pallete(pallete, cur_pallete_idx, frame.s)              
+          }
+        }
+      }
+    }
+    case Group:
+    {
+      group := elem.(Group)
+      for elem_it in group.it {
+        process_elem(elem_it, pallete, cur_pallete_idx)
+      }
+    }
+    }
+  }
+
+  // What items contain PropColor? Strokes and Fills, Groups
+  // They are graphic elems
+  for layer in animation.layers {
+    if shape_layer, ok := layer.(ShapeLayer); ok {
+      for elem in shape_layer.shapes {
+        process_elem(elem, &pallete, &cur_pallete_idx)
+      }
+    }
+  }
+
+  if len(pallete) < 1 do return false
+  // note(iyaan): Need to put the encoded pallete table somewhere
+  // in the header. Serializing the header will come later. This is 
+  // because information is highly likely to be changed in the optim passes,
+  // After all data has been serialized into the bitstream and the optimization
+  // passes are complete we can piece the header and data stream together (we can
+  // diregard some padding)
+  copy(header.pallete[:cur_pallete_idx], pallete.color[:cur_pallete_idx])
+  header.pallete_size = cur_pallete_idx
+  header.optimization_flags += {.ColorPallete}
+
+  return true
+}
+
 Reader :: struct {
   data: []byte,
   cur_offset: int,
@@ -2089,14 +2195,15 @@ MAX_NUM_READ_BITS :: 64
 read_bits :: proc(reader: ^Reader, num_bits: uint) -> (v: u64, read_bits: uint) {
   total_cur_bits := reader.cur_offset * BYTE_BITS + int(reader.cur_bits)
   total_end_bits := reader.end_offset * BYTE_BITS + int(reader.end_bits)
-  if total_cur_bits > total_end_bits {
+  if (total_cur_bits + int(num_bits)) > total_end_bits {
     // note(iyaan): should i do an enum error here
+    log.fatalf("total_cur = %v total_end = %v", total_cur_bits, total_end_bits)
     return 0, 0
   } 
 
   ptr := cast(^u64)raw_data(reader.data[reader.cur_offset:])
   val := ptr^
-  to_read := num_bits > MAX_NUM_READ_BITS ? MAX_NUM_READ_BITS : num_bits
+  to_read := num_bits >= MAX_NUM_READ_BITS ? MAX_NUM_READ_BITS : num_bits
   v = bits.bitfield_extract_u64(val, reader.cur_bits, to_read)
   total_bit_offset := int(reader.cur_bits + to_read)
   reader.cur_offset += total_bit_offset / BYTE_BITS
@@ -2108,9 +2215,11 @@ read_bits :: proc(reader: ^Reader, num_bits: uint) -> (v: u64, read_bits: uint) 
 // No allocation variant
 reader_from_writer :: proc(writer: ^Writer) -> Reader {
   reader := Reader{}
-  reader.data = writer.data[:]
+  reader.data = writer.data
   reader.end_bits = writer.bits
   reader.end_offset = writer.offset
+  reader.cur_bits = 0
+  reader.cur_offset = 0
 
   return reader
 }
