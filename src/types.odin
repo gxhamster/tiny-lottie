@@ -46,6 +46,7 @@ Error :: union {
 
 OptimFlags :: enum {
   ColorPallete,
+  TruncateNmString,
 }
 
 PALLETE_MAX :: 256

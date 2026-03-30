@@ -58,6 +58,7 @@ Writer :: struct {
   debug: [dynamic]DebugInfo,
   debug_stack: [DEBUG_STACK_SIZE]int,
   debug_stack_top: int,
+  _string_nm_increment: int,
 }
 
 DEFAULT_WRITER_DATA_LEN :: 1 << 15
@@ -492,8 +493,14 @@ write_varint :: proc(writer: ^Writer, i: i128, debug_name: string = "") {
 
 write_string :: proc(writer: ^Writer, s: string, debug_name: string = "") {
   begin_debug_info(writer, debug_name, .meta)
-  write_varint(writer, i128(len(s)))
-  writer_write_string(writer, s)
+  if .TruncateNmString in writer.header.optimization_flags && debug_name == "nm" {
+    write_varint(writer, i128(writer._string_nm_increment))
+    writer._string_nm_increment += 1
+  } else {
+    write_varint(writer, i128(len(s)))
+    writer_write_string(writer, s)
+  }
+
   end_debug_info(writer)
 }
 
@@ -2098,6 +2105,11 @@ write_animation :: proc(writer: ^Writer, animation: Animation, debug_name := "an
 
   end_debug_info(writer)
 
+}
+
+nm_string_shorten_optim_pass :: proc(animation: ^Animation, header: ^Header) -> (ok: bool) {
+  header.optimization_flags += {.TruncateNmString}
+  return true
 }
 
 color_pallete_optim_pass :: proc(animation: ^Animation, header: ^Header) -> (ok: bool) {
