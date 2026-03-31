@@ -356,9 +356,9 @@ write_bits_test :: proc(t: ^testing.T) {
   testing.expect(t, writer.bits == 0, "next bit offset is 0")
 
   reader := reader_from_writer(&writer)
-  v1, r1 := read_bits(&reader, 23)
-  v2, r2 := read_bits(&reader, 4)
-  v3, r3 := read_bits(&reader, 5)
+  v1, r1, _ := read_bits(&reader, 23)
+  v2, r2, _ := read_bits(&reader, 4)
+  v3, r3, _ := read_bits(&reader, 5)
   testing.expect_value(t, v1, 2002)
   testing.expect_value(t, v2, 10)
   testing.expect_value(t, v3, 16)
@@ -2193,72 +2193,4 @@ color_pallete_optim_pass :: proc(animation: ^Animation, header: ^Header) -> (ok:
   header.optimization_flags += {.ColorPallete}
 
   return true
-}
-
-Reader :: struct {
-  data: []byte,
-  cur_offset: int,
-  cur_bits: uint,
-  end_offset: int,  // end_offset and end_bits is the byte and bit offset
-  end_bits: uint    // at which the writer was at the moment
-}
-
-MAX_NUM_READ_BITS :: 64
-read_bits :: proc(reader: ^Reader, num_bits: uint) -> (v: u64, read_bits: uint) {
-  total_cur_bits := reader.cur_offset * BYTE_BITS + int(reader.cur_bits)
-  total_end_bits := reader.end_offset * BYTE_BITS + int(reader.end_bits)
-  if (total_cur_bits + int(num_bits)) > total_end_bits {
-    // note(iyaan): should i do an enum error here
-    log.fatalf("total_cur = %v total_end = %v", total_cur_bits, total_end_bits)
-    return 0, 0
-  } 
-
-  ptr := cast(^u64)raw_data(reader.data[reader.cur_offset:])
-  val := ptr^
-  to_read := num_bits >= MAX_NUM_READ_BITS ? MAX_NUM_READ_BITS : num_bits
-  v = bits.bitfield_extract_u64(val, reader.cur_bits, to_read)
-  total_bit_offset := int(reader.cur_bits + to_read)
-  reader.cur_offset += total_bit_offset / BYTE_BITS
-  reader.cur_bits = uint(total_bit_offset) % BYTE_BITS
-
-  return v, to_read
-}
-
-// No allocation variant
-reader_from_writer :: proc(writer: ^Writer) -> Reader {
-  reader := Reader{}
-  reader.data = writer.data
-  reader.end_bits = writer.bits
-  reader.end_offset = writer.offset
-  reader.cur_bits = 0
-  reader.cur_offset = 0
-
-  return reader
-}
-
-// Does a copy of the writer's internal data buffer into the reader own
-// and will allocate its own slice
-reader_from_writer_owned :: proc(writer: ^Writer, allocator := context.allocator) -> Reader {
-  reader := Reader{}
-  reader.data = make([]byte, len(writer.data), allocator)
-  copy(reader.data[:], writer.data[:])
-  reader.end_bits = writer.bits
-  reader.end_offset = writer.offset
-
-  return reader
-}
-
-@(test)
-read_bits_test :: proc(t: ^testing.T) {
-  writer := Writer{}
-  writer_init(&writer)
-  write_color4(&writer, Color4{1,2,3,4})
-
-  reader := reader_from_writer(&writer)
-  v1, r1 := read_bits(&reader, 2)
-  v2, r2 := read_bits(&reader, 8)
-  v3, r3 := read_bits(&reader, 8)
-  v4, r4 := read_bits(&reader, 8)
-  v5, r5 := read_bits(&reader, 8)
-  testing.expect(t, v1 == 0 && v2 == 1 && v3 == 2 && v4 == 3 && v5 == 4, "not expected color values")
 }
