@@ -14,6 +14,15 @@ import "core:testing"
 import "core:encoding/varint"
 import "core:mem"
 
+
+ReaderError :: enum {
+  None,
+  OutofBoundsRead,
+  VarintDecodingErr,
+  InvalidHex,
+  InvalidPalleteIdx,
+}
+
 Reader :: struct {
   data: []byte,
   cur_offset: int,
@@ -104,13 +113,6 @@ read_bits_test :: proc(t: ^testing.T) {
   v4, r4, e4 := read_bits(&reader, 8)
   v5, r5, e5 := read_bits(&reader, 8)
   testing.expect(t, v1 == 0 && v2 == 1 && v3 == 2 && v4 == 3 && v5 == 4, "not expected color values")
-}
-
-ReaderError :: enum {
-  None,
-  OutofBoundsRead,
-  VarintDecodingErr,
-  InvalidHex,
 }
 
 read_float64 :: proc(reader: ^Reader) -> (v: f64, err: ReaderError) {
@@ -342,4 +344,34 @@ read_hexcolor :: proc(reader: ^Reader) -> (v: HexColor, err: ReaderError) {
   u8_buffer := [?]u8{h1, h2, h3, h4, h5, h6}
   str_buffer := string(u8_buffer[:])
   return HexColor(str_buffer), .None
+}
+
+read_color3 :: proc(reader: ^Reader) -> (v: Color3, err: ReaderError) {
+  if .ColorPallete in reader.header.optimization_flags {
+    pallete_idx := read_uint8(reader) or_return
+    if int(pallete_idx) >= 0 && int(pallete_idx) <= reader.header.pallete_size {
+      color4 := reader.header.pallete[pallete_idx]
+      return color4.xyz, .None
+    } else {
+      return v, .InvalidPalleteIdx
+    }
+  } else {
+    vec3 := read_vector3(reader) or_return
+    return vec3, .None
+  }
+}
+
+read_color4 :: proc(reader: ^Reader) -> (v: Color4, err: ReaderError) {
+  if .ColorPallete in reader.header.optimization_flags {
+    pallete_idx := read_uint8(reader) or_return
+    if int(pallete_idx) >= 0 && int(pallete_idx) <= reader.header.pallete_size {
+      color4 := reader.header.pallete[pallete_idx]
+      return color4, .None
+    } else {
+      return v, .InvalidPalleteIdx
+    }
+  } else {
+    vec4 := read_vector4(reader) or_return
+    return vec4, .None
+  }
 }
