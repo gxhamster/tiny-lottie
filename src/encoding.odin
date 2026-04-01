@@ -746,6 +746,7 @@ write_gradient :: proc(writer: ^Writer, gradient: Gradient, debug_name: string =
   // note(iyaan): offset1, r, g, b, offset2, r, g, b ... alpha_stops
   // Just dump the floats as u8
   begin_debug_info(writer, debug_name, .meta)
+  write_varint(writer, i128(len(gradient)))
   for stop in gradient {
     norm255 := u64(math.floor(stop * 255))
     assert(norm255 <= 255, "gradient stop large than 1.0 probably")
