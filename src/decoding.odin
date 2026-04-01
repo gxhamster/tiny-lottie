@@ -110,6 +110,7 @@ ReaderError :: enum {
   None,
   OutofBoundsRead,
   VarintDecodingErr,
+  InvalidHex,
 }
 
 read_float64 :: proc(reader: ^Reader) -> (v: f64, err: ReaderError) {
@@ -249,4 +250,96 @@ read_enum :: proc(reader: ^Reader, enum_bits: uint = ENUM_DEFAULT_BITS) -> (v: u
 read_bool :: proc(reader: ^Reader) -> (v: bool, err: ReaderError) {
   bool_val, _, bool_err := read_bits(reader, 1)
   return bool(bool_val), bool_err
+}
+
+
+read_vector_intern :: proc(reader: ^Reader, vec: ^[$Y]f64) -> (err: ReaderError) {
+  vec_flags, vec_err := read_flags(reader, VECTOR_INTERN_FLAG_BITS)
+  f := transmute(VecInternType)vec_flags
+  switch f {
+  case .F16:
+    for i in 0..<Y {
+      fval, ferr := read_float16(reader)
+      if ferr != .None {
+        return ferr
+      }
+      vec[i] = f64(fval)
+    }
+    return .None
+  case .F32:
+    for i in 0..<Y {
+      fval, ferr := read_float32(reader)
+      if ferr != .None {
+        return ferr
+      }
+      vec[i] = f64(fval)
+    }
+    return .None
+  case .U8:
+    for i in 0..<Y {
+      fval, ferr := read_uint8(reader)
+      if ferr != .None {
+        return ferr
+      }
+      vec[i] = f64(fval)
+    }
+    return .None
+  case .I8:
+    for i in 0..<Y {
+      fval, ferr := read_int8(reader)
+      if ferr != .None {
+        return ferr
+      }
+      vec[i] = f64(fval)
+    }
+    return .None
+  }
+  return .None
+}
+
+read_vector4 :: proc(reader: ^Reader) -> (v: Vec4, err: ReaderError) {
+  vec4 := transmute([4]f64)Vec4{}
+  vec_err := read_vector_intern(reader, &vec4)
+  return transmute(Vec4)vec4, vec_err
+}
+
+read_vector3 :: proc(reader: ^Reader) -> (v: Vec3, err: ReaderError) {
+  vec3 := transmute([3]f64)Vec3{}
+  vec_err := read_vector_intern(reader, &vec3)
+  return transmute(Vec3)vec3, vec_err
+}
+
+read_vector2 :: proc(reader: ^Reader) -> (v: Vec2, err: ReaderError) {
+  vec2 := transmute([2]f64)Vec2{}
+  vec_err := read_vector_intern(reader, &vec2)
+  return transmute(Vec2)vec2, vec_err
+}
+
+read_hexcolor :: proc(reader: ^Reader) -> (v: HexColor, err: ReaderError) {
+  r, r_err := read_byte(reader)
+  g, g_err := read_byte(reader)
+  b, b_err := read_byte(reader)
+
+  byte_to_hex :: proc(col_byte: byte) -> (byte, bool) {
+    switch col_byte {
+    case 0..=9:  return col_byte + '0', true
+    case 10..=15: return col_byte + 'a' - 10, true
+    case:        return 0, false
+    }
+  }
+
+  h1, e1 := byte_to_hex((r << 8) & 0x0f)
+  h2, e2 := byte_to_hex(r & 0x0f)
+  h3, e3 := byte_to_hex((g << 8) & 0x0f)
+  h4, e4 := byte_to_hex(g & 0x0f)
+  h5, e5 := byte_to_hex((b << 8) & 0x0f)
+  h6, e6 := byte_to_hex(b & 0x0f)
+
+  if !e1 || !e2 || !e3 || !e4 || !e5 || !e6 {
+    return v, .InvalidHex
+  }
+
+  u8_buffer := [?]u8{h1, h2, h3, h4, h5, h6}
+  str_buffer := string(u8_buffer[:])
+  return HexColor(str_buffer), .None
 }
