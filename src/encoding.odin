@@ -58,6 +58,7 @@ Writer :: struct {
   debug: [dynamic]DebugInfo,
   debug_stack: [DEBUG_STACK_SIZE]int,
   debug_stack_top: int,
+  allocator: mem.Allocator,
   _string_nm_increment: int,
 }
 
@@ -69,6 +70,7 @@ writer_init :: proc(writer: ^Writer, data_len := DEFAULT_WRITER_DATA_LEN, alloca
   }
   writer.data = data
   writer.debug = make([dynamic]DebugInfo, 0, data_len, allocator)
+  writer.allocator = allocator
   writer.offset = 0
   writer.bits = 0
   writer.debug_stack_top = -1
@@ -80,6 +82,11 @@ writer_reset :: proc(writer: ^Writer) {
   writer.debug_stack_top = -1
   mem.zero(&writer.data[0], len(writer.data))
   clear(&writer.debug)
+}
+
+writer_destroy :: proc(writer: ^Writer) {
+  delete(writer.data, writer.allocator)
+  delete(writer.debug)
 }
 
 calc_bits_from :: proc(start_byte, end_byte: int, start_bit, end_bit: uint) -> int {
@@ -466,10 +473,6 @@ write_uint64 :: proc(writer: ^Writer, i: u64, debug_name: string = "") {
 
 encode_zigzag :: proc(x: i128) -> u128 {
   return u128((2 * x) ~ (x >> (size_of(i128) * 8 - 1)));
-}
-
-decode_zigzag :: proc(x: u128) -> i128 {
-  return i128((x >> 1) ~ (-(x & 1)));
 }
 
 @(private = "file")

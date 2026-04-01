@@ -1,15 +1,41 @@
 package main
 
+/* This is the default implementation for the decoder
+ * for tiny lottie. In the future I want to make the decoder
+ * a separate module so that it can be compiled as different
+ * unit and be used independently and make it as lean as possible.
+ * Why? Decoder will be shipped in clients as a library. I want that
+ * to have as small of a footprint as possible
+ */
+
 import "core:math/bits"
 import "core:log"
 import "core:testing"
+import "core:encoding/varint"
+import "core:mem"
 
 Reader :: struct {
   data: []byte,
   cur_offset: int,
   cur_bits: uint,
   end_offset: int,  // end_offset and end_bits is the byte and bit offset
-  end_bits: uint    // at which the writer was at the moment
+  end_bits: uint,   // at which the writer was at the moment
+  allocator: mem.Allocator,
+}
+
+// Returns the amount of bytes remaining in the internal
+// buffer of the reader
+reader_data_buf_remaining :: proc(reader: ^Reader) -> int {
+  return len(reader.data) - reader.cur_offset
+}
+
+// Gives the amount of bits that are to be read from
+// the reader stream
+reader_unread_bits :: proc(reader: ^Reader) -> int {
+  total_cur_bits := reader.cur_offset * BYTE_BITS + int(reader.cur_bits)
+  total_end_bits := reader.end_offset * BYTE_BITS + int(reader.end_bits)
+  remaining := total_end_bits - total_cur_bits
+  return remaining
 }
 
 MAX_NUM_READ_BITS :: 64
@@ -52,8 +78,16 @@ reader_from_writer_owned :: proc(writer: ^Writer, allocator := context.allocator
   copy(reader.data[:], writer.data[:])
   reader.end_bits = writer.bits
   reader.end_offset = writer.offset
+  reader.allocator = allocator
 
   return reader
+}
+
+reader_destroy :: proc(reader: ^Reader) {
+  empty_alloc := mem.Allocator{}
+  if reader.allocator != empty_alloc {
+    delete(reader.data, reader.allocator)
+  }
 }
 
 @(test)
@@ -74,6 +108,7 @@ read_bits_test :: proc(t: ^testing.T) {
 ReaderError :: enum {
   None,
   OutofBoundsRead,
+  VarintDecodingErr,
 }
 
 read_float64 :: proc(reader: ^Reader) -> (v: f64, err: ReaderError) {
@@ -140,4 +175,60 @@ read_uint64 :: proc(reader: ^Reader) -> (v: u64, err: ReaderError) {
   r_value, _, r_err := read_bits(reader, size_of(u64) * BYTE_BITS)
   val_u64 := (^u64)(&r_value)
   return val_u64^, r_err
+}
+
+decode_zigzag :: proc(x: u128) -> i128 {
+  return i128((x >> 1) ~ (-(x & 1)));
+}
+
+read_byte :: proc(reader: ^Reader) -> (v: byte, err: ReaderError) {
+  r_value, _, r_err := read_bits(reader, BYTE_BITS)
+  return byte(r_value), r_err
+}
+
+read_varint :: proc(reader: ^Reader) -> (v: i128, err: ReaderError) {
+  buffer: [varint.LEB128_MAX_BYTES]byte
+  unread_bytes := int(reader_unread_bits(reader) / BYTE_BITS)
+  assert(unread_bytes > 0, "should not be negative")
+  init_offset := reader.cur_offset
+  reading_len := len(buffer)
+  if unread_bytes < len(buffer) {
+    reading_len = unread_bytes
+  }
+  for i := 0; i < reading_len; i += 1 {
+    byte_val, r_err := read_byte(reader)
+    if r_err != .None {
+      return v, r_err
+    }
+    buffer[i] = byte_val
+  }
+  val, size, var_err := varint.decode_uleb128_buffer(buffer[:])
+  if size == 0 || var_err != .None {
+    return v, .VarintDecodingErr
+  }
+  // note(iyaan): adjust the reader cur_offset to the amount of bytes
+  // that actually was part of the varint not the whole bytes
+  // that was read.
+  reader.cur_offset = init_offset + size
+
+  zigzag_decoded := decode_zigzag(val)
+  return zigzag_decoded, .None
+}
+
+@(test)
+read_varint_test :: proc(t: ^testing.T) {
+  writer := Writer{}
+  writer_init(&writer)
+  write_varint(&writer, i128(16))
+  write_varint(&writer, i128(10))
+  write_varint(&writer, i128(2002))
+  reader := reader_from_writer(&writer)
+  v1, e1 := read_varint(&reader)
+  v2, e2 := read_varint(&reader)
+  v3, e3 := read_varint(&reader)
+  testing.expect_value(t, v1, 16)
+  testing.expect_value(t, v2, 10)
+  testing.expect_value(t, v3, 2002)
+
+  writer_destroy(&writer)
 }
