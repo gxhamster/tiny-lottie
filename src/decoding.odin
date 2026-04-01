@@ -20,6 +20,7 @@ Reader :: struct {
   cur_bits: uint,
   end_offset: int,  // end_offset and end_bits is the byte and bit offset
   end_bits: uint,   // at which the writer was at the moment
+  header: Header,
   allocator: mem.Allocator,
 }
 
@@ -231,4 +232,21 @@ read_varint_test :: proc(t: ^testing.T) {
   testing.expect_value(t, v3, 2002)
 
   writer_destroy(&writer)
+}
+
+read_flags :: proc(reader: ^Reader, flag_bits: uint) -> (v: Bit64, err: ReaderError) {
+  flag_val, _, flag_err := read_bits(reader, flag_bits)
+  bit64 := transmute(Bit64)flag_val
+  return bit64, flag_err
+}
+
+read_enum :: proc(reader: ^Reader, enum_bits: uint = ENUM_DEFAULT_BITS) -> (v: u8, err: ReaderError) {
+  enum_val, _, enum_err := read_bits(reader, enum_bits)
+  assert(enum_val < u64(max(u8)), "whats wrong with this enum")
+  return u8(enum_val), enum_err
+}
+
+read_bool :: proc(reader: ^Reader) -> (v: bool, err: ReaderError) {
+  bool_val, _, bool_err := read_bits(reader, 1)
+  return bool(bool_val), bool_err
 }
