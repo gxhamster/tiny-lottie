@@ -375,3 +375,54 @@ read_color4 :: proc(reader: ^Reader) -> (v: Color4, err: ReaderError) {
     return vec4, .None
   }
 }
+
+// Allocates slice. Caller need to handle freeing
+read_gradient :: proc(reader: ^Reader, allocator := context.temp_allocator) -> (v: Gradient, err: ReaderError) {
+  grad_len := read_varint(reader) or_return
+  gradient := make(Gradient, grad_len, allocator)
+  for i in 0..<grad_len {
+    grad_val := read_uint8(reader) or_return
+    gradient[i] = f64(grad_val) / 255.0
+  }
+
+  return gradient, .None
+}
+
+read_bezier :: proc(reader: ^Reader, allocator := context.temp_allocator) -> (v: BezierShapeValue, err: ReaderError) {
+  flags := read_flags(reader, BEZIER_FLAG_BITS) or_return
+  length := read_varint(reader) or_return
+
+  v.i = make([]Vec3, length, allocator)
+  v.o = make([]Vec3, length, allocator)
+  v.v = make([]Vec3, length, allocator)
+  v.c = 0 in flags
+  truncate_to_vec2 := 1 in flags
+
+  for i in 0..<length {
+    if truncate_to_vec2 {
+      vec2 := read_vector2(reader) or_return
+      v.i[i] = Vec3{vec2.x, vec2.y, 0}
+    } else {
+      v.i[i] = read_vector3(reader) or_return
+    }
+  }
+  for i in 0..<length {
+    if truncate_to_vec2 {
+      vec2 := read_vector2(reader) or_return
+      v.o[i] = Vec3{vec2.x, vec2.y, 0}
+    } else {
+      v.o[i] = read_vector3(reader) or_return
+    }
+  }
+  for i in 0..<length {
+    if truncate_to_vec2 {
+      vec2 := read_vector2(reader) or_return
+      v.v[i] = Vec3{vec2.x, vec2.y, 0}
+    } else {
+      v.v[i] = read_vector3(reader) or_return
+    }
+  }
+
+  return v, .None
+
+}

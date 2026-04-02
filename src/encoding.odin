@@ -866,6 +866,7 @@ can_be_vec2_generic :: proc(vec: [$T]f64) -> bool {
   }
 }
 
+BEZIER_FLAG_BITS :: 2
 write_bezier :: proc(writer: ^Writer, bezier_shape: BezierShapeValue, debug_name := "bezier_value") {
 
   begin_debug_info(writer, debug_name, .meta) 
@@ -887,7 +888,6 @@ write_bezier :: proc(writer: ^Writer, bezier_shape: BezierShapeValue, debug_name
     }
   }
 
-  BEZIER_FLAG_BITS :: 2
   flags : Bit64
   if truncate_to_vec2 do flags += {1}
   if bezier_shape.c do flags += {0}
