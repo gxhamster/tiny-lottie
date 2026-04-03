@@ -8,11 +8,11 @@ package main
  * to have as small of a footprint as possible
  */
 
-import "core:math/bits"
-import "core:log"
-import "core:testing"
 import "core:encoding/varint"
+import "core:log"
+import "core:math/bits"
 import "core:mem"
+import "core:testing"
 
 
 ReaderError :: enum {
@@ -21,16 +21,17 @@ ReaderError :: enum {
   VarintDecodingErr,
   InvalidHex,
   InvalidPalleteIdx,
+  InvalidEasingEnum,
 }
 
 Reader :: struct {
-  data: []byte,
+  data:       []byte,
   cur_offset: int,
-  cur_bits: uint,
-  end_offset: int,  // end_offset and end_bits is the byte and bit offset
-  end_bits: uint,   // at which the writer was at the moment
-  header: Header,
-  allocator: mem.Allocator,
+  cur_bits:   uint,
+  end_offset: int, // end_offset and end_bits is the byte and bit offset
+  end_bits:   uint, // at which the writer was at the moment
+  header:     Header,
+  allocator:  mem.Allocator,
 }
 
 // Returns the amount of bytes remaining in the internal
@@ -49,7 +50,14 @@ reader_unread_bits :: proc(reader: ^Reader) -> int {
 }
 
 MAX_NUM_READ_BITS :: 64
-read_bits :: proc(reader: ^Reader, num_bits: uint) -> (v: u64, read_bits: uint, err: ReaderError) {
+read_bits :: proc(
+  reader: ^Reader,
+  num_bits: uint,
+) -> (
+  v: u64,
+  read_bits: uint,
+  err: ReaderError,
+) {
   total_cur_bits := reader.cur_offset * BYTE_BITS + int(reader.cur_bits)
   total_end_bits := reader.end_offset * BYTE_BITS + int(reader.end_bits)
   if (total_cur_bits + int(num_bits)) > total_end_bits {
@@ -82,7 +90,10 @@ reader_from_writer :: proc(writer: ^Writer) -> Reader {
 
 // Does a copy of the writer's internal data buffer into the reader own
 // and will allocate its own slice
-reader_from_writer_owned :: proc(writer: ^Writer, allocator := context.allocator) -> Reader {
+reader_from_writer_owned :: proc(
+  writer: ^Writer,
+  allocator := context.allocator,
+) -> Reader {
   reader := Reader{}
   reader.data = make([]byte, len(writer.data), allocator)
   copy(reader.data[:], writer.data[:])
@@ -104,7 +115,7 @@ reader_destroy :: proc(reader: ^Reader) {
 read_bits_test :: proc(t: ^testing.T) {
   writer := Writer{}
   writer_init(&writer)
-  write_color4(&writer, Color4{1,2,3,4})
+  write_color4(&writer, Color4{1, 2, 3, 4})
 
   reader := reader_from_writer(&writer)
   v1, r1, e1 := read_bits(&reader, 2)
@@ -112,7 +123,11 @@ read_bits_test :: proc(t: ^testing.T) {
   v3, r3, e3 := read_bits(&reader, 8)
   v4, r4, e4 := read_bits(&reader, 8)
   v5, r5, e5 := read_bits(&reader, 8)
-  testing.expect(t, v1 == 0 && v2 == 1 && v3 == 2 && v4 == 3 && v5 == 4, "not expected color values")
+  testing.expect(
+    t,
+    v1 == 0 && v2 == 1 && v3 == 2 && v4 == 3 && v5 == 4,
+    "not expected color values",
+  )
 }
 
 read_float64 :: proc(reader: ^Reader) -> (v: f64, err: ReaderError) {
@@ -182,7 +197,7 @@ read_uint64 :: proc(reader: ^Reader) -> (v: u64, err: ReaderError) {
 }
 
 decode_zigzag :: proc(x: u128) -> i128 {
-  return i128((x >> 1) ~ (-(x & 1)));
+  return i128((x >> 1) ~ (-(x & 1)))
 }
 
 read_byte :: proc(reader: ^Reader) -> (v: byte, err: ReaderError) {
@@ -237,13 +252,25 @@ read_varint_test :: proc(t: ^testing.T) {
   writer_destroy(&writer)
 }
 
-read_flags :: proc(reader: ^Reader, flag_bits: uint) -> (v: Bit64, err: ReaderError) {
+read_flags :: proc(
+  reader: ^Reader,
+  flag_bits: uint,
+) -> (
+  v: Bit64,
+  err: ReaderError,
+) {
   flag_val, _, flag_err := read_bits(reader, flag_bits)
   bit64 := transmute(Bit64)flag_val
   return bit64, flag_err
 }
 
-read_enum :: proc(reader: ^Reader, enum_bits: uint = ENUM_DEFAULT_BITS) -> (v: u8, err: ReaderError) {
+read_enum :: proc(
+  reader: ^Reader,
+  enum_bits: uint = ENUM_DEFAULT_BITS,
+) -> (
+  v: u8,
+  err: ReaderError,
+) {
   enum_val, _, enum_err := read_bits(reader, enum_bits)
   assert(enum_val < u64(max(u8)), "whats wrong with this enum")
   return u8(enum_val), enum_err
@@ -255,12 +282,17 @@ read_bool :: proc(reader: ^Reader) -> (v: bool, err: ReaderError) {
 }
 
 
-read_vector_intern :: proc(reader: ^Reader, vec: ^[$Y]f64) -> (err: ReaderError) {
+read_vector_intern :: proc(
+  reader: ^Reader,
+  vec: ^[$Y]f64,
+) -> (
+  err: ReaderError,
+) {
   vec_flags, vec_err := read_flags(reader, VECTOR_INTERN_FLAG_BITS)
   f := transmute(VecInternType)vec_flags
   switch f {
   case .F16:
-    for i in 0..<Y {
+    for i in 0 ..< Y {
       fval, ferr := read_float16(reader)
       if ferr != .None {
         return ferr
@@ -269,7 +301,7 @@ read_vector_intern :: proc(reader: ^Reader, vec: ^[$Y]f64) -> (err: ReaderError)
     }
     return .None
   case .F32:
-    for i in 0..<Y {
+    for i in 0 ..< Y {
       fval, ferr := read_float32(reader)
       if ferr != .None {
         return ferr
@@ -278,7 +310,7 @@ read_vector_intern :: proc(reader: ^Reader, vec: ^[$Y]f64) -> (err: ReaderError)
     }
     return .None
   case .U8:
-    for i in 0..<Y {
+    for i in 0 ..< Y {
       fval, ferr := read_uint8(reader)
       if ferr != .None {
         return ferr
@@ -287,7 +319,7 @@ read_vector_intern :: proc(reader: ^Reader, vec: ^[$Y]f64) -> (err: ReaderError)
     }
     return .None
   case .I8:
-    for i in 0..<Y {
+    for i in 0 ..< Y {
       fval, ferr := read_int8(reader)
       if ferr != .None {
         return ferr
@@ -324,9 +356,12 @@ read_hexcolor :: proc(reader: ^Reader) -> (v: HexColor, err: ReaderError) {
 
   byte_to_hex :: proc(col_byte: byte) -> (byte, bool) {
     switch col_byte {
-    case 0..=9:  return col_byte + '0', true
-    case 10..=15: return col_byte + 'a' - 10, true
-    case:        return 0, false
+    case 0 ..= 9:
+      return col_byte + '0', true
+    case 10 ..= 15:
+      return col_byte + 'a' - 10, true
+    case:
+      return 0, false
     }
   }
 
@@ -349,7 +384,8 @@ read_hexcolor :: proc(reader: ^Reader) -> (v: HexColor, err: ReaderError) {
 read_color3 :: proc(reader: ^Reader) -> (v: Color3, err: ReaderError) {
   if .ColorPallete in reader.header.optimization_flags {
     pallete_idx := read_uint8(reader) or_return
-    if int(pallete_idx) >= 0 && int(pallete_idx) <= reader.header.pallete_size {
+    if int(pallete_idx) >= 0 &&
+       int(pallete_idx) <= reader.header.pallete_size {
       color4 := reader.header.pallete[pallete_idx]
       return color4.xyz, .None
     } else {
@@ -364,7 +400,8 @@ read_color3 :: proc(reader: ^Reader) -> (v: Color3, err: ReaderError) {
 read_color4 :: proc(reader: ^Reader) -> (v: Color4, err: ReaderError) {
   if .ColorPallete in reader.header.optimization_flags {
     pallete_idx := read_uint8(reader) or_return
-    if int(pallete_idx) >= 0 && int(pallete_idx) <= reader.header.pallete_size {
+    if int(pallete_idx) >= 0 &&
+       int(pallete_idx) <= reader.header.pallete_size {
       color4 := reader.header.pallete[pallete_idx]
       return color4, .None
     } else {
@@ -377,10 +414,16 @@ read_color4 :: proc(reader: ^Reader) -> (v: Color4, err: ReaderError) {
 }
 
 // Allocates slice. Caller need to handle freeing
-read_gradient :: proc(reader: ^Reader, allocator := context.temp_allocator) -> (v: Gradient, err: ReaderError) {
+read_gradient :: proc(
+  reader: ^Reader,
+  allocator := context.temp_allocator,
+) -> (
+  v: Gradient,
+  err: ReaderError,
+) {
   grad_len := read_varint(reader) or_return
   gradient := make(Gradient, grad_len, allocator)
-  for i in 0..<grad_len {
+  for i in 0 ..< grad_len {
     grad_val := read_uint8(reader) or_return
     gradient[i] = f64(grad_val) / 255.0
   }
@@ -388,7 +431,13 @@ read_gradient :: proc(reader: ^Reader, allocator := context.temp_allocator) -> (
   return gradient, .None
 }
 
-read_bezier :: proc(reader: ^Reader, allocator := context.temp_allocator) -> (v: BezierShapeValue, err: ReaderError) {
+read_bezier :: proc(
+  reader: ^Reader,
+  allocator := context.temp_allocator,
+) -> (
+  v: BezierShapeValue,
+  err: ReaderError,
+) {
   flags := read_flags(reader, BEZIER_FLAG_BITS) or_return
   length := read_varint(reader) or_return
 
@@ -398,7 +447,7 @@ read_bezier :: proc(reader: ^Reader, allocator := context.temp_allocator) -> (v:
   v.c = 0 in flags
   truncate_to_vec2 := 1 in flags
 
-  for i in 0..<length {
+  for i in 0 ..< length {
     if truncate_to_vec2 {
       vec2 := read_vector2(reader) or_return
       v.i[i] = Vec3{vec2.x, vec2.y, 0}
@@ -406,7 +455,7 @@ read_bezier :: proc(reader: ^Reader, allocator := context.temp_allocator) -> (v:
       v.i[i] = read_vector3(reader) or_return
     }
   }
-  for i in 0..<length {
+  for i in 0 ..< length {
     if truncate_to_vec2 {
       vec2 := read_vector2(reader) or_return
       v.o[i] = Vec3{vec2.x, vec2.y, 0}
@@ -414,7 +463,7 @@ read_bezier :: proc(reader: ^Reader, allocator := context.temp_allocator) -> (v:
       v.o[i] = read_vector3(reader) or_return
     }
   }
-  for i in 0..<length {
+  for i in 0 ..< length {
     if truncate_to_vec2 {
       vec2 := read_vector2(reader) or_return
       v.v[i] = Vec3{vec2.x, vec2.y, 0}
@@ -425,4 +474,102 @@ read_bezier :: proc(reader: ^Reader, allocator := context.temp_allocator) -> (v:
 
   return v, .None
 
+}
+
+// The order must match that `EasingFunction`
+cubic_easing_functions_params := [EasingFunction.Error][4]f64 {
+  {0.11, 0, 0.5, 0},
+  {0.32, 0, 0.67, 0},
+  {0.33, 1, 0.68, 1},
+  {0.65, 0, 0.35, 1},
+  {0, 0, 1, 1},
+}
+
+read_easing_curve :: proc(
+  reader: ^Reader,
+) -> (
+  v: [2]PropKeyframeEasing,
+  err: ReaderError,
+) {
+  flags := read_flags(reader, FLAG_COUNT) or_return
+  easing_curve_flags := transmute(EasingCurveFlag_Set)flags
+  if .Vector in easing_curve_flags {
+    vec_length := .Vector2 in easing_curve_flags ? 2 : 3
+    p0 := PropKeyframeEasingVec{}
+    p1 := PropKeyframeEasingVec{}
+    for i in 0 ..< vec_length {
+      if .Enum in easing_curve_flags {
+        flags := read_flags(reader, FLAG_COUNT) or_return
+        r_enum := read_enum(reader, EASING_FUNCTION_BITS) or_return
+        easing_func_enum := EasingFunction(r_enum)
+        switch easing_func_enum {
+        case .Linear, .Ease, .EaseIn, .EaseOut, .EaseInOut:
+          {
+            // note(iyaan): p0 is `o` and p1 is `i`
+            ease_params := cubic_easing_functions_params[easing_func_enum]
+            p0.x[i] = ease_params.x
+            p0.y[i] = ease_params.y
+            p1.x[i] = ease_params.z
+            p1.y[i] = ease_params.w
+          }
+        case .Error:
+          return v, .InvalidEasingEnum
+        }
+      } else {
+
+      }
+    }
+
+  } else {
+    // Scalar
+    if .Enum in easing_curve_flags {
+      r_enum := read_enum(reader, EASING_FUNCTION_BITS) or_return
+      easing_func_enum := EasingFunction(r_enum)
+      switch easing_func_enum {
+      case .Linear, .Ease, .EaseIn, .EaseOut, .EaseInOut:
+        {
+          // note(iyaan): p0 is `o` and p1 is `i`
+          ease_params := cubic_easing_functions_params[easing_func_enum]
+          p0 := PropKeyframeEasingScalar{ease_params.x, ease_params.y}
+          p1 := PropKeyframeEasingScalar{ease_params.z, ease_params.w}
+          v[0] = p0
+          v[1] = p1
+          return
+        }
+      case .Error:
+        return v, .InvalidEasingEnum
+      }
+    } else {
+      v0 := read_vector2(reader) or_return
+      v1 := read_vector2(reader) or_return
+      p0 := PropKeyframeEasingScalar{v0.x, v0.y}
+      p1 := PropKeyframeEasingScalar{v1.x, v1.y}
+      v[0] = p0
+      v[1] = p1
+      return
+    }
+  }
+  return v, .None
+}
+
+read_prop_vector_keyframe :: proc(
+  reader: ^Reader,
+) -> (
+  v: PropVectorKeyframe,
+  err: ReaderError,
+) {
+  flags := read_flags(reader, PROP_VECTOR_KEYFRAME_FIELDS) or_return
+  if isset(flags, 0) {
+    t := read_varint(reader) or_return
+    v.t = u64(t)
+  }
+  if isset(flags, 1) {
+    h := read_varint(reader) or_return
+    v.h = i64(h)
+  }
+  if isset(flags, 2) && isset(flags, 3) {
+
+  }
+
+  return v, .None
 }

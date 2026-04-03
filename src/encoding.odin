@@ -1,15 +1,15 @@
 package main
 
-import "core:slice"
-import "core:math/bits"
 import "base:intrinsics"
-import "core:encoding/varint"
 import "base:runtime"
-import "core:math"
-import "core:mem"
-import "core:testing"
+import "core:encoding/varint"
 import "core:log"
+import "core:math"
+import "core:math/bits"
+import "core:mem"
 import "core:simd"
+import "core:slice"
+import "core:testing"
 
 BYTE_BITS :: 8
 
@@ -35,35 +35,39 @@ DebugInfoType :: enum {
 }
 
 DebugInfo :: struct {
-  name: string,
-  type: DebugInfoType,
+  name:       string,
+  type:       DebugInfoType,
   start_byte: int,
-  end_byte: int,
-  start_bit: uint,
-  end_bit: uint,
-  end_idx: int,   // Used to idenitfy the range of debug info in case of a meta (inclusive)
+  end_byte:   int,
+  start_bit:  uint,
+  end_bit:    uint,
+  end_idx:    int, // Used to idenitfy the range of debug info in case of a meta (inclusive)
 }
 
 ColorsSeen :: struct {
-  color: Color4,
-  debug_idx: int   // The index to the debug info
+  color:     Color4,
+  debug_idx: int, // The index to the debug info
 }
 
 DEBUG_STACK_SIZE :: 64
 Writer :: struct {
-  data: []byte,
-  offset: int,
-  bits: uint,     // This is the bit offset within the current byte specified by `offset` in `data`
-  header: Header, // The lottie header (keeping for easy access to all methods)
-  debug: [dynamic]DebugInfo,
-  debug_stack: [DEBUG_STACK_SIZE]int,
-  debug_stack_top: int,
-  allocator: mem.Allocator,
+  data:                 []byte,
+  offset:               int,
+  bits:                 uint, // This is the bit offset within the current byte specified by `offset` in `data`
+  header:               Header, // The lottie header (keeping for easy access to all methods)
+  debug:                [dynamic]DebugInfo,
+  debug_stack:          [DEBUG_STACK_SIZE]int,
+  debug_stack_top:      int,
+  allocator:            mem.Allocator,
   _string_nm_increment: int,
 }
 
 DEFAULT_WRITER_DATA_LEN :: 1 << 15
-writer_init :: proc(writer: ^Writer, data_len := DEFAULT_WRITER_DATA_LEN, allocator := context.allocator) {
+writer_init :: proc(
+  writer: ^Writer,
+  data_len := DEFAULT_WRITER_DATA_LEN,
+  allocator := context.allocator,
+) {
   data, data_err := make([]byte, data_len, allocator)
   if data_err != .None {
     log.fatalf("Could not allocate for writer data error = %v", data_err)
@@ -89,7 +93,10 @@ writer_destroy :: proc(writer: ^Writer) {
   delete(writer.debug)
 }
 
-calc_bits_from :: proc(start_byte, end_byte: int, start_bit, end_bit: uint) -> int {
+calc_bits_from :: proc(
+  start_byte, end_byte: int,
+  start_bit, end_bit: uint,
+) -> int {
   return (end_byte - start_byte) * BYTE_BITS + int(end_bit - start_bit)
 }
 
@@ -112,13 +119,17 @@ debug_stack_push :: proc(writer: ^Writer, info_idx: int) {
 // captures the writers position state,
 // call before writing the actual information
 // to writer
-begin_debug_info :: proc(writer: ^Writer, debug_name: string, type: DebugInfoType) {
+begin_debug_info :: proc(
+  writer: ^Writer,
+  debug_name: string,
+  type: DebugInfoType,
+) {
   info := DebugInfo{}
   info.name = debug_name
   info.type = type
   info.start_byte = writer.offset
   info.start_bit = writer.bits
-  append(&writer.debug, info) 
+  append(&writer.debug, info)
 
   debug_stack_push(writer, len(&writer.debug) - 1)
 }
@@ -134,23 +145,32 @@ end_debug_info :: proc(writer: ^Writer) {
   info.end_idx = len(writer.debug) - 1
 }
 
-// note(iyaan): Allows for encoding fields not aligned at 
+// note(iyaan): Allows for encoding fields not aligned at
 // byte boundaries will take care of the proper offsets
 // note(iyaan): when serializing flags do not call this function
 // for each individual flag bit. Do it for the whole thing.
 // All writing functions must use this otherwise it will not respect
 // the bit offset
 MAX_NUM_WRITE_BITS :: 64
-write_bits :: proc(writer: ^Writer, value: int, num_bits: uint, loc := #caller_location) {
+write_bits :: proc(
+  writer: ^Writer,
+  value: int,
+  num_bits: uint,
+  loc := #caller_location,
+) {
   assert(num_bits <= MAX_NUM_WRITE_BITS, "exceeding MAX_NUM_WRITE_BITS")
   if writer.offset >= len(writer.data) {
-    log.fatalf("writer buffer out of memory, offset: %v from %v", len(writer.data), loc)
+    log.fatalf(
+      "writer buffer out of memory, offset: %v from %v",
+      len(writer.data),
+      loc,
+    )
   }
 
   ptr := cast(^int)raw_data(writer.data[writer.offset:])
   mask := int(1 << num_bits - 1)
   base := ptr^
-	res := (base & ~(mask << writer.bits)) | ((value & mask) << writer.bits)
+  res := (base & ~(mask << writer.bits)) | ((value & mask) << writer.bits)
   total_bit_offset := int(writer.bits + num_bits)
   writer.offset += total_bit_offset / 8
   writer.bits = uint(total_bit_offset) % 8
@@ -167,10 +187,12 @@ write_bits :: proc(writer: ^Writer, value: int, num_bits: uint, loc := #caller_l
 cubic_bezier :: #force_inline proc(t: f64, p0, p1, p2, p3: f64) -> f64 {
   // Cubic bezier parametric formula
   // P = (1-t)**3 * p0 + t*p1*(3*(1-t)**2) + p2*(3*(1-t)*t**2) + p3*t**3
-  return math.pow(1 - t, 3) * p0 \ 
-  + t * p1 * (3 * math.pow(1 - t, 2)) \ 
-  + p2 * (3 * (1 - t) * math.pow(t, 2)) \ 
-  + p3 * math.pow(t, 3)
+  return(
+    math.pow(1 - t, 3) * p0 +
+    t * p1 * (3 * math.pow(1 - t, 2)) +
+    p2 * (3 * (1 - t) * math.pow(t, 2)) +
+    p3 * math.pow(t, 3) \
+  )
 }
 
 SAMPLING_RATE :: 8
@@ -179,7 +201,7 @@ cubic_curve_approx :: cubic_curve_approx_simd
 cubic_curve_approx_scalar :: proc(p1, p2: Vec2) -> EasingFunction {
   p0 := Vec2{0, 0}
   p3 := Vec2{1, 1}
-  
+
   // Linear check
   y_grad := p2.y - p1.y
   x_grad := p2.x - p1.x
@@ -191,21 +213,24 @@ cubic_curve_approx_scalar :: proc(p1, p2: Vec2) -> EasingFunction {
 
   t: f64 = 0.0
   sampled_points := [SAMPLING_RATE]Vec2{}
-  for i in 0..<SAMPLING_RATE {
-    x := cubic_bezier(t, p0.x, p1.x, p2.x, p3.x) 
-    y := cubic_bezier(t, p0.y, p1.y, p2.y, p3.y) 
+  for i in 0 ..< SAMPLING_RATE {
+    x := cubic_bezier(t, p0.x, p1.x, p2.x, p3.x)
+    y := cubic_bezier(t, p0.y, p1.y, p2.y, p3.y)
     sampled_points[i] = Vec2{x, y}
     t += 1.0 / SAMPLING_RATE
   }
 
   // TODO(iyaan): Do this in a more simd friendly way
   least_diff := f64(1_000_000.0)
-  most_probable := EasingFunction.Error 
-  for i in 0..<len(cubic_easing_functions_tbl) {
+  most_probable := EasingFunction.Error
+  for i in 0 ..< len(cubic_easing_functions_tbl) {
     sum := f64(0.0)
-    for j := 0; j < SAMPLING_RATE*2; j += 2 {
-      vec := Vec2{f64(cubic_easing_functions_tbl[i][j]), f64(cubic_easing_functions_tbl[i][j+1])}
-      diff := vec.xy - sampled_points[j/2].xy
+    for j := 0; j < SAMPLING_RATE * 2; j += 2 {
+      vec := Vec2 {
+        f64(cubic_easing_functions_tbl[i][j]),
+        f64(cubic_easing_functions_tbl[i][j + 1]),
+      }
+      diff := vec.xy - sampled_points[j / 2].xy
       sum += math.abs(diff.x) + math.abs(diff.y)
     }
     if (sum) < least_diff {
@@ -213,14 +238,14 @@ cubic_curve_approx_scalar :: proc(p1, p2: Vec2) -> EasingFunction {
       most_probable = EasingFunction(i)
     }
   }
-  
+
   return most_probable
 }
 
 cubic_curve_approx_simd :: proc(p1, p2: Vec2) -> EasingFunction {
   p0 := Vec2{0, 0}
   p3 := Vec2{1, 1}
-  
+
   // Linear check
   y_grad := p2.y - p1.y
   x_grad := p2.x - p1.x
@@ -234,7 +259,7 @@ cubic_curve_approx_simd :: proc(p1, p2: Vec2) -> EasingFunction {
   sx: [SAMPLING_RATE]f32
   sy: [SAMPLING_RATE]f32
 
-  for i in 0..<SAMPLING_RATE {
+  for i in 0 ..< SAMPLING_RATE {
     sx[i] = f32(cubic_bezier(t, p0.x, p1.x, p2.x, p3.x))
     sy[i] = f32(cubic_bezier(t, p0.y, p1.y, p2.y, p3.y))
     t += 1.0 / SAMPLING_RATE
@@ -242,10 +267,10 @@ cubic_curve_approx_simd :: proc(p1, p2: Vec2) -> EasingFunction {
 
   sx_simd := simd.from_array(sx)
   sy_simd := simd.from_array(sy)
-  
+
   MAX_MAGNITUDE_THRESH :: 0.25
-  for i in 0..<len(cubic_easing_functions_tbl) {
-    cubic : simd.f32x16 = simd.from_array(cubic_easing_functions_tbl[i])
+  for i in 0 ..< len(cubic_easing_functions_tbl) {
+    cubic: simd.f32x16 = simd.from_array(cubic_easing_functions_tbl[i])
     x := simd.swizzle(cubic, 0, 2, 4, 6, 8, 10, 12, 14)
     y := simd.swizzle(cubic, 1, 3, 5, 7, 9, 11, 13, 15)
     diff_x := simd.sub(x, sx_simd)
@@ -267,7 +292,7 @@ cubic_curve_approx_simd :: proc(p1, p2: Vec2) -> EasingFunction {
 
 
 // note(iyaan): generated using cubic_curve_gen tool in
-// tools directory. Parameters for function taken from 
+// tools directory. Parameters for function taken from
 // https://easings.net, add more easig functions here later
 EASING_FUNCTION_BITS :: 3
 EasingFunction :: enum u8 {
@@ -276,27 +301,83 @@ EasingFunction :: enum u8 {
   EaseOut   = 2,
   EaseInOut = 3,
   Linear    = 4,
-  Error     = 5
+  Error     = 5,
 }
+
 // note(iyaan): Blindly increasing the sampling rate would
 // increase computation time.
-cubic_easing_functions_tbl := [?][SAMPLING_RATE*2]f32{
-  { // ease
-    0.0000, 0.0000, 0.0840, 0.0717, 0.1562, 0.1984, 0.2285, 0.3604,
-    0.3125, 0.5375, 0.4199, 0.7100, 0.5625, 0.8578, 0.7520, 0.961
+cubic_easing_functions_tbl := [?][SAMPLING_RATE * 2]f32 {
+  {   // ease-in quad (0.11, 0, 0.5, 0)
+    0.0000,
+    0.0000,
+    0.0840,
+    0.0717,
+    0.1562,
+    0.1984,
+    0.2285,
+    0.3604,
+    0.3125,
+    0.5375,
+    0.4199,
+    0.7100,
+    0.5625,
+    0.8578,
+    0.7520,
+    0.961,
   },
-  { // ease-in (0.32, 0, 0.67, 0)
-    0.0000, 0.0000, 0.1213, 0.0020, 0.2448, 0.0156, 0.3700, 0.0527, 
-    0.4963, 0.1250, 0.6229, 0.2441, 0.7495, 0.4219, 0.8754, 0.6699
+  {   // ease-in (0.32, 0, 0.67, 0)
+    0.0000,
+    0.0000,
+    0.1213,
+    0.0020,
+    0.2448,
+    0.0156,
+    0.3700,
+    0.0527,
+    0.4963,
+    0.1250,
+    0.6229,
+    0.2441,
+    0.7495,
+    0.4219,
+    0.8754,
+    0.6699,
   },
-
-  { // ease-out
-    0.0000, 0.0000, 0.1246, 0.3301, 0.2505, 0.5781, 0.3771, 0.7559, 
-    0.5038, 0.8750, 0.6300, 0.9473, 0.7552, 0.9844, 0.8787, 0.9980
+  {   // ease-out (0.33, 1, 0.68, 1)
+    0.0000,
+    0.0000,
+    0.1246,
+    0.3301,
+    0.2505,
+    0.5781,
+    0.3771,
+    0.7559,
+    0.5038,
+    0.8750,
+    0.6300,
+    0.9473,
+    0.7552,
+    0.9844,
+    0.8787,
+    0.9980,
   },
-  { // ease-in-out
-    0.0000, 0.0000, 0.2029, 0.0430, 0.3391, 0.1562, 0.4307, 0.3164, 
-    0.5000, 0.5000, 0.5693, 0.6836, 0.6609, 0.8438, 0.7971, 0.9570
+  {   // ease-in-out (0.65, 0, 0.35, 1);
+    0.0000,
+    0.0000,
+    0.2029,
+    0.0430,
+    0.3391,
+    0.1562,
+    0.4307,
+    0.3164,
+    0.5000,
+    0.5000,
+    0.5693,
+    0.6836,
+    0.6609,
+    0.8438,
+    0.7971,
+    0.9570,
   },
 }
 
@@ -305,11 +386,15 @@ cubic_easing_functions_tbl := [?][SAMPLING_RATE*2]f32{
 cubic_curve_simd_test :: proc(t: ^testing.T) {
   {
     // Ease-out curve
-    p0 := Vec2{0.0,0.919}
-    p1 := Vec2{0.535,1.079}
+    p0 := Vec2{0.0, 0.919}
+    p1 := Vec2{0.535, 1.079}
     r0 := cubic_curve_approx_scalar(p0, p1)
     r1 := cubic_curve_approx(p0, p1)
-    testing.expect(t, r0 == r1, "simd and scalar approach gave different results (not .Linear)")
+    testing.expect(
+      t,
+      r0 == r1,
+      "simd and scalar approach gave different results (not .Linear)",
+    )
   }
 
   {
@@ -355,8 +440,8 @@ write_bits_test :: proc(t: ^testing.T) {
 
 
   testing.expect_value(t, (^u16)(&buf[0])^ & 0x7ff, 2002)
-  testing.expect_value(t,  (buf[3] & 0x07) << 1 | (buf[2] & 0x80) >> 7, 10)
-  testing.expect_value(t,  (buf[3] & 0x07) << 1 | (buf[2] & 0x80) >> 7, 10)
+  testing.expect_value(t, (buf[3] & 0x07) << 1 | (buf[2] & 0x80) >> 7, 10)
+  testing.expect_value(t, (buf[3] & 0x07) << 1 | (buf[2] & 0x80) >> 7, 10)
   testing.expect_value(t, (buf[3] & 0xf8) >> 3, 16)
 
   testing.expect(t, writer.offset == 4, "next byte offset is 4")
@@ -372,8 +457,8 @@ write_bits_test :: proc(t: ^testing.T) {
 }
 
 writer_write_string :: proc(writer: ^Writer, str: string) {
-  begin_debug_info(writer, "string", .string) 
-  for idx in 0..<len(str) {
+  begin_debug_info(writer, "string", .string)
+  for idx in 0 ..< len(str) {
     write_bits(writer, int(str[idx]), size_of(byte) * BYTE_BITS)
   }
   end_debug_info(writer)
@@ -385,7 +470,12 @@ writer_write_bytes :: proc(writer: ^Writer, buf: []byte) {
   }
 }
 
-write_flags :: proc(writer: ^Writer, flags: Bit64, bits: uint, debug_name: string = "flags") {
+write_flags :: proc(
+  writer: ^Writer,
+  flags: Bit64,
+  bits: uint,
+  debug_name: string = "flags",
+) {
   begin_debug_info(writer, debug_name, .flags)
   write_bits(writer, transmute(int)flags, bits)
   end_debug_info(writer)
@@ -472,7 +562,7 @@ write_uint64 :: proc(writer: ^Writer, i: u64, debug_name: string = "") {
 // Variable-byte encoding
 
 encode_zigzag :: proc(x: i128) -> u128 {
-  return u128((2 * x) ~ (x >> (size_of(i128) * 8 - 1)));
+  return u128((2 * x) ~ (x >> (size_of(i128) * 8 - 1)))
 }
 
 @(private = "file")
@@ -496,7 +586,8 @@ write_varint :: proc(writer: ^Writer, i: i128, debug_name: string = "") {
 
 write_string :: proc(writer: ^Writer, s: string, debug_name: string = "") {
   begin_debug_info(writer, debug_name, .meta)
-  if .TruncateNmString in writer.header.optimization_flags && debug_name == "nm" {
+  if .TruncateNmString in writer.header.optimization_flags &&
+     debug_name == "nm" {
     write_varint(writer, i128(writer._string_nm_increment))
     writer._string_nm_increment += 1
   } else {
@@ -508,10 +599,15 @@ write_string :: proc(writer: ^Writer, s: string, debug_name: string = "") {
 }
 
 ENUM_DEFAULT_BITS :: size_of(u8) * BYTE_BITS
-write_enum :: proc(writer: ^Writer, e: u8, enum_bits: uint = ENUM_DEFAULT_BITS, debug_name: string = "") {
+write_enum :: proc(
+  writer: ^Writer,
+  e: u8,
+  enum_bits: uint = ENUM_DEFAULT_BITS,
+  debug_name: string = "",
+) {
   // note(iyaan): Lottie does not have any enums that requires
   // more than 1 byte of storage.
-  
+
   begin_debug_info(writer, debug_name, .Enum)
   write_bits(writer, int(e), enum_bits)
   end_debug_info(writer)
@@ -540,7 +636,7 @@ check_optimal_intern_size :: proc(vec: [$Y]f64) -> VecInternType {
   // the most apropriate theshold could be.
   FLOAT_THRESHOLD :: 0.00001
   opt := [Y]VecInternType{}
-  for idx in 0..<Y {
+  for idx in 0 ..< Y {
     // note(iyaan): Default size is f32
     opt[idx] = .F32
 
@@ -555,7 +651,7 @@ check_optimal_intern_size :: proc(vec: [$Y]f64) -> VecInternType {
       // part is so insignificant
       as_int := (int)(i)
 
-      if as_int  < int(max(u8)) && as_int > int(min(u8)) {
+      if as_int < int(max(u8)) && as_int > int(min(u8)) {
         opt[idx] = .U8
       }
 
@@ -564,10 +660,10 @@ check_optimal_intern_size :: proc(vec: [$Y]f64) -> VecInternType {
       }
     }
   }
-  
+
   res := slice.max(opt[:])
   return res
-} 
+}
 
 @(test)
 check_optimal_intern_size_test :: proc(t: ^testing.T) {
@@ -594,40 +690,52 @@ write_vector_intern :: proc(writer: ^Writer, vec: [$Y]f64) {
   write_flags(writer, transmute(Bit64)int(type), VECTOR_INTERN_FLAG_BITS)
   switch type {
   case .F16:
-    for i in 0..<Y {
+    for i in 0 ..< Y {
       write_float16(writer, f16(vec[i]))
     }
   case .F32:
-    for i in 0..<Y {
+    for i in 0 ..< Y {
       write_float32(writer, f32(vec[i]))
     }
   case .U8:
-    for i in 0..<Y {
+    for i in 0 ..< Y {
       write_uint8(writer, u8(vec[i]))
     }
   case .I8:
-    for i in 0..<Y {
+    for i in 0 ..< Y {
       write_int8(writer, i8(vec[i]))
     }
   }
-   
+
 }
 
-write_vector4 :: proc(writer: ^Writer, vec: Vec4, debug_name: string = "Vector4") {
+write_vector4 :: proc(
+  writer: ^Writer,
+  vec: Vec4,
+  debug_name: string = "Vector4",
+) {
   vec4 := cast([4]f64)vec
   begin_debug_info(writer, debug_name, .meta)
   write_vector_intern(writer, vec4)
   end_debug_info(writer)
 }
 
-write_vector3 :: proc(writer: ^Writer, vec: Vec3, debug_name: string = "Vector3") {
+write_vector3 :: proc(
+  writer: ^Writer,
+  vec: Vec3,
+  debug_name: string = "Vector3",
+) {
   vec3 := cast([3]f64)vec
   begin_debug_info(writer, debug_name, .meta)
   write_vector_intern(writer, vec3)
   end_debug_info(writer)
 }
 
-write_vector2 :: proc(writer: ^Writer, vec: Vec2, debug_name: string = "Vector2") {
+write_vector2 :: proc(
+  writer: ^Writer,
+  vec: Vec2,
+  debug_name: string = "Vector2",
+) {
   vec2 := cast([2]f64)vec
   begin_debug_info(writer, debug_name, .meta)
   write_vector_intern(writer, vec2)
@@ -636,13 +744,21 @@ write_vector2 :: proc(writer: ^Writer, vec: Vec2, debug_name: string = "Vector2"
 
 // note(iyaan): HexColor will also contain the preliminary # character
 // as well
-write_hexcolor :: proc(writer: ^Writer, hex_color: HexColor, debug_name: string = "hexcolor") {
+write_hexcolor :: proc(
+  writer: ^Writer,
+  hex_color: HexColor,
+  debug_name: string = "hexcolor",
+) {
   hex_digit :: proc(char: byte) -> (u8, bool) {
     switch char {
-    case '0'..='9': return char - '0', true
-    case 'a'..='f': return char - 'a' + 10, true
-    case 'A'..='F': return char - 'A' + 10, true
-    case:           return 0, false
+    case '0' ..= '9':
+      return char - '0', true
+    case 'a' ..= 'f':
+      return char - 'a' + 10, true
+    case 'A' ..= 'F':
+      return char - 'A' + 10, true
+    case:
+      return 0, false
     }
   }
 
@@ -652,7 +768,7 @@ write_hexcolor :: proc(writer: ^Writer, hex_color: HexColor, debug_name: string 
     if len(hex_color) == HEX_STR_MAX_LEN {
       value: [3]byte
       hex_color_bytes: [6]byte
-      for idx in 0..<len(hex_color) {
+      for idx in 0 ..< len(hex_color) {
         if b, ok := hex_digit(hex_color[idx]); ok {
           hex_color_bytes[idx] = b
         } else {
@@ -669,7 +785,7 @@ write_hexcolor :: proc(writer: ^Writer, hex_color: HexColor, debug_name: string 
     } else if len(hex_color) == HEX_SHORTHAND_LEN {
       value: [3]byte
       hex_color_bytes: [3]byte
-      for idx in 0..<len(hex_color) {
+      for idx in 0 ..< len(hex_color) {
         if b, ok := hex_digit(hex_color[idx]); ok {
           hex_color_bytes[idx] = b
         } else {
@@ -692,7 +808,7 @@ write_hexcolor :: proc(writer: ^Writer, hex_color: HexColor, debug_name: string 
   assert(hex_color[0] == '#', "Missing hash for hex color")
   hex_color_u8 := transmute([]u8)hex_color
   rgb := conv_str_hexcolor_to_rgb(hex_color_u8[1:])
-  
+
   begin_debug_info(writer, debug_name, .meta)
   writer_write_bytes(writer, rgb[:])
   end_debug_info(writer)
@@ -701,16 +817,27 @@ write_hexcolor :: proc(writer: ^Writer, hex_color: HexColor, debug_name: string 
 // note(iyaan): Yes, i am deciding that pallete tables
 // can only have unique 256 entries. Any pallete that has
 // more than that is not worth using indexes over
-write_pallete_idx :: proc(writer: ^Writer, pallete_idx: u8, debug_name := "pallete_idx") {
+write_pallete_idx :: proc(
+  writer: ^Writer,
+  pallete_idx: u8,
+  debug_name := "pallete_idx",
+) {
   begin_debug_info(writer, debug_name, .meta)
   write_uint8(writer, u8(pallete_idx))
   end_debug_info(writer)
-} 
+}
 
-write_color3 :: proc(writer: ^Writer, color3: Color3, debug_name: string = "color3") {
-  if  .ColorPallete in writer.header.optimization_flags {
+write_color3 :: proc(
+  writer: ^Writer,
+  color3: Color3,
+  debug_name: string = "color3",
+) {
+  if .ColorPallete in writer.header.optimization_flags {
     color3_as_color4 := Color4{color3.x, color3.y, color3.z, 0}
-    pallete_idx, found := slice.linear_search(writer.header.pallete[:writer.header.pallete_size], color3_as_color4)
+    pallete_idx, found := slice.linear_search(
+      writer.header.pallete[:writer.header.pallete_size],
+      color3_as_color4,
+    )
     if found {
       begin_debug_info(writer, debug_name, .meta)
       write_pallete_idx(writer, u8(pallete_idx))
@@ -725,9 +852,16 @@ write_color3 :: proc(writer: ^Writer, color3: Color3, debug_name: string = "colo
   }
 }
 
-write_color4 :: proc(writer: ^Writer, color4: Color4, debug_name: string = "color4") {
+write_color4 :: proc(
+  writer: ^Writer,
+  color4: Color4,
+  debug_name: string = "color4",
+) {
   if .ColorPallete in writer.header.optimization_flags {
-    pallete_idx, found := slice.linear_search(writer.header.pallete[:writer.header.pallete_size], color4)
+    pallete_idx, found := slice.linear_search(
+      writer.header.pallete[:writer.header.pallete_size],
+      color4,
+    )
     if found {
       begin_debug_info(writer, debug_name, .meta)
       write_pallete_idx(writer, u8(pallete_idx))
@@ -742,7 +876,11 @@ write_color4 :: proc(writer: ^Writer, color4: Color4, debug_name: string = "colo
   }
 }
 
-write_gradient :: proc(writer: ^Writer, gradient: Gradient, debug_name: string = "gradient_value") {
+write_gradient :: proc(
+  writer: ^Writer,
+  gradient: Gradient,
+  debug_name: string = "gradient_value",
+) {
   // note(iyaan): offset1, r, g, b, offset2, r, g, b ... alpha_stops
   // Just dump the floats as u8
   begin_debug_info(writer, debug_name, .meta)
@@ -756,33 +894,41 @@ write_gradient :: proc(writer: ^Writer, gradient: Gradient, debug_name: string =
 }
 
 // A more general transform version supporting for all vector sizes
-trans_array_vec_change_size :: proc(vec_array: [][$Y]$T, target_vec_size: int, allocator := context.temp_allocator) -> [][Y]T {
+trans_array_vec_change_size :: proc(
+  vec_array: [][$Y]$T,
+  target_vec_size: int,
+  allocator := context.temp_allocator,
+) -> [][Y]T {
   r_vec_array := make_slice([][Y]T, len(vec_array), allocator)
-  for i in 0..<len(vec_array) {
-    for j in 0..<Y {
+  for i in 0 ..< len(vec_array) {
+    for j in 0 ..< Y {
       r_vec_array[i][j] = vec_array[i][j]
     }
   }
   return r_vec_array
 }
 
-trans_array_vec3_to_vec2 :: proc($T: typeid, vec3_array: [][3]T, allocator := context.temp_allocator) -> [][2]T {
+trans_array_vec3_to_vec2 :: proc(
+  $T: typeid,
+  vec3_array: [][3]T,
+  allocator := context.temp_allocator,
+) -> [][2]T {
   vec2_array := make_slice([][2]T, len(vec3_array), allocator)
-  for i in 0..<len(vec3_array) {
+  for i in 0 ..< len(vec3_array) {
     vec2_array[i] = vec3_array[i].xy
   }
   return vec2_array
 }
 
-trans_array_vec3_intern_type :: proc($T: typeid, comp: []Vec3, allocator := context.temp_allocator) -> [][3]T {
+trans_array_vec3_intern_type :: proc(
+  $T: typeid,
+  comp: []Vec3,
+  allocator := context.temp_allocator,
+) -> [][3]T {
   vec_array := make_slice([][3]T, len(comp), allocator)
 
-  for i in 0..<len(comp) {
-    vec := [3]T{
-      T(comp[i].x),
-      T(comp[i].y),
-      T(comp[i].z),
-    }
+  for i in 0 ..< len(comp) {
+    vec := [3]T{T(comp[i].x), T(comp[i].y), T(comp[i].z)}
     vec_array[i] = vec
   }
 
@@ -791,15 +937,18 @@ trans_array_vec3_intern_type :: proc($T: typeid, comp: []Vec3, allocator := cont
 
 LEB128Res :: struct {
   buffer: [varint.LEB128_MAX_BYTES]byte,
-  size: int
+  size:   int,
 }
-trans_array_vec_intern_varint :: proc(vec_slice: [][$T]i128, allocator := context.temp_allocator) -> [][T]LEB128Res {
+trans_array_vec_intern_varint :: proc(
+  vec_slice: [][$T]i128,
+  allocator := context.temp_allocator,
+) -> [][T]LEB128Res {
   #assert(T <= 3, "Why is your vector size un-natural???")
   r_array := make_slice([][T]LEB128Res, len(vec_slice), allocator)
-  for i in 0..<len(vec_slice) {
+  for i in 0 ..< len(vec_slice) {
     vec := vec_slice[i]
     r_struct := [T]LEB128Res{}
-    for j in 0..<T {
+    for j in 0 ..< T {
       size, buf := conv_to_varint(vec[j])
       r_struct[i] = LEB128Res{buf, size}
     }
@@ -811,11 +960,14 @@ trans_array_vec_intern_varint :: proc(vec_slice: [][$T]i128, allocator := contex
 // Will compute the delta, of each subsequent value. Use the first value as the first
 // reference point. The values will then be encoded in LEB128
 // TODO: Make this a SIMD algorithm. Maybe Daniel Lemiere's algorithm.
-trans_array_delta :: proc(array: $T/[]$E, allocator := context.temp_allocator) -> []LEB128Res
-  where intrinsics.type_is_float(E) || intrinsics.type_is_integer(E) {
+trans_array_delta :: proc(
+  array: $T/[]$E,
+  allocator := context.temp_allocator,
+) -> []LEB128Res where intrinsics.type_is_float(E) ||
+  intrinsics.type_is_integer(E) {
   assert(len(array) >= 2, "delta encoding requires at least two elements")
   r_array := make_slice([]LEB128Res, len(array), allocator)
-  for i in 1..<len(array) {
+  for i in 1 ..< len(array) {
     delta := array[i] - array[i - 1]
     size, buf := conv_to_varint(i128(delta))
     r_array[i] = LEB128Res{buf, size}
@@ -824,27 +976,30 @@ trans_array_delta :: proc(array: $T/[]$E, allocator := context.temp_allocator) -
 }
 
 // Delta encoding variant for 3d vectors
-trans_array_vec3_delta :: proc(array: []Vec3, allocator := context.allocator) -> [][3]LEB128Res {
+trans_array_vec3_delta :: proc(
+  array: []Vec3,
+  allocator := context.allocator,
+) -> [][3]LEB128Res {
   assert(len(array) >= 2, "delta encoding requires at least two elements")
   r_array := make_slice([][3]LEB128Res, len(array), allocator)
-  for i in 1..<len(array) {
+  for i in 1 ..< len(array) {
     delta := array[i].xyz - array[i - 1].xyz
     size_x, buf_x := conv_to_varint(i128(delta.x))
     size_y, buf_y := conv_to_varint(i128(delta.y))
     size_z, buf_z := conv_to_varint(i128(delta.z))
-    r_struct := [3]LEB128Res{
+    r_struct := [3]LEB128Res {
       LEB128Res{buf_x, size_x},
       LEB128Res{buf_y, size_y},
-      LEB128Res{buf_z, size_z}
+      LEB128Res{buf_z, size_z},
     }
     r_array[i] = r_struct
   }
   return r_array
 }
 
-can_be_vec2 :: proc{
+can_be_vec2 :: proc {
   can_be_vec2_vec3,
-  can_be_vec2_generic
+  can_be_vec2_generic,
 }
 can_be_vec2_vec3 :: proc(vec: Vec3) -> bool {
   return vec.z == 0 ? true : false
@@ -852,51 +1007,59 @@ can_be_vec2_vec3 :: proc(vec: Vec3) -> bool {
 can_be_vec2_generic :: proc(vec: [$T]f64) -> bool {
   if T == 2 {
     return true
-  }
-  else if T > 2 {
-    for i in 2..<T {
+  } else if T > 2 {
+    for i in 2 ..< T {
       if vec[i] != 0 {
         return false
-      } 
+      }
     }
     return true
-  }
-  else {
+  } else {
     return false
   }
 }
 
 BEZIER_FLAG_BITS :: 2
-write_bezier :: proc(writer: ^Writer, bezier_shape: BezierShapeValue, debug_name := "bezier_value") {
+write_bezier :: proc(
+  writer: ^Writer,
+  bezier_shape: BezierShapeValue,
+  debug_name := "bezier_value",
+) {
 
-  begin_debug_info(writer, debug_name, .meta) 
+  begin_debug_info(writer, debug_name, .meta)
   expected_len := len(bezier_shape.i)
-  assert(len(bezier_shape.o) == expected_len, "mismatched i and o in bezier shape")
-  assert(len(bezier_shape.v) == expected_len, "mismatched i and v in bezier shape")
-  
+  assert(
+    len(bezier_shape.o) == expected_len,
+    "mismatched i and o in bezier shape",
+  )
+  assert(
+    len(bezier_shape.v) == expected_len,
+    "mismatched i and v in bezier shape",
+  )
+
   // note(iyaan): Vec2 optimization can only be applied
   // if all the vector fields can be converted
   // vector2. So it is applied to the whole bezier not
   // just individual fields
   truncate_to_vec2 := true
-  for i in 0..<len(bezier_shape.i) {
-    if !can_be_vec2(bezier_shape.i[i]) \
-    || !can_be_vec2(bezier_shape.o[i]) \
-    || !can_be_vec2(bezier_shape.v[i]) {
+  for i in 0 ..< len(bezier_shape.i) {
+    if !can_be_vec2(bezier_shape.i[i]) ||
+       !can_be_vec2(bezier_shape.o[i]) ||
+       !can_be_vec2(bezier_shape.v[i]) {
       truncate_to_vec2 = false
       break
     }
   }
 
-  flags : Bit64
+  flags: Bit64
   if truncate_to_vec2 do flags += {1}
   if bezier_shape.c do flags += {0}
-  
+
   write_flags(writer, flags, BEZIER_FLAG_BITS, "flags")
-  
+
   write_varint(writer, i128(len(bezier_shape.i)), "length")
 
-  begin_debug_info(writer, "i", .meta) 
+  begin_debug_info(writer, "i", .meta)
   for ivec in bezier_shape.i {
     if truncate_to_vec2 {
       write_vector2(writer, ivec.xy)
@@ -905,7 +1068,7 @@ write_bezier :: proc(writer: ^Writer, bezier_shape: BezierShapeValue, debug_name
     }
   }
   end_debug_info(writer)
-  begin_debug_info(writer, "o", .meta) 
+  begin_debug_info(writer, "o", .meta)
   for ovec in bezier_shape.o {
     if truncate_to_vec2 {
       write_vector2(writer, ovec.xy)
@@ -914,7 +1077,7 @@ write_bezier :: proc(writer: ^Writer, bezier_shape: BezierShapeValue, debug_name
     }
   }
   end_debug_info(writer)
-  begin_debug_info(writer, "v", .meta) 
+  begin_debug_info(writer, "v", .meta)
   for vvec in bezier_shape.v {
     if truncate_to_vec2 {
       write_vector2(writer, vvec.xy)
@@ -931,7 +1094,7 @@ isset :: #force_inline proc "contextless" (value: Bit64, bit: int) -> bool {
 }
 
 
-Bit64 :: bit_set[0..<64]
+Bit64 :: bit_set[0 ..< 64]
 // A utility function that will give a convenient
 // bitset, depending on whether the respective
 // index position in the parameter is set or not. The first
@@ -942,19 +1105,29 @@ extract_bit_indices :: proc(flags: u64) -> (r: Bit64) {
   return r
 }
 
-write_prop_vector_keyframe :: proc(writer: ^Writer, vec_keyframe: PropVectorKeyframe) {
+write_prop_vector_keyframe :: proc(
+  writer: ^Writer,
+  vec_keyframe: PropVectorKeyframe,
+) {
   flags := transmute(Bit64)vec_keyframe._flags
-  vector_keyframe_offset_tbl :: [?]StructInfo{
-    { offset_of(PropVectorKeyframe, t),  size_of(vec_keyframe.t) },
-    { offset_of(PropVectorKeyframe, h),  size_of(vec_keyframe.h) },
-    { offset_of(PropVectorKeyframe, i),  size_of(vec_keyframe.i) },
-    { offset_of(PropVectorKeyframe, o),  size_of(vec_keyframe.o) },
-    { offset_of(PropVectorKeyframe, s),  size_of(vec_keyframe.s) },
+  vector_keyframe_offset_tbl :: [?]StructInfo {
+    {offset_of(PropVectorKeyframe, t), size_of(vec_keyframe.t)},
+    {offset_of(PropVectorKeyframe, h), size_of(vec_keyframe.h)},
+    {offset_of(PropVectorKeyframe, i), size_of(vec_keyframe.i)},
+    {offset_of(PropVectorKeyframe, o), size_of(vec_keyframe.o)},
+    {offset_of(PropVectorKeyframe, s), size_of(vec_keyframe.s)},
   }
 
-  #assert(PROP_VECTOR_KEYFRAME_FIELDS == len(vector_keyframe_offset_tbl), "Not equal")
+  #assert(
+    PROP_VECTOR_KEYFRAME_FIELDS == len(vector_keyframe_offset_tbl),
+    "Not equal",
+  )
   temp_struct := vec_keyframe
-  remove_zero_default_value_optim(&flags, &temp_struct, vector_keyframe_offset_tbl)
+  remove_zero_default_value_optim(
+    &flags,
+    &temp_struct,
+    vector_keyframe_offset_tbl,
+  )
 
   begin_debug_info(writer, "vector_keyframe", .meta)
   write_flags(writer, flags, PROP_VECTOR_KEYFRAME_FIELDS)
@@ -965,96 +1138,124 @@ write_prop_vector_keyframe :: proc(writer: ^Writer, vec_keyframe: PropVectorKeyf
     // and i is the tangent point at the start of the curve. so they will
     // be o = p0 i = p1
     // is it possible for one of o or i to exist without one or another.
-    // then the below function would not be the most effective, but it 
+    // then the below function would not be the most effective, but it
     // also does not make sense to have one. I think that is like an invalid
     // state
-    write_easing_curve(writer, vec_keyframe.o, vec_keyframe.i) 
+    write_easing_curve(writer, vec_keyframe.o, vec_keyframe.i)
   }
   write_vector3(writer, vec_keyframe.s, "s")
   end_debug_info(writer)
 }
 
-write_prop_vector :: proc(writer: ^Writer, vector: PropVector, debug_name := "prop_vector") {
+write_prop_vector :: proc(
+  writer: ^Writer,
+  vector: PropVector,
+  debug_name := "prop_vector",
+) {
   switch type in vector {
   case PropVectorSingle:
-  {
-    vector_single := vector.(PropVectorSingle)
-    flags := transmute(Bit64)vector_single._flags
-    vector_single_offset_tbl := [?]StructInfo{
-      { offset_of(PropVectorSingle, sid), size_of(vector_single.sid) },
-      { offset_of(PropVectorSingle, a),   size_of(vector_single.a) },
-      { offset_of(PropVectorSingle, k),   size_of(vector_single.k) },
-    }
-
-    #assert(PROP_VECTOR_SINGLE_FIELDS == len(vector_single_offset_tbl), "Not equal")
-    temp_struct := vector_single
-    remove_zero_default_value_optim(&flags, &temp_struct, vector_single_offset_tbl)
-
-    truncate_to_vec2 := false
-    if truncate_to_vec2 = can_be_vec2(vector_single.k); truncate_to_vec2 {
-      // note(iyaan): Do not overwrite the field mask
-      // portion
-      flags += {PROP_VECTOR_SINGLE_FIELDS}
-    }
-
-    begin_debug_info(writer, debug_name, .meta)
-    write_flags(writer, flags, PROP_VECTOR_SINGLE_FIELDS)
-    
-    if isset(flags, 0) do write_string(writer, vector_single.sid, "sid")
-    if isset(flags, 1) do write_bool(writer, vector_single.a, "a")
-    if isset(flags, 2) {
-      if truncate_to_vec2 {
-        write_vector2(writer, vector_single.k.xy, "k")
-      } else {
-        write_vector3(writer, vector_single.k, "k")
+    {
+      vector_single := vector.(PropVectorSingle)
+      flags := transmute(Bit64)vector_single._flags
+      vector_single_offset_tbl := [?]StructInfo {
+        {offset_of(PropVectorSingle, sid), size_of(vector_single.sid)},
+        {offset_of(PropVectorSingle, a), size_of(vector_single.a)},
+        {offset_of(PropVectorSingle, k), size_of(vector_single.k)},
       }
+
+      #assert(
+        PROP_VECTOR_SINGLE_FIELDS == len(vector_single_offset_tbl),
+        "Not equal",
+      )
+      temp_struct := vector_single
+      remove_zero_default_value_optim(
+        &flags,
+        &temp_struct,
+        vector_single_offset_tbl,
+      )
+
+      truncate_to_vec2 := false
+      if truncate_to_vec2 = can_be_vec2(vector_single.k); truncate_to_vec2 {
+        // note(iyaan): Do not overwrite the field mask
+        // portion
+        flags += {PROP_VECTOR_SINGLE_FIELDS}
+      }
+
+      begin_debug_info(writer, debug_name, .meta)
+      write_flags(writer, flags, PROP_VECTOR_SINGLE_FIELDS)
+
+      if isset(flags, 0) do write_string(writer, vector_single.sid, "sid")
+      if isset(flags, 1) do write_bool(writer, vector_single.a, "a")
+      if isset(flags, 2) {
+        if truncate_to_vec2 {
+          write_vector2(writer, vector_single.k.xy, "k")
+        } else {
+          write_vector3(writer, vector_single.k, "k")
+        }
+      }
+      end_debug_info(writer)
     }
-    end_debug_info(writer)
-  }
   case PropVectorAnim:
-  {
-    vector_anim := vector.(PropVectorAnim)
-    flags := transmute(Bit64)vector_anim._flags
-    vector_anim_offset_tbl := [?]StructInfo{
-      { offset_of(PropVectorAnim, sid), size_of(vector_anim.sid) },
-      { offset_of(PropVectorAnim, a),   size_of(vector_anim.a) },
-      { offset_of(PropVectorAnim, k),   size_of(vector_anim.k) },
-    }
-
-    #assert(PROP_VECTOR_ANIM_FIELDS == len(vector_anim_offset_tbl), "Not equal")
-    temp_struct := vector_anim
-    remove_zero_default_value_optim(&flags, &temp_struct, vector_anim_offset_tbl)
-
-    begin_debug_info(writer, debug_name, .meta)
-    write_flags(writer, flags, PROP_VECTOR_ANIM_FIELDS)
-    if isset(flags, 0) do write_string(writer, vector_anim.sid, "sid")
-    if isset(flags, 1) do write_bool(writer, vector_anim.a, "a")
-
-    if isset(flags, 2) {
-      // write the keyframes as an array
-      write_varint(writer, i128(len(vector_anim.k)))
-      for frame in vector_anim.k {
-        write_prop_vector_keyframe(writer, frame)
+    {
+      vector_anim := vector.(PropVectorAnim)
+      flags := transmute(Bit64)vector_anim._flags
+      vector_anim_offset_tbl := [?]StructInfo {
+        {offset_of(PropVectorAnim, sid), size_of(vector_anim.sid)},
+        {offset_of(PropVectorAnim, a), size_of(vector_anim.a)},
+        {offset_of(PropVectorAnim, k), size_of(vector_anim.k)},
       }
+
+      #assert(
+        PROP_VECTOR_ANIM_FIELDS == len(vector_anim_offset_tbl),
+        "Not equal",
+      )
+      temp_struct := vector_anim
+      remove_zero_default_value_optim(
+        &flags,
+        &temp_struct,
+        vector_anim_offset_tbl,
+      )
+
+      begin_debug_info(writer, debug_name, .meta)
+      write_flags(writer, flags, PROP_VECTOR_ANIM_FIELDS)
+      if isset(flags, 0) do write_string(writer, vector_anim.sid, "sid")
+      if isset(flags, 1) do write_bool(writer, vector_anim.a, "a")
+
+      if isset(flags, 2) {
+        // write the keyframes as an array
+        write_varint(writer, i128(len(vector_anim.k)))
+        for frame in vector_anim.k {
+          write_prop_vector_keyframe(writer, frame)
+        }
+      }
+      end_debug_info(writer)
     }
-    end_debug_info(writer)
-  }
   }
 }
 
-write_prop_scalar_keyframe :: proc(writer: ^Writer, scalar_keyframe: PropScalarKeyframe) {
+write_prop_scalar_keyframe :: proc(
+  writer: ^Writer,
+  scalar_keyframe: PropScalarKeyframe,
+) {
   flags := transmute(Bit64)scalar_keyframe._flags
-  scalar_keyframe_offset_tbl := [?]StructInfo{
-    { offset_of(PropScalarKeyframe, t), size_of(scalar_keyframe.t) },
-    { offset_of(PropScalarKeyframe, h), size_of(scalar_keyframe.h) },
-    { offset_of(PropScalarKeyframe, i), size_of(scalar_keyframe.i) },
-    { offset_of(PropScalarKeyframe, o), size_of(scalar_keyframe.o) },
-    { offset_of(PropScalarKeyframe, s), size_of(scalar_keyframe.s) },
+  scalar_keyframe_offset_tbl := [?]StructInfo {
+    {offset_of(PropScalarKeyframe, t), size_of(scalar_keyframe.t)},
+    {offset_of(PropScalarKeyframe, h), size_of(scalar_keyframe.h)},
+    {offset_of(PropScalarKeyframe, i), size_of(scalar_keyframe.i)},
+    {offset_of(PropScalarKeyframe, o), size_of(scalar_keyframe.o)},
+    {offset_of(PropScalarKeyframe, s), size_of(scalar_keyframe.s)},
   }
 
-  #assert(PROP_SCALAR_KEYFRAME_FIELDS == len(scalar_keyframe_offset_tbl), "Not equal")
+  #assert(
+    PROP_SCALAR_KEYFRAME_FIELDS == len(scalar_keyframe_offset_tbl),
+    "Not equal",
+  )
   temp_struct := scalar_keyframe
-  remove_zero_default_value_optim(&flags, &temp_struct, scalar_keyframe_offset_tbl)
+  remove_zero_default_value_optim(
+    &flags,
+    &temp_struct,
+    scalar_keyframe_offset_tbl,
+  )
 
   begin_debug_info(writer, "scalar_keyframe", .meta)
   write_flags(writer, flags, PROP_SCALAR_KEYFRAME_FIELDS)
@@ -1067,64 +1268,94 @@ write_prop_scalar_keyframe :: proc(writer: ^Writer, scalar_keyframe: PropScalarK
   end_debug_info(writer)
 }
 
-write_scalar_value :: proc(writer: ^Writer, scalar_number: f64, debug_name: string = "scalar_value") {
+write_scalar_value :: proc(
+  writer: ^Writer,
+  scalar_number: f64,
+  debug_name: string = "scalar_value",
+) {
   begin_debug_info(writer, debug_name, .meta)
   scalars := [1]f64{scalar_number}
-  write_vector_intern(writer, scalars) 
+  write_vector_intern(writer, scalars)
   end_debug_info(writer)
 }
 
-write_prop_scalar :: proc(writer: ^Writer, scalar: PropScalar, debug_name := "prop_scalar") {
+write_prop_scalar :: proc(
+  writer: ^Writer,
+  scalar: PropScalar,
+  debug_name := "prop_scalar",
+) {
   switch type in scalar {
   case PropScalarSingle:
-  {
-    scalar_single := scalar.(PropScalarSingle)
-    flags := transmute(Bit64)scalar_single._flags
-    scalar_single_offset_tbl := [?]StructInfo{
-      { offset_of(PropScalarSingle, sid),  size_of(scalar_single.sid) },
-      { offset_of(PropScalarSingle, a),    size_of(scalar_single.a) },
-      { offset_of(PropScalarSingle, k),    size_of(scalar_single.k) },
+    {
+      scalar_single := scalar.(PropScalarSingle)
+      flags := transmute(Bit64)scalar_single._flags
+      scalar_single_offset_tbl := [?]StructInfo {
+        {offset_of(PropScalarSingle, sid), size_of(scalar_single.sid)},
+        {offset_of(PropScalarSingle, a), size_of(scalar_single.a)},
+        {offset_of(PropScalarSingle, k), size_of(scalar_single.k)},
+      }
+
+      #assert(
+        PROP_SCALAR_SINGLE_FIELDS == len(scalar_single_offset_tbl),
+        "Not equal",
+      )
+      temp_struct := scalar_single
+      remove_zero_default_value_optim(
+        &flags,
+        &temp_struct,
+        scalar_single_offset_tbl,
+      )
+
+      begin_debug_info(writer, debug_name, .meta)
+      write_flags(writer, flags, PROP_SCALAR_SINGLE_FIELDS)
+      if isset(flags, 0) do write_string(writer, scalar_single.sid, "sid")
+      if isset(flags, 1) do write_bool(writer, scalar_single.a, "a")
+      if isset(flags, 2) do write_scalar_value(writer, scalar_single.k, "k")
+      end_debug_info(writer)
     }
-
-    #assert(PROP_SCALAR_SINGLE_FIELDS == len(scalar_single_offset_tbl), "Not equal")
-    temp_struct := scalar_single
-    remove_zero_default_value_optim(&flags, &temp_struct, scalar_single_offset_tbl)
-
-    begin_debug_info(writer, debug_name, .meta)
-    write_flags(writer, flags, PROP_SCALAR_SINGLE_FIELDS)
-    if isset(flags, 0) do write_string(writer, scalar_single.sid, "sid")
-    if isset(flags, 1) do write_bool(writer, scalar_single.a, "a")
-    if isset(flags, 2) do write_scalar_value(writer, scalar_single.k, "k")
-    end_debug_info(writer)
-  }
   case PropScalarAnim:
-  {
-    scalar_anim := scalar.(PropScalarAnim)
-    flags := transmute(Bit64)scalar_anim._flags
-    scalar_anim_offset_tbl := [?]StructInfo{
-      { offset_of(PropScalarAnim, sid),  size_of(scalar_anim.sid) },
-      { offset_of(PropScalarAnim, a),    size_of(scalar_anim.a) },
-      { offset_of(PropScalarAnim, k),    size_of(scalar_anim.k) },
+    {
+      scalar_anim := scalar.(PropScalarAnim)
+      flags := transmute(Bit64)scalar_anim._flags
+      scalar_anim_offset_tbl := [?]StructInfo {
+        {offset_of(PropScalarAnim, sid), size_of(scalar_anim.sid)},
+        {offset_of(PropScalarAnim, a), size_of(scalar_anim.a)},
+        {offset_of(PropScalarAnim, k), size_of(scalar_anim.k)},
+      }
+
+      #assert(
+        PROP_SCALAR_ANIM_FIELDS == len(scalar_anim_offset_tbl),
+        "Not equal",
+      )
+      temp_struct := scalar_anim
+      remove_zero_default_value_optim(
+        &flags,
+        &temp_struct,
+        scalar_anim_offset_tbl,
+      )
+
+      begin_debug_info(writer, debug_name, .meta)
+      write_flags(writer, flags, PROP_SCALAR_ANIM_FIELDS)
+      if isset(flags, 0) do write_string(writer, scalar_anim.sid, "sid")
+      if isset(flags, 1) do write_bool(writer, scalar_anim.a, "a")
+
+      write_varint(writer, i128(len(scalar_anim.k)))
+      for frame in scalar_anim.k {
+        write_prop_scalar_keyframe(writer, frame)
+      }
+      end_debug_info(writer)
     }
-
-    #assert(PROP_SCALAR_ANIM_FIELDS == len(scalar_anim_offset_tbl), "Not equal")
-    temp_struct := scalar_anim
-    remove_zero_default_value_optim(&flags, &temp_struct, scalar_anim_offset_tbl)
-
-    begin_debug_info(writer, debug_name, .meta)
-    write_flags(writer, flags, PROP_SCALAR_ANIM_FIELDS)
-    if isset(flags, 0) do write_string(writer, scalar_anim.sid, "sid")
-    if isset(flags, 1) do write_bool(writer, scalar_anim.a, "a")
-
-    write_varint(writer, i128(len(scalar_anim.k)))
-    for frame in scalar_anim.k {
-      write_prop_scalar_keyframe(writer, frame)
-    }
-    end_debug_info(writer)
-  }
   }
 }
 
+FLAG_COUNT :: 3 // Number of enums must match this bit width. Enough
+// to hold the EasingCurveFlag_Set
+EasingCurveFlag :: enum {
+  Vector, // if not set it is a scalar
+  Enum, // If this flag is set no other values except the enum is set
+  Vector2, // Specify the either vector3 or vector2
+}
+EasingCurveFlag_Set :: bit_set[EasingCurveFlag;int]
 write_easing_curve :: proc(writer: ^Writer, p0, p1: PropKeyframeEasing) {
   // note(iyaan): if one point is a scalar then the other point
   // also has to be scalar
@@ -1132,22 +1363,13 @@ write_easing_curve :: proc(writer: ^Writer, p0, p1: PropKeyframeEasing) {
   p1_scalar, p1_scalar_ok := p1.(PropKeyframeEasingScalar)
   p0_vector, p0_vector_ok := p0.(PropKeyframeEasingVec)
   p1_vector, p1_vector_ok := p1.(PropKeyframeEasingVec)
-  
-  FLAG_COUNT :: 3 // Number of enums must match this bit width. Enough
-                  // to hold the EasingCurveFlag_Set
-  EasingCurveFlag :: enum {
-    Vector, // if not set it is a scalar
-    Enum,   // If this flag is set no other values except the enum is set
-    Vector2 // Specify the either vector3 or vector2
-  }
 
-  EasingCurveFlag_Set :: bit_set[EasingCurveFlag; int]
   begin_debug_info(writer, "easing", .meta)
   if p0_scalar_ok && p1_scalar_ok {
     v1 := Vec2{p0_scalar.x, p0_scalar.y}
     v2 := Vec2{p1_scalar.x, p1_scalar.y}
     easing := cubic_curve_approx(v1, v2)
-    flags : EasingCurveFlag_Set
+    flags: EasingCurveFlag_Set
     if easing != .Error {
       flags = {.Enum}
       write_flags(writer, transmute(Bit64)flags, FLAG_COUNT)
@@ -1160,16 +1382,20 @@ write_easing_curve :: proc(writer: ^Writer, p0, p1: PropKeyframeEasing) {
       write_vector2(writer, v2)
     }
   } else if p0_vector_ok && p1_vector_ok {
-    flags : EasingCurveFlag_Set
+    flags: EasingCurveFlag_Set
     vec_length := 0
-    if p0_vector.x.z == 0 && p1_vector.y.z == 0 && p1_vector.x.z == 0 && p1_vector.y.z == 0 {
+    if p0_vector.x.z == 0 &&
+       p1_vector.y.z == 0 &&
+       p1_vector.x.z == 0 &&
+       p1_vector.y.z == 0 {
       flags += {.Vector2}
       vec_length = 2
     } else {
       flags -= {.Vector2}
       vec_length = 3
-    } 
-    for i in 0..<vec_length {
+    }
+
+    for i in 0 ..< vec_length {
       point0 := Vec2{p0_vector.x.x, p0_vector.y.y}
       point1 := Vec2{p1_vector.x.x, p1_vector.y.y}
       easing := cubic_curve_approx(point0, point1)
@@ -1195,10 +1421,14 @@ write_easing_curve :: proc(writer: ^Writer, p0, p1: PropKeyframeEasing) {
 
 StructInfo :: struct {
   offset: uintptr,
-  size: int
+  size:   int,
 }
 
-remove_zero_default_value_optim :: proc(flags: ^Bit64, struct_ptr: rawptr, table: [$T]StructInfo) {
+remove_zero_default_value_optim :: proc(
+  flags: ^Bit64,
+  struct_ptr: rawptr,
+  table: [$T]StructInfo,
+) {
   // note(iyaan): The length of the table and the no. of fields in the struct (without _flags)
   // needs to match so that we can flip the correct the bit in the flags
   for field, idx in table {
@@ -1210,21 +1440,31 @@ remove_zero_default_value_optim :: proc(flags: ^Bit64, struct_ptr: rawptr, table
   }
 }
 
-write_prop_position_keyframe :: proc(writer: ^Writer, position_keyframe: PropPositionKeyframe) {
+write_prop_position_keyframe :: proc(
+  writer: ^Writer,
+  position_keyframe: PropPositionKeyframe,
+) {
   flags := transmute(Bit64)position_keyframe._flags
-  position_keyframe_offset_tbl :: [?]StructInfo{
-    { offset_of(PropPositionKeyframe, t),  size_of(position_keyframe.t) },
-    { offset_of(PropPositionKeyframe, h),  size_of(position_keyframe.h) },
-    { offset_of(PropPositionKeyframe, i),  size_of(position_keyframe.i) },
-    { offset_of(PropPositionKeyframe, o),  size_of(position_keyframe.o) },
-    { offset_of(PropPositionKeyframe, s),  size_of(position_keyframe.s) },
-    { offset_of(PropPositionKeyframe, ti), size_of(position_keyframe.ti) },
-    { offset_of(PropPositionKeyframe, to), size_of(position_keyframe.to) },
+  position_keyframe_offset_tbl :: [?]StructInfo {
+    {offset_of(PropPositionKeyframe, t), size_of(position_keyframe.t)},
+    {offset_of(PropPositionKeyframe, h), size_of(position_keyframe.h)},
+    {offset_of(PropPositionKeyframe, i), size_of(position_keyframe.i)},
+    {offset_of(PropPositionKeyframe, o), size_of(position_keyframe.o)},
+    {offset_of(PropPositionKeyframe, s), size_of(position_keyframe.s)},
+    {offset_of(PropPositionKeyframe, ti), size_of(position_keyframe.ti)},
+    {offset_of(PropPositionKeyframe, to), size_of(position_keyframe.to)},
   }
 
-  #assert(PROP_POSITION_KEYFRAME_FIELDS == len(position_keyframe_offset_tbl), "Not equal")
+  #assert(
+    PROP_POSITION_KEYFRAME_FIELDS == len(position_keyframe_offset_tbl),
+    "Not equal",
+  )
   temp_struct := position_keyframe
-  remove_zero_default_value_optim(&flags, &temp_struct, position_keyframe_offset_tbl)
+  remove_zero_default_value_optim(
+    &flags,
+    &temp_struct,
+    position_keyframe_offset_tbl,
+  )
 
 
   begin_debug_info(writer, "position_keyframe", .meta)
@@ -1243,96 +1483,143 @@ write_prop_position_keyframe :: proc(writer: ^Writer, position_keyframe: PropPos
   end_debug_info(writer)
 }
 
-write_prop_position :: proc(writer: ^Writer, position: PropPosition, debug_name := "prop_position") {
+write_prop_position :: proc(
+  writer: ^Writer,
+  position: PropPosition,
+  debug_name := "prop_position",
+) {
   switch type in position {
   case PropPositionSingle:
-  {
-    position_single := position.(PropPositionSingle)
-    flags := transmute(Bit64)position_single._flags
-    position_single_offset_tbl := [?]StructInfo{
-      { offset_of(PropPositionSingle, sid), size_of(position_single.sid) },
-      { offset_of(PropPositionSingle, a),   size_of(position_single.a) },
-      { offset_of(PropPositionSingle, k),   size_of(position_single.k) },
+    {
+      position_single := position.(PropPositionSingle)
+      flags := transmute(Bit64)position_single._flags
+      position_single_offset_tbl := [?]StructInfo {
+        {offset_of(PropPositionSingle, sid), size_of(position_single.sid)},
+        {offset_of(PropPositionSingle, a), size_of(position_single.a)},
+        {offset_of(PropPositionSingle, k), size_of(position_single.k)},
+      }
+
+      #assert(
+        PROP_VECTOR_SINGLE_FIELDS == len(position_single_offset_tbl),
+        "Not equal",
+      )
+      temp_struct := position_single
+      remove_zero_default_value_optim(
+        &flags,
+        &temp_struct,
+        position_single_offset_tbl,
+      )
+
+      begin_debug_info(writer, debug_name, .meta)
+      write_flags(writer, flags, PROP_VECTOR_SINGLE_FIELDS)
+      vec2 := Vec2{position_single.k.x, position_single.k.y}
+      if isset(flags, 0) do write_string(writer, position_single.sid, "sid")
+      if isset(flags, 2) do write_vector2(writer, vec2, "k")
+      end_debug_info(writer)
     }
-
-    #assert(PROP_VECTOR_SINGLE_FIELDS == len(position_single_offset_tbl), "Not equal")
-    temp_struct := position_single
-    remove_zero_default_value_optim(&flags, &temp_struct, position_single_offset_tbl)
-
-    begin_debug_info(writer, debug_name, .meta)
-    write_flags(writer, flags, PROP_VECTOR_SINGLE_FIELDS)
-    vec2 := Vec2{position_single.k.x, position_single.k.y}
-    if isset(flags, 0) do write_string(writer, position_single.sid, "sid")
-    if isset(flags, 2) do write_vector2(writer, vec2, "k")
-    end_debug_info(writer)
-  }
   case PropPositionAnim:
-  {
-    position_anim := position.(PropPositionAnim)
-    flags := transmute(Bit64)position_anim._flags
-    position_anim_offset_tbl := [?]StructInfo{
-      { offset_of(PropPositionAnim, sid), size_of(position_anim.sid) },
-      { offset_of(PropPositionAnim, a),   size_of(position_anim.a) },
-      // note(iyaan): The structure of a slice is [ ptr (8) | len (8) ]
-      // I am targetting the len field in the slice so that I can see if 
-      // it is zero. Because the ptr is most likely never zero.
-      { offset_of(PropPositionAnim, k) + size_of(rawptr), size_of(int) },
-    }
+    {
+      position_anim := position.(PropPositionAnim)
+      flags := transmute(Bit64)position_anim._flags
+      position_anim_offset_tbl := [?]StructInfo {
+        {offset_of(PropPositionAnim, sid), size_of(position_anim.sid)},
+        {offset_of(PropPositionAnim, a), size_of(position_anim.a)},
+        // note(iyaan): The structure of a slice is [ ptr (8) | len (8) ]
+        // I am targetting the len field in the slice so that I can see if
+        // it is zero. Because the ptr is most likely never zero.
+        {offset_of(PropPositionAnim, k) + size_of(rawptr), size_of(int)},
+      }
 
-    #assert(PROP_VECTOR_ANIM_FIELDS == len(position_anim_offset_tbl), "Not equal")
-    temp_struct := position_anim
-    remove_zero_default_value_optim(&flags, &temp_struct, position_anim_offset_tbl)
+      #assert(
+        PROP_VECTOR_ANIM_FIELDS == len(position_anim_offset_tbl),
+        "Not equal",
+      )
+      temp_struct := position_anim
+      remove_zero_default_value_optim(
+        &flags,
+        &temp_struct,
+        position_anim_offset_tbl,
+      )
 
-    begin_debug_info(writer, debug_name, .meta)
-    write_flags(writer, flags, PROP_VECTOR_ANIM_FIELDS)
-    if isset(flags, 0) do write_string(writer, position_anim.sid, "sid")
-    write_varint(writer, i128(len(position_anim.k)))
-    for frame in position_anim.k {
-      write_prop_position_keyframe(writer, frame)
+      begin_debug_info(writer, debug_name, .meta)
+      write_flags(writer, flags, PROP_VECTOR_ANIM_FIELDS)
+      if isset(flags, 0) do write_string(writer, position_anim.sid, "sid")
+      write_varint(writer, i128(len(position_anim.k)))
+      for frame in position_anim.k {
+        write_prop_position_keyframe(writer, frame)
+      }
+      end_debug_info(writer)
     }
-    end_debug_info(writer)
-  }
   case PropSplitPosition:
-  {
-    position_split := position.(PropSplitPosition)
-    flags := transmute(Bit64)position_split._flags
+    {
+      position_split := position.(PropSplitPosition)
+      flags := transmute(Bit64)position_split._flags
 
-    split_position_offset_tbl := [?]StructInfo{
-      { offset_of(PropSplitPosition, s), size_of(position_split.s) },
-      // note(iyaan): tag of a union in Odin are placed at the end after the variants
-      // of the data. Size of a union is the size of the largest variant plus tag which
-      // needs to be aligned 8 bytes (usually u64)
-      { offset_of(PropSplitPosition, x), size_of(position_split.x) - SCALAR_TAG_SIZE },
-      { offset_of(PropSplitPosition, y), size_of(position_split.y) - SCALAR_TAG_SIZE },
+      split_position_offset_tbl := [?]StructInfo {
+        {offset_of(PropSplitPosition, s), size_of(position_split.s)},
+        // note(iyaan): tag of a union in Odin are placed at the end after the variants
+        // of the data. Size of a union is the size of the largest variant plus tag which
+        // needs to be aligned 8 bytes (usually u64)
+        {
+          offset_of(PropSplitPosition, x),
+          size_of(position_split.x) - SCALAR_TAG_SIZE,
+        },
+        {
+          offset_of(PropSplitPosition, y),
+          size_of(position_split.y) - SCALAR_TAG_SIZE,
+        },
+      }
+
+      #assert(
+        PROP_SPLIT_POSITION_FIELDS == len(split_position_offset_tbl),
+        "Not equal",
+      )
+      temp_struct := position_split
+      remove_zero_default_value_optim(
+        &flags,
+        &temp_struct,
+        split_position_offset_tbl,
+      )
+
+      begin_debug_info(writer, debug_name, .meta)
+      write_flags(writer, flags, PROP_SPLIT_POSITION_FIELDS)
+      write_bool(writer, position_split.s, "s")
+      write_prop_scalar(writer, position_split.x, "x")
+      write_prop_scalar(writer, position_split.y, "y")
+      end_debug_info(writer)
     }
-
-    #assert(PROP_SPLIT_POSITION_FIELDS == len(split_position_offset_tbl), "Not equal")
-    temp_struct := position_split
-    remove_zero_default_value_optim(&flags, &temp_struct, split_position_offset_tbl)
-
-    begin_debug_info(writer, debug_name, .meta)
-    write_flags(writer, flags, PROP_SPLIT_POSITION_FIELDS)
-    write_bool(writer, position_split.s, "s")
-    write_prop_scalar(writer, position_split.x, "x")
-    write_prop_scalar(writer, position_split.y, "y")
-    end_debug_info(writer)
-  }
   }
 }
 
-write_prop_bezier_keyframe :: proc(writer: ^Writer, bezier_keyframe: PropBezierKeyframe) {
+write_prop_bezier_keyframe :: proc(
+  writer: ^Writer,
+  bezier_keyframe: PropBezierKeyframe,
+) {
   flags := transmute(Bit64)bezier_keyframe._flags
-  bezier_keyframe_offset_tbl := [?]StructInfo{
-    { offset_of(PropBezierKeyframe, t), size_of(bezier_keyframe.t) },
-    { offset_of(PropBezierKeyframe, h), size_of(bezier_keyframe.h) },
-    { offset_of(PropBezierKeyframe, i), size_of(bezier_keyframe.i) - KEYFRAME_EASING_UNION_TAG_SIZE },
-    { offset_of(PropBezierKeyframe, o), size_of(bezier_keyframe.o) - KEYFRAME_EASING_UNION_TAG_SIZE },
-    { offset_of(PropBezierKeyframe, s), size_of(bezier_keyframe.s) },
+  bezier_keyframe_offset_tbl := [?]StructInfo {
+    {offset_of(PropBezierKeyframe, t), size_of(bezier_keyframe.t)},
+    {offset_of(PropBezierKeyframe, h), size_of(bezier_keyframe.h)},
+    {
+      offset_of(PropBezierKeyframe, i),
+      size_of(bezier_keyframe.i) - KEYFRAME_EASING_UNION_TAG_SIZE,
+    },
+    {
+      offset_of(PropBezierKeyframe, o),
+      size_of(bezier_keyframe.o) - KEYFRAME_EASING_UNION_TAG_SIZE,
+    },
+    {offset_of(PropBezierKeyframe, s), size_of(bezier_keyframe.s)},
   }
 
-  #assert(PROP_BEZIER_KEYFRAME_FIELDS == len(bezier_keyframe_offset_tbl), "Not equal")
+  #assert(
+    PROP_BEZIER_KEYFRAME_FIELDS == len(bezier_keyframe_offset_tbl),
+    "Not equal",
+  )
   temp_struct := bezier_keyframe
-  remove_zero_default_value_optim(&flags, &temp_struct, bezier_keyframe_offset_tbl)
+  remove_zero_default_value_optim(
+    &flags,
+    &temp_struct,
+    bezier_keyframe_offset_tbl,
+  )
 
   begin_debug_info(writer, "Bezier_Keyframe", .meta)
   write_flags(writer, flags, PROP_BEZIER_KEYFRAME_FIELDS)
@@ -1348,66 +1635,100 @@ write_prop_bezier_keyframe :: proc(writer: ^Writer, bezier_keyframe: PropBezierK
   }
 
   end_debug_info(writer)
-  end_debug_info(writer)  
+  end_debug_info(writer)
 }
 
-write_prop_bezier_shape :: proc(writer: ^Writer, bezier: PropBezier, debug_name := "PropBezier") {
+write_prop_bezier_shape :: proc(
+  writer: ^Writer,
+  bezier: PropBezier,
+  debug_name := "PropBezier",
+) {
   switch _ in bezier {
   case PropBezierSingle:
-  {
-    bezier_single := bezier.(PropBezierSingle)
-    flags := transmute(Bit64)bezier_single._flags
-    bezier_single_offset_tbl := [?]StructInfo{
-      { offset_of(PropBezierSingle, a), size_of(bezier_single.a) },
-      { offset_of(PropBezierSingle, k), size_of(bezier_single.k) },
-    }
+    {
+      bezier_single := bezier.(PropBezierSingle)
+      flags := transmute(Bit64)bezier_single._flags
+      bezier_single_offset_tbl := [?]StructInfo {
+        {offset_of(PropBezierSingle, a), size_of(bezier_single.a)},
+        {offset_of(PropBezierSingle, k), size_of(bezier_single.k)},
+      }
 
-    #assert(PROP_BEZIER_SINGLE_FIELDS == len(bezier_single_offset_tbl), "Not equal")
-    temp_struct := bezier_single
-    remove_zero_default_value_optim(&flags, &temp_struct, bezier_single_offset_tbl)
-    
-    begin_debug_info(writer, debug_name, .meta)
-    write_flags(writer, flags, PROP_BEZIER_SINGLE_FIELDS)
-    write_bool(writer, bezier_single.a, "a")
-    write_bezier(writer, bezier_single.k, "k")
-    end_debug_info(writer)
-  }
+      #assert(
+        PROP_BEZIER_SINGLE_FIELDS == len(bezier_single_offset_tbl),
+        "Not equal",
+      )
+      temp_struct := bezier_single
+      remove_zero_default_value_optim(
+        &flags,
+        &temp_struct,
+        bezier_single_offset_tbl,
+      )
+
+      begin_debug_info(writer, debug_name, .meta)
+      write_flags(writer, flags, PROP_BEZIER_SINGLE_FIELDS)
+      write_bool(writer, bezier_single.a, "a")
+      write_bezier(writer, bezier_single.k, "k")
+      end_debug_info(writer)
+    }
   case PropBezierAnim:
-  {
-    bezier_anim := bezier.(PropBezierAnim)
-    flags := transmute(Bit64)bezier_anim._flags
-    bezier_anim_offset_tbl := [?]StructInfo{
-      { offset_of(PropBezierAnim, a), size_of(bezier_anim.a) },
-      { offset_of(PropBezierAnim, k) + size_of(rawptr), size_of(int) },
-    }
-    #assert(PROP_BEZIER_ANIM_FIELDS == len(bezier_anim_offset_tbl), "Not equal")
-    temp_struct := bezier_anim
-    remove_zero_default_value_optim(&flags, &temp_struct, bezier_anim_offset_tbl)
+    {
+      bezier_anim := bezier.(PropBezierAnim)
+      flags := transmute(Bit64)bezier_anim._flags
+      bezier_anim_offset_tbl := [?]StructInfo {
+        {offset_of(PropBezierAnim, a), size_of(bezier_anim.a)},
+        {offset_of(PropBezierAnim, k) + size_of(rawptr), size_of(int)},
+      }
+      #assert(
+        PROP_BEZIER_ANIM_FIELDS == len(bezier_anim_offset_tbl),
+        "Not equal",
+      )
+      temp_struct := bezier_anim
+      remove_zero_default_value_optim(
+        &flags,
+        &temp_struct,
+        bezier_anim_offset_tbl,
+      )
 
-    begin_debug_info(writer, debug_name, .meta)
-    write_flags(writer, flags, PROP_BEZIER_ANIM_FIELDS)
-    write_bool(writer, bezier_anim.a, "a")
-    write_varint(writer, i128(len(bezier_anim.k)))
-    for frame in bezier_anim.k {
-      write_prop_bezier_keyframe(writer, frame)
+      begin_debug_info(writer, debug_name, .meta)
+      write_flags(writer, flags, PROP_BEZIER_ANIM_FIELDS)
+      write_bool(writer, bezier_anim.a, "a")
+      write_varint(writer, i128(len(bezier_anim.k)))
+      for frame in bezier_anim.k {
+        write_prop_bezier_keyframe(writer, frame)
+      }
+      end_debug_info(writer)
     }
-    end_debug_info(writer)
-  }
   }
 }
 
-write_prop_color_keyframe :: proc(writer: ^Writer, color_keyframe: PropColorKeyframe) {
+write_prop_color_keyframe :: proc(
+  writer: ^Writer,
+  color_keyframe: PropColorKeyframe,
+) {
   flags := transmute(Bit64)color_keyframe._flags
-  color_keyframe_offset_tbl := [?]StructInfo{
-    { offset_of(PropColorKeyframe, t), size_of(color_keyframe.t) },
-    { offset_of(PropColorKeyframe, h), size_of(color_keyframe.h) },
-    { offset_of(PropColorKeyframe, i), size_of(color_keyframe.i) - KEYFRAME_EASING_UNION_TAG_SIZE },
-    { offset_of(PropColorKeyframe, o), size_of(color_keyframe.o) - KEYFRAME_EASING_UNION_TAG_SIZE },
-    { offset_of(PropColorKeyframe, s), size_of(color_keyframe.s) },
+  color_keyframe_offset_tbl := [?]StructInfo {
+    {offset_of(PropColorKeyframe, t), size_of(color_keyframe.t)},
+    {offset_of(PropColorKeyframe, h), size_of(color_keyframe.h)},
+    {
+      offset_of(PropColorKeyframe, i),
+      size_of(color_keyframe.i) - KEYFRAME_EASING_UNION_TAG_SIZE,
+    },
+    {
+      offset_of(PropColorKeyframe, o),
+      size_of(color_keyframe.o) - KEYFRAME_EASING_UNION_TAG_SIZE,
+    },
+    {offset_of(PropColorKeyframe, s), size_of(color_keyframe.s)},
   }
-  #assert(PROP_COLOR_KEYFRAME_FIELDS == len(color_keyframe_offset_tbl), "Not equal")
+  #assert(
+    PROP_COLOR_KEYFRAME_FIELDS == len(color_keyframe_offset_tbl),
+    "Not equal",
+  )
   temp_struct := color_keyframe
-  remove_zero_default_value_optim(&flags, &temp_struct, color_keyframe_offset_tbl)
+  remove_zero_default_value_optim(
+    &flags,
+    &temp_struct,
+    color_keyframe_offset_tbl,
+  )
 
   write_flags(writer, flags, PROP_COLOR_KEYFRAME_FIELDS)
   if isset(flags, 0) do write_varint(writer, i128(color_keyframe.t), "t")
@@ -1418,72 +1739,106 @@ write_prop_color_keyframe :: proc(writer: ^Writer, color_keyframe: PropColorKeyf
   if isset(flags, 4) do write_color4(writer, color_keyframe.s, "s")
 }
 
-write_prop_color :: proc(writer: ^Writer, color: PropColor, debug_name := "PropColor") {
+write_prop_color :: proc(
+  writer: ^Writer,
+  color: PropColor,
+  debug_name := "PropColor",
+) {
   switch _ in color {
   case PropColorSingle:
-  {
-    color_single := color.(PropColorSingle)
-    flags := transmute(Bit64)color_single._flags
-    color_single_offset_tbl := [?]StructInfo{
-      { offset_of(PropColorSingle, sid), size_of(color_single.sid) },
-      { offset_of(PropColorSingle, a), size_of(color_single.a) },
-      { offset_of(PropColorSingle, k), size_of(color_single.k) },
-    }
-
-    #assert(PROP_COLOR_SINGLE_FIELDS == len(color_single_offset_tbl), "Not equal")
-    temp_struct := color_single
-    remove_zero_default_value_optim(&flags, &temp_struct, color_single_offset_tbl)
-
-    begin_debug_info(writer, debug_name, .meta)
-    write_flags(writer, flags, PROP_COLOR_SINGLE_FIELDS)
-    
-    if isset(flags, 0) do write_string(writer, color_single.sid)
-    if isset(flags, 1) do write_bool(writer, color_single.a)
-    if isset(flags, 2) do write_color4(writer, color_single.k)
-    end_debug_info(writer)
-  }
-  case PropColorAnim:
-  {
-    color_anim := color.(PropColorAnim)
-    flags := transmute(Bit64)color_anim._flags
-    color_anim_offset_tbl := [?]StructInfo{
-      { offset_of(PropColorAnim, sid), size_of(color_anim.sid) },
-      { offset_of(PropColorAnim, a), size_of(color_anim.a) },
-      { offset_of(PropColorAnim, k) + size_of(rawptr), size_of(int) },
-    }
-
-    #assert(PROP_COLOR_ANIM_FIELDS == len(color_anim_offset_tbl), "Not equal")
-    temp_struct := color_anim
-    remove_zero_default_value_optim(&flags, &temp_struct, color_anim_offset_tbl)
-
-    begin_debug_info(writer, debug_name, .meta)
-    write_flags(writer, flags, PROP_COLOR_ANIM_FIELDS)
-    if isset(flags, 0) do write_string(writer, color_anim.sid)
-    if isset(flags, 1) do write_bool(writer, color_anim.a)
-
-    if isset(flags, 2) {
-      write_varint(writer, i128(len(color_anim.k)))
-      for frame in color_anim.k {
-        write_prop_color_keyframe(writer, frame)
+    {
+      color_single := color.(PropColorSingle)
+      flags := transmute(Bit64)color_single._flags
+      color_single_offset_tbl := [?]StructInfo {
+        {offset_of(PropColorSingle, sid), size_of(color_single.sid)},
+        {offset_of(PropColorSingle, a), size_of(color_single.a)},
+        {offset_of(PropColorSingle, k), size_of(color_single.k)},
       }
+
+      #assert(
+        PROP_COLOR_SINGLE_FIELDS == len(color_single_offset_tbl),
+        "Not equal",
+      )
+      temp_struct := color_single
+      remove_zero_default_value_optim(
+        &flags,
+        &temp_struct,
+        color_single_offset_tbl,
+      )
+
+      begin_debug_info(writer, debug_name, .meta)
+      write_flags(writer, flags, PROP_COLOR_SINGLE_FIELDS)
+
+      if isset(flags, 0) do write_string(writer, color_single.sid)
+      if isset(flags, 1) do write_bool(writer, color_single.a)
+      if isset(flags, 2) do write_color4(writer, color_single.k)
+      end_debug_info(writer)
     }
-    end_debug_info(writer)
-  }
+  case PropColorAnim:
+    {
+      color_anim := color.(PropColorAnim)
+      flags := transmute(Bit64)color_anim._flags
+      color_anim_offset_tbl := [?]StructInfo {
+        {offset_of(PropColorAnim, sid), size_of(color_anim.sid)},
+        {offset_of(PropColorAnim, a), size_of(color_anim.a)},
+        {offset_of(PropColorAnim, k) + size_of(rawptr), size_of(int)},
+      }
+
+      #assert(
+        PROP_COLOR_ANIM_FIELDS == len(color_anim_offset_tbl),
+        "Not equal",
+      )
+      temp_struct := color_anim
+      remove_zero_default_value_optim(
+        &flags,
+        &temp_struct,
+        color_anim_offset_tbl,
+      )
+
+      begin_debug_info(writer, debug_name, .meta)
+      write_flags(writer, flags, PROP_COLOR_ANIM_FIELDS)
+      if isset(flags, 0) do write_string(writer, color_anim.sid)
+      if isset(flags, 1) do write_bool(writer, color_anim.a)
+
+      if isset(flags, 2) {
+        write_varint(writer, i128(len(color_anim.k)))
+        for frame in color_anim.k {
+          write_prop_color_keyframe(writer, frame)
+        }
+      }
+      end_debug_info(writer)
+    }
   }
 }
 
-write_prop_gradient_keyframe :: proc(writer: ^Writer, gradient_keyframe: GradientKeyframe) {
+write_prop_gradient_keyframe :: proc(
+  writer: ^Writer,
+  gradient_keyframe: GradientKeyframe,
+) {
   flags := transmute(Bit64)gradient_keyframe._flags
-  gradient_keyframe_offset_tbl := [?]StructInfo{
-    { offset_of(GradientKeyframe, t), size_of(gradient_keyframe.t) },
-    { offset_of(GradientKeyframe, h), size_of(gradient_keyframe.h) },
-    { offset_of(GradientKeyframe, i), size_of(gradient_keyframe.i) - KEYFRAME_EASING_UNION_TAG_SIZE },
-    { offset_of(GradientKeyframe, o), size_of(gradient_keyframe.o) - KEYFRAME_EASING_UNION_TAG_SIZE },
-    { offset_of(GradientKeyframe, s), size_of(gradient_keyframe.s) },
+  gradient_keyframe_offset_tbl := [?]StructInfo {
+    {offset_of(GradientKeyframe, t), size_of(gradient_keyframe.t)},
+    {offset_of(GradientKeyframe, h), size_of(gradient_keyframe.h)},
+    {
+      offset_of(GradientKeyframe, i),
+      size_of(gradient_keyframe.i) - KEYFRAME_EASING_UNION_TAG_SIZE,
+    },
+    {
+      offset_of(GradientKeyframe, o),
+      size_of(gradient_keyframe.o) - KEYFRAME_EASING_UNION_TAG_SIZE,
+    },
+    {offset_of(GradientKeyframe, s), size_of(gradient_keyframe.s)},
   }
-  #assert(PROP_GRADIENT_KEYFRAME_FIELDS == len(gradient_keyframe_offset_tbl), "Not equal")
+  #assert(
+    PROP_GRADIENT_KEYFRAME_FIELDS == len(gradient_keyframe_offset_tbl),
+    "Not equal",
+  )
   temp_struct := gradient_keyframe
-  remove_zero_default_value_optim(&flags, &temp_struct, gradient_keyframe_offset_tbl)
+  remove_zero_default_value_optim(
+    &flags,
+    &temp_struct,
+    gradient_keyframe_offset_tbl,
+  )
 
   begin_debug_info(writer, "GRADIENT_KEYFAME", .meta)
 
@@ -1498,33 +1853,40 @@ write_prop_gradient_keyframe :: proc(writer: ^Writer, gradient_keyframe: Gradien
   end_debug_info(writer)
 }
 
-write_prop_gradient :: proc(writer: ^Writer, gradient: PropGradient, debug_name := "PropGradient") {
+write_prop_gradient :: proc(
+  writer: ^Writer,
+  gradient: PropGradient,
+  debug_name := "PropGradient",
+) {
   write_varint(writer, i128(gradient.p))
   switch _ in gradient.k {
   case GradientStopSingle:
-  {
-    grad_single := gradient.k.(GradientStopSingle)
-    begin_debug_info(writer, debug_name, .meta)
-    write_bool(writer, grad_single.a, "a")
-    write_gradient(writer, grad_single.k, "k")
-    end_debug_info(writer)
-  }
-  case GradientStopAnim:
-  {
-    grad_anim := gradient.k.(GradientStopAnim)
-    begin_debug_info(writer, debug_name, .meta)
-    write_bool(writer, grad_anim.a, "a")
-    write_varint(writer, i128(len(grad_anim.k)))
-    for frame in grad_anim.k {
-      write_prop_gradient_keyframe(writer, frame)
+    {
+      grad_single := gradient.k.(GradientStopSingle)
+      begin_debug_info(writer, debug_name, .meta)
+      write_bool(writer, grad_single.a, "a")
+      write_gradient(writer, grad_single.k, "k")
+      end_debug_info(writer)
     }
-    end_debug_info(writer)
-  }
+  case GradientStopAnim:
+    {
+      grad_anim := gradient.k.(GradientStopAnim)
+      begin_debug_info(writer, debug_name, .meta)
+      write_bool(writer, grad_anim.a, "a")
+      write_varint(writer, i128(len(grad_anim.k)))
+      for frame in grad_anim.k {
+        write_prop_gradient_keyframe(writer, frame)
+      }
+      end_debug_info(writer)
+    }
   }
 }
 
 @(deprecated = "use write_easing_curve()")
-write_keyframe_easing_handle :: proc(writer: ^Writer, easing: PropKeyframeEasing) {
+write_keyframe_easing_handle :: proc(
+  writer: ^Writer,
+  easing: PropKeyframeEasing,
+) {
   // TODO(iyaan): use the cubic bezier correlation optimization to
   // know which type of cubic bezier easing function does the following control
   // points to generate and get the enum
@@ -1543,7 +1905,11 @@ write_keyframe_easing_handle :: proc(writer: ^Writer, easing: PropKeyframeEasing
 }
 
 
-write_transform :: proc(writer: ^Writer, transform: Transform, debug_name := "transform") {
+write_transform :: proc(
+  writer: ^Writer,
+  transform: Transform,
+  debug_name := "transform",
+) {
   flags := transmute(Bit64)transform._flags
   begin_debug_info(writer, debug_name, .meta)
   write_flags(writer, flags, TRANSFORM_FIELDS)
@@ -1558,12 +1924,41 @@ write_transform :: proc(writer: ^Writer, transform: Transform, debug_name := "tr
 }
 
 
-graphic_elem_type_conv_tbl := [34]i8{
-    -1, -1, -1, -1, -1, -1, -1,  2,
-    -1, -1, -1,  0,  1, -1, -1,  7,
-    -1, -1, -1,  4,  3,  5, -1, -1,
-    -1, -1, -1, 10, -1, -1, -1,  6,
-     9,  8
+graphic_elem_type_conv_tbl := [34]i8 {
+  -1,
+  -1,
+  -1,
+  -1,
+  -1,
+  -1,
+  -1,
+  2,
+  -1,
+  -1,
+  -1,
+  0,
+  1,
+  -1,
+  -1,
+  7,
+  -1,
+  -1,
+  -1,
+  4,
+  3,
+  5,
+  -1,
+  -1,
+  -1,
+  -1,
+  -1,
+  10,
+  -1,
+  -1,
+  -1,
+  6,
+  9,
+  8,
 }
 
 conv_graphic_elem_type_to_enum :: proc(str: string) -> GraphicElemType {
@@ -1581,7 +1976,11 @@ conv_graphic_elem_type_to_enum :: proc(str: string) -> GraphicElemType {
   }
 }
 
-write_ellipse :: proc(writer: ^Writer, ellipse: Ellipse, debug_name := "ellipse") {
+write_ellipse :: proc(
+  writer: ^Writer,
+  ellipse: Ellipse,
+  debug_name := "ellipse",
+) {
   flags := transmute(Bit64)ellipse._flags
   begin_debug_info(writer, debug_name, .meta)
   write_flags(writer, flags, PATH_FIELDS)
@@ -1596,7 +1995,11 @@ write_ellipse :: proc(writer: ^Writer, ellipse: Ellipse, debug_name := "ellipse"
   end_debug_info(writer)
 }
 
-write_rectangle :: proc(writer: ^Writer, rect: Rectangle, debug_name := "rectangle") {
+write_rectangle :: proc(
+  writer: ^Writer,
+  rect: Rectangle,
+  debug_name := "rectangle",
+) {
   flags := transmute(Bit64)rect._flags
   begin_debug_info(writer, debug_name, .meta)
   write_flags(writer, flags, PATH_FIELDS)
@@ -1626,7 +2029,11 @@ write_path :: proc(writer: ^Writer, path: Path, debug_name := "path") {
   end_debug_info(writer)
 }
 
-write_polystar :: proc(writer: ^Writer, star: Polystar, debug_name := "polystar") {
+write_polystar :: proc(
+  writer: ^Writer,
+  star: Polystar,
+  debug_name := "polystar",
+) {
   flags := transmute(Bit64)star._flags
   begin_debug_info(writer, debug_name, .meta)
   write_flags(writer, flags, PATH_FIELDS)
@@ -1635,13 +2042,13 @@ write_polystar :: proc(writer: ^Writer, star: Polystar, debug_name := "polystar"
   graphic_elem_type := conv_graphic_elem_type_to_enum(star.ty)
   write_enum(writer, u8(graphic_elem_type), GRAPHIC_ELEM_TYPE_BITS, "ty")
 
-  if isset(flags, 3)  do write_enum(writer, u8(star.d), SHAPE_DIR_ENUM_BITS, "d")
-  if isset(flags, 4)  do write_prop_position(writer, star.p, "p")
-  if isset(flags, 5)  do write_prop_scalar(writer, star.or, "or")
-  if isset(flags, 6)  do write_prop_scalar(writer, star.os, "os")
-  if isset(flags, 7)  do write_prop_scalar(writer, star.os, "r")
-  if isset(flags, 8)  do write_prop_scalar(writer, star.pt, "pt")
-  if isset(flags, 9)  do write_enum(writer, u8(star.sy), STAR_TYPE_BITS, "sy")
+  if isset(flags, 3) do write_enum(writer, u8(star.d), SHAPE_DIR_ENUM_BITS, "d")
+  if isset(flags, 4) do write_prop_position(writer, star.p, "p")
+  if isset(flags, 5) do write_prop_scalar(writer, star.or, "or")
+  if isset(flags, 6) do write_prop_scalar(writer, star.os, "os")
+  if isset(flags, 7) do write_prop_scalar(writer, star.os, "r")
+  if isset(flags, 8) do write_prop_scalar(writer, star.pt, "pt")
+  if isset(flags, 9) do write_enum(writer, u8(star.sy), STAR_TYPE_BITS, "sy")
   if isset(flags, 10) do write_prop_scalar(writer, star.ir, "ir")
   if isset(flags, 11) do write_prop_scalar(writer, star.is, "is")
 
@@ -1669,23 +2076,42 @@ write_group :: proc(writer: ^Writer, group: Group, debug_name := "group") {
   end_debug_info(writer)
 }
 
-write_graphic_elem :: proc(writer: ^Writer, graphic_elem: GraphicElement, debug_name := "") {
+write_graphic_elem :: proc(
+  writer: ^Writer,
+  graphic_elem: GraphicElement,
+  debug_name := "",
+) {
   switch _ in graphic_elem {
-  case Ellipse:        write_ellipse(writer, graphic_elem.(Ellipse))
-  case Rectangle:      write_rectangle(writer, graphic_elem.(Rectangle))
-  case Path:           write_path(writer, graphic_elem.(Path))
-  case Polystar:       write_polystar(writer, graphic_elem.(Polystar))
-  case Group:          write_group(writer, graphic_elem.(Group))
-  case TransformShape: write_transform_shape(writer, graphic_elem.(TransformShape))
-  case Fill:           write_fill(writer, graphic_elem.(Fill))
-  case Stroke:         write_stroke(writer, graphic_elem.(Stroke))
-  case GradientFill:   write_gradient_fill(writer, graphic_elem.(GradientFill))
-  case GradientStroke: write_gradient_stroke(writer, graphic_elem.(GradientStroke)) 
-  case TrimPath:       write_trim_path(writer, graphic_elem.(TrimPath))
+  case Ellipse:
+    write_ellipse(writer, graphic_elem.(Ellipse))
+  case Rectangle:
+    write_rectangle(writer, graphic_elem.(Rectangle))
+  case Path:
+    write_path(writer, graphic_elem.(Path))
+  case Polystar:
+    write_polystar(writer, graphic_elem.(Polystar))
+  case Group:
+    write_group(writer, graphic_elem.(Group))
+  case TransformShape:
+    write_transform_shape(writer, graphic_elem.(TransformShape))
+  case Fill:
+    write_fill(writer, graphic_elem.(Fill))
+  case Stroke:
+    write_stroke(writer, graphic_elem.(Stroke))
+  case GradientFill:
+    write_gradient_fill(writer, graphic_elem.(GradientFill))
+  case GradientStroke:
+    write_gradient_stroke(writer, graphic_elem.(GradientStroke))
+  case TrimPath:
+    write_trim_path(writer, graphic_elem.(TrimPath))
   }
 }
 
-write_transform_shape :: proc(writer: ^Writer, transform_shape: TransformShape, debug_name := "Transform_Shape") {
+write_transform_shape :: proc(
+  writer: ^Writer,
+  transform_shape: TransformShape,
+  debug_name := "Transform_Shape",
+) {
   flags := transmute(Bit64)transform_shape._flags
   begin_debug_info(writer, debug_name, .meta)
   write_flags(writer, flags, TRANSFORM_SHAPE_FIELDS)
@@ -1741,7 +2167,7 @@ write_stroke :: proc(writer: ^Writer, stroke: Stroke, debug_name := "Stroke") {
   if isset(flags, 9) {
     write_varint(writer, i128(len(stroke.d)), "len")
     for stroke_dash in stroke.d {
-      write_stroke_dash(writer, stroke_dash) 
+      write_stroke_dash(writer, stroke_dash)
     }
   }
   if isset(flags, 10) do write_prop_color(writer, stroke.c, "c")
@@ -1750,7 +2176,11 @@ write_stroke :: proc(writer: ^Writer, stroke: Stroke, debug_name := "Stroke") {
 }
 
 
-write_gradient_fill :: proc(writer: ^Writer, gradient_fill: GradientFill, debug_name := "Gradient_Fill") {
+write_gradient_fill :: proc(
+  writer: ^Writer,
+  gradient_fill: GradientFill,
+  debug_name := "Gradient_Fill",
+) {
   flags := transmute(Bit64)gradient_fill._flags
   begin_debug_info(writer, debug_name, .meta)
   write_flags(writer, flags, GRADIENT_FILL_FIELDS)
@@ -1759,7 +2189,7 @@ write_gradient_fill :: proc(writer: ^Writer, gradient_fill: GradientFill, debug_
   if isset(flags, 1) do write_bool(writer, gradient_fill.hd, "hd")
   graphic_elem_type := conv_graphic_elem_type_to_enum(gradient_fill.ty)
   write_enum(writer, u8(graphic_elem_type), GRAPHIC_ELEM_TYPE_BITS, "ty")
-  
+
   if isset(flags, 3) do write_prop_scalar(writer, gradient_fill.o, "o")
   if isset(flags, 4) do write_prop_gradient(writer, gradient_fill.g, "g")
   if isset(flags, 5) do write_prop_position(writer, gradient_fill.s, "s")
@@ -1772,18 +2202,25 @@ write_gradient_fill :: proc(writer: ^Writer, gradient_fill: GradientFill, debug_
   end_debug_info(writer)
 }
 
-write_stroke_dash :: proc(writer: ^Writer, dash: StrokeDash, debug_name := "Stroke_Dash") {
+write_stroke_dash :: proc(
+  writer: ^Writer,
+  dash: StrokeDash,
+  debug_name := "Stroke_Dash",
+) {
   begin_debug_info(writer, debug_name, .meta)
   flags := transmute(Bit64)dash._flags
   write_flags(writer, flags, STROKE_DASH_FIELDS)
   if isset(flags, 0) do write_string(writer, dash.nm, "nm")
   if isset(flags, 1) {
     // mapping the char enums to a range of 0 - 2
-    enum_val : u8
+    enum_val: u8
     switch dash.n {
-    case .Dash:   enum_val = 0
-    case .Gap:    enum_val = 1
-    case .Offset: enum_val = 2
+    case .Dash:
+      enum_val = 0
+    case .Gap:
+      enum_val = 1
+    case .Offset:
+      enum_val = 2
     }
     write_enum(writer, enum_val, STROKE_DASH_TYPE_BITS, "n")
   }
@@ -1791,7 +2228,11 @@ write_stroke_dash :: proc(writer: ^Writer, dash: StrokeDash, debug_name := "Stro
   end_debug_info(writer)
 }
 
-write_gradient_stroke :: proc(writer: ^Writer, stroke: GradientStroke, debug_name := "Gradient_Stroke") {
+write_gradient_stroke :: proc(
+  writer: ^Writer,
+  stroke: GradientStroke,
+  debug_name := "Gradient_Stroke",
+) {
   flags := transmute(Bit64)stroke._flags
   begin_debug_info(writer, debug_name, .meta)
   write_flags(writer, flags, GRADIENT_STROKE_FIELDS)
@@ -1810,7 +2251,7 @@ write_gradient_stroke :: proc(writer: ^Writer, stroke: GradientStroke, debug_nam
   if isset(flags, 9) {
     write_varint(writer, i128(len(stroke.d)), "len")
     for stroke_dash in stroke.d {
-      write_stroke_dash(writer, stroke_dash) 
+      write_stroke_dash(writer, stroke_dash)
     }
   }
   if isset(flags, 10) do write_prop_gradient(writer, stroke.g, "g")
@@ -1822,7 +2263,11 @@ write_gradient_stroke :: proc(writer: ^Writer, stroke: GradientStroke, debug_nam
   end_debug_info(writer)
 }
 
-write_trim_path :: proc(writer: ^Writer, trim_path: TrimPath, debug_name := "TrimPath") {
+write_trim_path :: proc(
+  writer: ^Writer,
+  trim_path: TrimPath,
+  debug_name := "TrimPath",
+) {
   flags := transmute(Bit64)trim_path._flags
   begin_debug_info(writer, debug_name, .meta)
   write_flags(writer, flags, FILL_FIELDS)
@@ -1831,7 +2276,7 @@ write_trim_path :: proc(writer: ^Writer, trim_path: TrimPath, debug_name := "Tri
   if isset(flags, 1) do write_bool(writer, trim_path.hd, "hd")
   graphic_elem_type := conv_graphic_elem_type_to_enum(trim_path.ty)
   write_enum(writer, u8(graphic_elem_type), GRAPHIC_ELEM_TYPE_BITS, "ty")
-  
+
   if isset(flags, 3) do write_prop_scalar(writer, trim_path.s, "s")
   if isset(flags, 4) do write_prop_scalar(writer, trim_path.e, "e")
   if isset(flags, 5) do write_prop_scalar(writer, trim_path.o, "o")
@@ -1848,19 +2293,27 @@ write_mask :: proc(writer: ^Writer, mask: Mask, debug_name := "mask") {
   if isset(flags, 0) {
     enum_val := u8(0)
     switch mask.mode {
-    case .None:      enum_val = 0
-    case .Add:       enum_val = 1
-    case .Subtract:  enum_val = 2
-    case .Intersect: enum_val = 3
+    case .None:
+      enum_val = 0
+    case .Add:
+      enum_val = 1
+    case .Subtract:
+      enum_val = 2
+    case .Intersect:
+      enum_val = 3
     }
-    
+
     write_enum(writer, enum_val, MASK_MODE_BITS, "mode")
   }
   if isset(flags, 1) do write_prop_scalar(writer, mask.o, "o")
   if isset(flags, 2) do write_prop_bezier_shape(writer, mask.pt, "pt")
 }
 
-write_shape_layer :: proc(writer: ^Writer, shape_layer: ShapeLayer, debug_name := "shape_layer") {
+write_shape_layer :: proc(
+  writer: ^Writer,
+  shape_layer: ShapeLayer,
+  debug_name := "shape_layer",
+) {
   flags := transmute(Bit64)shape_layer._flags
   begin_debug_info(writer, debug_name, .meta)
   write_flags(writer, flags, SHAPE_LAYER_FIELDS)
@@ -1885,7 +2338,7 @@ write_shape_layer :: proc(writer: ^Writer, shape_layer: ShapeLayer, debug_name :
     }
     end_debug_info(writer)
   }
-  
+
   if isset(flags, 12) {
     begin_debug_info(writer, "shapes", .meta)
     write_varint(writer, i128(len(shape_layer.shapes)), "shapes")
@@ -1894,11 +2347,15 @@ write_shape_layer :: proc(writer: ^Writer, shape_layer: ShapeLayer, debug_name :
     }
     end_debug_info(writer)
   }
-  
+
   end_debug_info(writer)
 }
 
-write_image_layer :: proc(writer: ^Writer, image_layer: ImageLayer, debug_name := "image_layer") {
+write_image_layer :: proc(
+  writer: ^Writer,
+  image_layer: ImageLayer,
+  debug_name := "image_layer",
+) {
   flags := transmute(Bit64)image_layer._flags
   begin_debug_info(writer, debug_name, .meta)
   write_flags(writer, flags, IMAGE_LAYER_FIELDS)
@@ -1929,7 +2386,11 @@ write_image_layer :: proc(writer: ^Writer, image_layer: ImageLayer, debug_name :
   end_debug_info(writer)
 }
 
-write_null_layer :: proc(writer: ^Writer, null_layer: NullLayer, debug_name := "null_layer") {
+write_null_layer :: proc(
+  writer: ^Writer,
+  null_layer: NullLayer,
+  debug_name := "null_layer",
+) {
   flags := transmute(Bit64)null_layer._flags
   begin_debug_info(writer, debug_name, .meta)
   write_flags(writer, flags, NULL_LAYER_FIELDS)
@@ -1957,7 +2418,11 @@ write_null_layer :: proc(writer: ^Writer, null_layer: NullLayer, debug_name := "
   end_debug_info(writer)
 }
 
-write_solid_layer :: proc(writer: ^Writer, solid_layer: SolidLayer, debug_name := "solid_layer") {
+write_solid_layer :: proc(
+  writer: ^Writer,
+  solid_layer: SolidLayer,
+  debug_name := "solid_layer",
+) {
   flags := transmute(Bit64)solid_layer._flags
   begin_debug_info(writer, debug_name, .meta)
   write_flags(writer, flags, SOLID_LAYER_FIELDS)
@@ -1988,7 +2453,11 @@ write_solid_layer :: proc(writer: ^Writer, solid_layer: SolidLayer, debug_name :
   end_debug_info(writer)
 }
 
-write_precomp_layer :: proc(writer: ^Writer, precomp_layer: PrecompLayer, debug_name := "precomp_layer") {
+write_precomp_layer :: proc(
+  writer: ^Writer,
+  precomp_layer: PrecompLayer,
+  debug_name := "precomp_layer",
+) {
   flags := transmute(Bit64)precomp_layer._flags
   begin_debug_info(writer, debug_name, .meta)
   write_flags(writer, flags, PRECOMP_LAYER_FIELDS)
@@ -2025,15 +2494,24 @@ write_precomp_layer :: proc(writer: ^Writer, precomp_layer: PrecompLayer, debug_
 
 write_layer :: proc(writer: ^Writer, layer: Layer, debug_name := "") {
   switch _ in layer {
-  case ShapeLayer:    write_shape_layer(writer, layer.(ShapeLayer))
-  case NullLayer:     write_null_layer(writer, layer.(NullLayer))   
-  case ImageLayer:    write_image_layer(writer, layer.(ImageLayer))
-  case SolidLayer:    write_solid_layer(writer, layer.(SolidLayer))
-  case PrecompLayer:  write_precomp_layer(writer, layer.(PrecompLayer))
+  case ShapeLayer:
+    write_shape_layer(writer, layer.(ShapeLayer))
+  case NullLayer:
+    write_null_layer(writer, layer.(NullLayer))
+  case ImageLayer:
+    write_image_layer(writer, layer.(ImageLayer))
+  case SolidLayer:
+    write_solid_layer(writer, layer.(SolidLayer))
+  case PrecompLayer:
+    write_precomp_layer(writer, layer.(PrecompLayer))
   }
 }
 
-write_precomp_asset :: proc(writer: ^Writer, precomp_asset: PrecompAsset, debug_name := "precomp_asset") {
+write_precomp_asset :: proc(
+  writer: ^Writer,
+  precomp_asset: PrecompAsset,
+  debug_name := "precomp_asset",
+) {
   flags := transmute(Bit64)precomp_asset._flags
   begin_debug_info(writer, debug_name, .meta)
   write_flags(writer, flags, PRECOMP_ASSET_FIELDS)
@@ -2042,16 +2520,20 @@ write_precomp_asset :: proc(writer: ^Writer, precomp_asset: PrecompAsset, debug_
   if isset(flags, 1) do write_string(writer, precomp_asset.id, "id")
   if isset(flags, 2) {
     begin_debug_info(writer, "layers", .meta)
-    write_varint(writer, i128(len(precomp_asset.layers)))    
+    write_varint(writer, i128(len(precomp_asset.layers)))
     for layer in precomp_asset.layers {
       write_layer(writer, layer)
     }
     end_debug_info(writer)
-  } 
+  }
   end_debug_info(writer)
 }
 
-write_image_asset :: proc(writer: ^Writer, image_asset: ImageAsset, debug_name := "image_asset") {
+write_image_asset :: proc(
+  writer: ^Writer,
+  image_asset: ImageAsset,
+  debug_name := "image_asset",
+) {
   flags := transmute(Bit64)image_asset._flags
   begin_debug_info(writer, debug_name, .meta)
   write_flags(writer, flags, IMAGE_ASSET_FIELDS)
@@ -2059,8 +2541,8 @@ write_image_asset :: proc(writer: ^Writer, image_asset: ImageAsset, debug_name :
   if isset(flags, 0) do write_string(writer, image_asset.nm, "nm")
   if isset(flags, 1) do write_string(writer, image_asset.id, "id")
   if isset(flags, 2) do write_string(writer, image_asset.sid, "sid")
-  if isset(flags, 3) do write_uint32(writer, u32(image_asset.w), "w")  
-  if isset(flags, 4) do write_uint32(writer, u32(image_asset.h), "h")  
+  if isset(flags, 3) do write_uint32(writer, u32(image_asset.w), "w")
+  if isset(flags, 4) do write_uint32(writer, u32(image_asset.h), "h")
   if isset(flags, 5) do write_string(writer, image_asset.p, "p")
   if isset(flags, 6) do write_string(writer, image_asset.u, "u")
   if isset(flags, 7) do write_bool(writer, bool(image_asset.e), "e")
@@ -2070,21 +2552,27 @@ write_image_asset :: proc(writer: ^Writer, image_asset: ImageAsset, debug_name :
 
 write_asset :: proc(writer: ^Writer, asset: Asset, debug_name := "asset") {
   switch _ in asset {
-  case PrecompAsset:  write_precomp_asset(writer, asset.(PrecompAsset), debug_name)
-  case ImageAsset:    write_image_asset(writer, asset.(ImageAsset), debug_name)
+  case PrecompAsset:
+    write_precomp_asset(writer, asset.(PrecompAsset), debug_name)
+  case ImageAsset:
+    write_image_asset(writer, asset.(ImageAsset), debug_name)
   }
 }
 
-write_animation :: proc(writer: ^Writer, animation: Animation, debug_name := "animation") {
+write_animation :: proc(
+  writer: ^Writer,
+  animation: Animation,
+  debug_name := "animation",
+) {
   begin_debug_info(writer, debug_name, .meta)
   write_string(writer, animation.nm, "nm")
   write_varint(writer, i128(animation.ver), "ver")
   write_varint(writer, i128(animation.fr), "fr")
   write_varint(writer, i128(animation.ip), "ip")
-  write_varint(writer, i128(animation.op), "op")    
+  write_varint(writer, i128(animation.op), "op")
   write_varint(writer, i128(animation.w), "w")
   write_varint(writer, i128(animation.h), "h")
-  
+
   begin_debug_info(writer, "layers", .meta)
   write_varint(writer, i128(len(animation.layers)))
   for layer in animation.layers {
@@ -2111,12 +2599,22 @@ write_animation :: proc(writer: ^Writer, animation: Animation, debug_name := "an
 
 }
 
-nm_string_shorten_optim_pass :: proc(animation: ^Animation, header: ^Header) -> (ok: bool) {
+nm_string_shorten_optim_pass :: proc(
+  animation: ^Animation,
+  header: ^Header,
+) -> (
+  ok: bool,
+) {
   header.optimization_flags += {.TruncateNmString}
   return true
 }
 
-color_pallete_optim_pass :: proc(animation: ^Animation, header: ^Header) -> (ok: bool) {
+color_pallete_optim_pass :: proc(
+  animation: ^Animation,
+  header: ^Header,
+) -> (
+  ok: bool,
+) {
   PalleteInfo :: struct {
     color: Color4,
     count: int,
@@ -2125,53 +2623,61 @@ color_pallete_optim_pass :: proc(animation: ^Animation, header: ^Header) -> (ok:
   pallete := #soa[PALLETE_MAX]PalleteInfo{}
   cur_pallete_idx := 0
 
-  add_to_pallete :: proc(pallete: ^#soa[PALLETE_MAX]PalleteInfo, cur_len: ^int, color4: Color4) {
+  add_to_pallete :: proc(
+    pallete: ^#soa[PALLETE_MAX]PalleteInfo,
+    cur_len: ^int,
+    color4: Color4,
+  ) {
     found_idx, found := slice.linear_search(pallete.color[:], color4)
     if found {
-      pallete[found_idx].count += 1 
+      pallete[found_idx].count += 1
     } else {
       pallete[cur_len^] = {color4, 1}
       cur_len^ += 1
     }
   }
 
-  process_elem :: proc(elem: GraphicElement, pallete: ^#soa[PALLETE_MAX]PalleteInfo, cur_pallete_idx: ^int) {
+  process_elem :: proc(
+    elem: GraphicElement,
+    pallete: ^#soa[PALLETE_MAX]PalleteInfo,
+    cur_pallete_idx: ^int,
+  ) {
     #partial switch _ in elem {
     case Fill:
-    {
-      fill := elem.(Fill)
-      flags := transmute(Bit64)fill._flags
-      if isset(flags, 4) {
-        if fill_single, ok := fill.c.(PropColorSingle); ok {
-          add_to_pallete(pallete, cur_pallete_idx, fill_single.k)
-        } else if fill_anim, ok := fill.c.(PropColorAnim); ok {
-          for frame in fill_anim.k {
-            add_to_pallete(pallete, cur_pallete_idx, frame.s)              
+      {
+        fill := elem.(Fill)
+        flags := transmute(Bit64)fill._flags
+        if isset(flags, 4) {
+          if fill_single, ok := fill.c.(PropColorSingle); ok {
+            add_to_pallete(pallete, cur_pallete_idx, fill_single.k)
+          } else if fill_anim, ok := fill.c.(PropColorAnim); ok {
+            for frame in fill_anim.k {
+              add_to_pallete(pallete, cur_pallete_idx, frame.s)
+            }
           }
         }
       }
-    }
     case Stroke:
-    {
-      stroke := elem.(Stroke)
-      flags := transmute(Bit64)stroke._flags
-      if isset(flags, 10) {
-        if stroke_single, ok := stroke.c.(PropColorSingle); ok {
-          add_to_pallete(pallete, cur_pallete_idx, stroke_single.k)
-        } else if stroke_anim, ok := stroke.c.(PropColorAnim); ok {
-          for frame in stroke_anim.k {
-            add_to_pallete(pallete, cur_pallete_idx, frame.s)              
+      {
+        stroke := elem.(Stroke)
+        flags := transmute(Bit64)stroke._flags
+        if isset(flags, 10) {
+          if stroke_single, ok := stroke.c.(PropColorSingle); ok {
+            add_to_pallete(pallete, cur_pallete_idx, stroke_single.k)
+          } else if stroke_anim, ok := stroke.c.(PropColorAnim); ok {
+            for frame in stroke_anim.k {
+              add_to_pallete(pallete, cur_pallete_idx, frame.s)
+            }
           }
         }
       }
-    }
     case Group:
-    {
-      group := elem.(Group)
-      for elem_it in group.it {
-        process_elem(elem_it, pallete, cur_pallete_idx)
+      {
+        group := elem.(Group)
+        for elem_it in group.it {
+          process_elem(elem_it, pallete, cur_pallete_idx)
+        }
       }
-    }
     }
   }
 
@@ -2187,7 +2693,7 @@ color_pallete_optim_pass :: proc(animation: ^Animation, header: ^Header) -> (ok:
 
   if len(pallete) < 1 do return false
   // note(iyaan): Need to put the encoded pallete table somewhere
-  // in the header. Serializing the header will come later. This is 
+  // in the header. Serializing the header will come later. This is
   // because information is highly likely to be changed in the optim passes,
   // After all data has been serialized into the bitstream and the optimization
   // passes are complete we can piece the header and data stream together (we can
