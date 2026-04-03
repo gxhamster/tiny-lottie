@@ -1,8 +1,8 @@
 package main
 
-import "core:os"
-import "core:encoding/json"
 import "base:intrinsics"
+import "core:encoding/json"
+import "core:os"
 
 fields :: intrinsics.type_struct_field_count
 
@@ -51,26 +51,26 @@ OptimFlags :: enum {
 
 PALLETE_MAX :: 256
 Header :: struct {
-  magic: string,
+  magic:              string,
   optimization_flags: bit_set[OptimFlags],
-  pallete: [PALLETE_MAX]Color4,
-  pallete_size: int,
-  layer_tbl: []int,  // An index which shows where you can find all the layers
-  layer_tbl_size: int,
+  pallete:            [PALLETE_MAX]Color4,
+  pallete_size:       int,
+  layer_tbl:          []int, // An index which shows where you can find all the layers
+  layer_tbl_size:     int,
 }
 
 Animation :: struct {
-  nm: string,
-  ver: i64,
-  fr: i64,
-  ip: i64,
-  op: i64,
-  w: i64,
-  h: i64,
-  layers: []Layer,
-  assets: []Asset,
+  nm:      string,
+  ver:     i64,
+  fr:      i64,
+  ip:      i64,
+  op:      i64,
+  w:       i64,
+  h:       i64,
+  layers:  []Layer,
+  assets:  []Asset,
   markers: []Marker,
-  // slots: 
+  // slots:
 }
 
 // note(iyaan): The structs that are defined here, are in
@@ -113,7 +113,7 @@ MatteMode :: enum {
 KEYFRAME_EASING_UNION_TAG_SIZE :: size_of(intrinsics.type_union_tag_type(PropKeyframeEasing))
 PropKeyframeEasing :: union {
   PropKeyframeEasingScalar,
-  PropKeyframeEasingVec
+  PropKeyframeEasingVec,
 }
 
 // Properties
@@ -135,27 +135,27 @@ PropScalar :: union {
 
 PROP_SCALAR_SINGLE_FIELDS :: fields(PropScalarSingle) - 1
 PropScalarSingle :: struct {
-  sid: string,
-  a:   bool,
-  k:   f64,
+  sid:    string,
+  a:      bool,
+  k:      f64,
   _flags: u64,
 }
 
 PROP_SCALAR_KEYFRAME_FIELDS :: fields(PropScalarKeyframe) - 1
 PropScalarKeyframe :: struct {
-  t: i64,
-  h: i64,
-  i: PropKeyframeEasing,
-  o: PropKeyframeEasing,
-  s: f64,
+  t:      i64,
+  h:      i64,
+  i:      PropKeyframeEasing,
+  o:      PropKeyframeEasing,
+  s:      f64,
   _flags: u64,
 }
 
 PROP_SCALAR_ANIM_FIELDS :: fields(PropScalarAnim) - 1
 PropScalarAnim :: struct {
-  sid: string,
-  a:   bool,
-  k:   []PropScalarKeyframe,
+  sid:    string,
+  a:      bool,
+  k:      []PropScalarKeyframe,
   _flags: u64,
 }
 
@@ -167,25 +167,25 @@ PropBezier :: union {
 
 PROP_BEZIER_SINGLE_FIELDS :: fields(PropBezierSingle) - 1
 PropBezierSingle :: struct {
-  a: bool,
-  k: BezierShapeValue,
+  a:      bool,
+  k:      BezierShapeValue,
   _flags: u64,
 }
 
 PROP_BEZIER_KEYFRAME_FIELDS :: fields(PropBezierKeyframe) - 1
 PropBezierKeyframe :: struct {
-  t: u64,
-  h: i64,
-  i: PropKeyframeEasing,
-  o: PropKeyframeEasing,
-  s: []BezierShapeValue,
+  t:      u64,
+  h:      i64,
+  i:      PropKeyframeEasing,
+  o:      PropKeyframeEasing,
+  s:      []BezierShapeValue,
   _flags: u64,
 }
 
 PROP_BEZIER_ANIM_FIELDS :: fields(PropBezierAnim) - 1
 PropBezierAnim :: struct {
-  a: bool,
-  k: []PropBezierKeyframe,
+  a:      bool,
+  k:      []PropBezierKeyframe,
   _flags: u64,
 }
 
@@ -197,33 +197,33 @@ PropColor :: union {
 
 PROP_COLOR_SINGLE_FIELDS :: fields(PropColorSingle) - 1
 PropColorSingle :: struct {
-  sid: string,
-  a:   bool,
-  k:   Color4,
+  sid:    string,
+  a:      bool,
+  k:      Color4,
   _flags: u64,
 }
 
 PROP_COLOR_KEYFRAME_FIELDS :: fields(PropColorKeyframe) - 1
 PropColorKeyframe :: struct {
-  t: u64,
-  h: i64,
-  i: PropKeyframeEasing,
-  o: PropKeyframeEasing,
-  s: Color4,
+  t:      u64,
+  h:      i64,
+  i:      PropKeyframeEasing,
+  o:      PropKeyframeEasing,
+  s:      Color4,
   _flags: u64,
 }
 
 PROP_COLOR_ANIM_FIELDS :: fields(PropColorAnim) - 1
 PropColorAnim :: struct {
-  sid: string,
-  a:   bool,
-  k:   []PropColorKeyframe,
+  sid:    string,
+  a:      bool,
+  k:      []PropColorKeyframe,
   _flags: u64,
 }
 
 PropGradient :: struct {
   p: u64,
-  k: GradientStop
+  k: GradientStop,
 }
 
 GradientStop :: union {
@@ -238,17 +238,17 @@ GradientStopSingle :: struct {
 
 PROP_GRADIENT_KEYFRAME_FIELDS :: fields(GradientKeyframe) - 1
 GradientKeyframe :: struct {
-  t: i64,
-  h: i64,
-  i: PropKeyframeEasing,
-  o: PropKeyframeEasing,
-  s: Gradient,
+  t:      i64,
+  h:      i64,
+  i:      PropKeyframeEasing,
+  o:      PropKeyframeEasing,
+  s:      Gradient,
   _flags: u64,
 }
 
 GradientStopAnim :: struct {
   a: bool,
-  k: []GradientKeyframe
+  k: []GradientKeyframe,
 }
 
 PropVector :: union {
@@ -259,30 +259,28 @@ PropVector :: union {
 
 PROP_VECTOR_SINGLE_FIELDS :: fields(PropVectorSingle) - 1
 PropVectorSingle :: struct {
-  sid: string,
-  a:   bool,
-  k:   Vec3,
+  sid:    string,
+  a:      bool,
+  k:      Vec3,
   _flags: u64,
 }
 
 PROP_VECTOR_KEYFRAME_FIELDS :: fields(PropVectorKeyframe) - 1
 PropVectorKeyframe :: struct {
-  t: u64,
-  h: i64,
-  i: PropKeyframeEasing,
-  o: PropKeyframeEasing,
-  s: Vec3,
+  t:      u64,
+  h:      i64,
+  i:      PropKeyframeEasing,
+  o:      PropKeyframeEasing,
+  s:      Vec3,
   _flags: u64,
-
 }
 
 PROP_VECTOR_ANIM_FIELDS :: fields(PropVectorAnim) - 1
 PropVectorAnim :: struct {
-  sid: string,
-  a:   bool,
-  k:   []PropVectorKeyframe,
+  sid:    string,
+  a:      bool,
+  k:      []PropVectorKeyframe,
   _flags: u64,
-
 }
 
 // 2D version of a Vector property
@@ -295,102 +293,102 @@ PropPosition :: union {
 PropPositionSingle :: PropVectorSingle
 PROP_POSITION_KEYFRAME_FIELDS :: fields(PropPositionKeyframe) - 1
 PropPositionKeyframe :: struct {
-  t:  u64,
-  h:  i64,
-  i:  PropKeyframeEasing,
-  o:  PropKeyframeEasing,
-  s:  Vec3,
-  ti: Vec3,
-  to: Vec3,
+  t:      u64,
+  h:      i64,
+  i:      PropKeyframeEasing,
+  o:      PropKeyframeEasing,
+  s:      Vec3,
+  ti:     Vec3,
+  to:     Vec3,
   _flags: u64,
 }
 
 PROP_POSITION_ANIM_FIELDS :: fields(PropPositionAnim) - 1
 PropPositionAnim :: struct {
-  sid: string,
-  a:   bool,
-  k:   []PropPositionKeyframe,
+  sid:    string,
+  a:      bool,
+  k:      []PropPositionKeyframe,
   _flags: u64,
 }
 
 PROP_SPLIT_POSITION_FIELDS :: fields(PropSplitPosition) - 1
 PropSplitPosition :: struct {
-  s: bool,
-  x: PropScalar,
-  y: PropScalar,
+  s:      bool,
+  x:      PropScalar,
+  y:      PropScalar,
   _flags: u64,
 }
 
 // Helpers
 TRANSFORM_FIELDS :: fields(Transform) - 1
 Transform :: struct {
-  a:  PropPosition,
-  p:  PropPosition,
-  r:  PropScalar,
-  s:  PropVector,
-  o:  PropScalar,
-  sk: PropScalar,
-  sa: PropScalar,
+  a:      PropPosition,
+  p:      PropPosition,
+  r:      PropScalar,
+  s:      PropVector,
+  o:      PropScalar,
+  sk:     PropScalar,
+  sa:     PropScalar,
   _flags: u64,
 }
 
 // Shapes
 SHAPE_DIR_ENUM_BITS :: 2
 ShapeDirection :: enum {
-  Normal = 1,
+  Normal   = 1,
   Reversed = 3,
 }
 
 Ellipse :: struct {
-  nm: string,
-  hd: bool,
-  ty: string,
-  d: ShapeDirection,
-  p: PropPosition,
-  s: PropVector,
+  nm:     string,
+  hd:     bool,
+  ty:     string,
+  d:      ShapeDirection,
+  p:      PropPosition,
+  s:      PropVector,
   _flags: u64,
 }
 
 Rectangle :: struct {
-  nm: string,
-  hd: bool,
-  ty: string,
-  d: ShapeDirection,
-  p: PropPosition,
-  s: PropVector,
-  r: PropScalar,
+  nm:     string,
+  hd:     bool,
+  ty:     string,
+  d:      ShapeDirection,
+  p:      PropPosition,
+  s:      PropVector,
+  r:      PropScalar,
   _flags: u64,
 }
 
 PATH_FIELDS :: fields(Path) - 1
 Path :: struct {
-  nm: string,
-  hd: bool,
-  ty: string,
-  d: ShapeDirection,
-  ks: PropBezier,
+  nm:     string,
+  hd:     bool,
+  ty:     string,
+  d:      ShapeDirection,
+  ks:     PropBezier,
   _flags: u64,
 }
 
 STAR_TYPE_BITS :: 2
 StarType :: enum {
-  Star  = 1,
-  Polygon = 2
+  Star    = 1,
+  Polygon = 2,
 }
 
 Polystar :: struct {
-  nm: string,
-  hd: bool,
-  ty: string,
-  d:  ShapeDirection,
-  p:  PropPosition,
-  or: PropScalar,
-  os: PropScalar,
-  r:  PropScalar,
-  pt: PropScalar,
-  sy: StarType,
-  ir: PropScalar,
-  is: PropScalar,
+  nm:     string,
+  hd:     bool,
+  ty:     string,
+  d:      ShapeDirection,
+  p:      PropPosition,
+  or:     PropScalar,
+  os:     PropScalar,
+  r:      PropScalar,
+  pt:     PropScalar,
+  sy:     StarType,
+  ir:     PropScalar,
+  is:     PropScalar,
   _flags: u64,
 }
 
@@ -398,26 +396,26 @@ Polystar :: struct {
 
 GROUP_FIELDS :: fields(Group) - 1
 Group :: struct {
-  nm: string,
-  hd: bool,
-  ty: string,
-  np: i64,
-  it: []GraphicElement,
+  nm:     string,
+  hd:     bool,
+  ty:     string,
+  np:     i64,
+  it:     []GraphicElement,
   _flags: u64,
 }
 
 TRANSFORM_SHAPE_FIELDS :: fields(TransformShape) - 1
 TransformShape :: struct {
-  nm: string,
-  hd: bool,
-  ty: string,
-  a:  PropPosition,
-  p:  PropPosition,
-  r:  PropScalar,
-  s:  PropVector,
-  o:  PropScalar,
-  sk: PropScalar,
-  sa: PropScalar,
+  nm:     string,
+  hd:     bool,
+  ty:     string,
+  a:      PropPosition,
+  p:      PropPosition,
+  r:      PropScalar,
+  s:      PropVector,
+  o:      PropScalar,
+  sk:     PropScalar,
+  sa:     PropScalar,
   _flags: u64,
 }
 
@@ -426,105 +424,105 @@ TransformShape :: struct {
 FILL_RULE_BITS :: 2
 FillRule :: enum {
   NonZero = 1,
-  EvenOdd = 2
+  EvenOdd = 2,
 }
 
 FILL_FIELDS :: fields(Fill) - 1
 Fill :: struct {
-  nm: string,
-  hd: bool,
-  ty: string,
-  o: PropScalar,
-  c: PropColor,
-  r: FillRule,
+  nm:     string,
+  hd:     bool,
+  ty:     string,
+  o:      PropScalar,
+  c:      PropColor,
+  r:      FillRule,
   _flags: u64,
 }
 
 LINE_CAP_BITS :: 2
 LineCap :: enum {
-  Butt = 1,
-  Round = 2,
-  Square = 3
+  Butt   = 1,
+  Round  = 2,
+  Square = 3,
 }
 
 LINE_JOIN_BITS :: 2
 LineJoin :: enum {
   Miter = 1,
   Round = 2,
-  Bevel = 3
+  Bevel = 3,
 }
 
 STROKE_DASH_TYPE_BITS :: 2
 StrokeDashType :: enum {
-  Dash = 'd',
-  Gap = 'g',
-  Offset = 'o'
+  Dash   = 'd',
+  Gap    = 'g',
+  Offset = 'o',
 }
 
 STROKE_DASH_FIELDS :: fields(StrokeDash) - 1
 StrokeDash :: struct {
-  nm: string,
-  n: StrokeDashType,
-  v: PropScalar,
+  nm:     string,
+  n:      StrokeDashType,
+  v:      PropScalar,
   _flags: u64,
 }
 
 STROKE_FIELDS :: fields(Stroke) - 1
 Stroke :: struct {
-  nm: string,
-  hd: bool,
-  ty: string,
-  o: PropScalar,
-  lc: LineCap,
-  lj: LineJoin,
-  ml: i64,
-  ml2: PropScalar,
-  w: PropScalar,
-  d: []StrokeDash,
-  c: PropColor,
+  nm:     string,
+  hd:     bool,
+  ty:     string,
+  o:      PropScalar,
+  lc:     LineCap,
+  lj:     LineJoin,
+  ml:     i64,
+  ml2:    PropScalar,
+  w:      PropScalar,
+  d:      []StrokeDash,
+  c:      PropColor,
   _flags: u64,
 }
 
 GRADIENT_TYPE_BITS :: 2
 GradientType :: enum {
   Linear = 1,
-  Radial = 2
+  Radial = 2,
 }
 
 GRADIENT_FILL_FIELDS :: fields(GradientFill) - 1
 GradientFill :: struct {
-  nm: string,
-  hd: bool,
-  ty: string,
-  o: PropScalar,
-  g: PropGradient,
-  s: PropPosition,
-  e: PropPosition,
-  t: GradientType,
-  h: PropScalar,
-  a: PropScalar,
-  r: FillRule,
+  nm:     string,
+  hd:     bool,
+  ty:     string,
+  o:      PropScalar,
+  g:      PropGradient,
+  s:      PropPosition,
+  e:      PropPosition,
+  t:      GradientType,
+  h:      PropScalar,
+  a:      PropScalar,
+  r:      FillRule,
   _flags: u64,
 }
 
 GRADIENT_STROKE_FIELDS :: fields(GradientStroke) - 1
 GradientStroke :: struct {
-  nm: string,
-  hd: bool,
-  ty: string,
-  o: PropScalar,
-  lc: LineCap,
-  lj: LineJoin,
-  ml: i64,
-  ml2: PropScalar,
-  w: PropScalar,
-  d: []StrokeDash,
-  g: PropGradient,
-  s: PropPosition,
-  e: PropPosition,
-  t: GradientType,
-  h: PropScalar,
-  a: PropScalar,
+  nm:     string,
+  hd:     bool,
+  ty:     string,
+  o:      PropScalar,
+  lc:     LineCap,
+  lj:     LineJoin,
+  ml:     i64,
+  ml2:    PropScalar,
+  w:      PropScalar,
+  d:      []StrokeDash,
+  g:      PropGradient,
+  s:      PropPosition,
+  e:      PropPosition,
+  t:      GradientType,
+  h:      PropScalar,
+  a:      PropScalar,
   _flags: u64,
 }
 
@@ -532,36 +530,36 @@ GradientStroke :: struct {
 
 TRIM_MULTIPLE_SHAPES_BITS :: 2
 TrimMultipleShapes :: enum {
-  Parallel = 1,
-  Sequential = 2
+  Parallel   = 1,
+  Sequential = 2,
 }
 
 TRIM_PATH_FIELDS :: fields(TrimPath) - 1
 TrimPath :: struct {
-  nm: string,
-  hd: bool,
-  ty: string,
-  s: PropScalar,
-  e: PropScalar,
-  o: PropScalar,
-  m: TrimMultipleShapes,
+  nm:     string,
+  hd:     bool,
+  ty:     string,
+  s:      PropScalar,
+  e:      PropScalar,
+  o:      PropScalar,
+  m:      TrimMultipleShapes,
   _flags: u64,
 }
 
 GRAPHIC_ELEM_TYPE_BITS :: 4
 GraphicElemType :: enum {
-  el = 0,  // Ellipse
-  fl = 1,  // Fill
-  gf = 2,  // Gradient Fill
-  gs = 3,  // Gradient Stroke
-  gr = 4,  // Group
-  sh = 5,  // Path
-  sr = 6,  // PolyStar
-  rc = 7,  // Rectangle
-  st = 8,  // Stroke
-  tr = 9,  // Transform Shape
-  tm = 10, // Trim Path
-  Error = -1
+  el    = 0, // Ellipse
+  fl    = 1, // Fill
+  gf    = 2, // Gradient Fill
+  gs    = 3, // Gradient Stroke
+  gr    = 4, // Group
+  sh    = 5, // Path
+  sr    = 6, // PolyStar
+  rc    = 7, // Rectangle
+  st    = 8, // Stroke
+  tr    = 9, // Transform Shape
+  tm    = 10, // Trim Path
+  Error = -1,
 }
 
 GraphicElement :: union {
@@ -575,7 +573,7 @@ GraphicElement :: union {
   Stroke,
   GradientFill,
   GradientStroke,
-  TrimPath
+  TrimPath,
 }
 
 LAYER_TYPE_BITS :: 3
@@ -592,15 +590,15 @@ MaskMode :: enum {
   None      = 'n',
   Add       = 'a',
   Subtract  = 's',
-  Intersect = 'i'
+  Intersect = 'i',
 }
 
-MASK_FIELDS :: fields(Mask) - 1 
+MASK_FIELDS :: fields(Mask) - 1
 Mask :: struct {
-  mode: MaskMode,
-  o: PropScalar,
-  pt: PropBezier,
-  _flags: u64
+  mode:   MaskMode,
+  o:      PropScalar,
+  pt:     PropBezier,
+  _flags: u64,
 }
 
 LAYER_UNION_TAG_SIZE :: size_of(intrinsics.type_union_tag_type(Layer))
@@ -609,103 +607,103 @@ Layer :: union {
   ImageLayer,
   NullLayer,
   SolidLayer,
-  PrecompLayer
+  PrecompLayer,
 }
 
 SHAPE_LAYER_FIELDS :: fields(ShapeLayer) - 1
 ShapeLayer :: struct {
-  nm: string,
-  hd: bool,
-  ty: LayerType,
-  ind: i64,
-  parent: i64,
-  ip: i64,
-  op: i64,
-  ks: Transform,
-  ao: i64,
-  tt: MatteMode,
-  tp: i64,
+  nm:              string,
+  hd:              bool,
+  ty:              LayerType,
+  ind:             i64,
+  parent:          i64,
+  ip:              i64,
+  op:              i64,
+  ks:              Transform,
+  ao:              i64,
+  tt:              MatteMode,
+  tp:              i64,
   masksProperties: []Mask,
-  shapes: []GraphicElement,
-  _flags: u64
+  shapes:          []GraphicElement,
+  _flags:          u64,
 }
 
 IMAGE_LAYER_FIELDS :: fields(ImageLayer) - 1
 ImageLayer :: struct {
-  nm: string,
-  hd: bool,
-  ty: LayerType,
-  ind: i64,
-  parent: i64,
-  ip: i64,
-  op: i64,
-  ks: Transform,
-  ao: i64,
-  tt: MatteMode,
-  tp: i64,
+  nm:              string,
+  hd:              bool,
+  ty:              LayerType,
+  ind:             i64,
+  parent:          i64,
+  ip:              i64,
+  op:              i64,
+  ks:              Transform,
+  ao:              i64,
+  tt:              MatteMode,
+  tp:              i64,
   masksProperties: []Mask,
-  refId: string,
-  _flags: u64
+  refId:           string,
+  _flags:          u64,
 }
 
 NULL_LAYER_FIELDS :: fields(NullLayer) - 1
 NullLayer :: struct {
-  nm: string,
-  hd: bool,
-  ty: LayerType,
-  ind: i64,
-  parent: i64,
-  ip: i64,
-  op: i64,
-  ks: Transform,
-  ao: i64,
-  tt: MatteMode,
-  tp: i64,
+  nm:              string,
+  hd:              bool,
+  ty:              LayerType,
+  ind:             i64,
+  parent:          i64,
+  ip:              i64,
+  op:              i64,
+  ks:              Transform,
+  ao:              i64,
+  tt:              MatteMode,
+  tp:              i64,
   masksProperties: []Mask,
-  _flags: u64
+  _flags:          u64,
 }
 
 SOLID_LAYER_FIELDS :: fields(PrecompLayer) - 1
 SolidLayer :: struct {
-  nm: string,
-  hd: bool,
-  ty: LayerType,
-  ind: i64,
-  parent: i64,
-  ip: i64,
-  op: i64,
-  ks: Transform,
-  ao: i64,
-  tt: MatteMode,
-  tp: i64,
+  nm:              string,
+  hd:              bool,
+  ty:              LayerType,
+  ind:             i64,
+  parent:          i64,
+  ip:              i64,
+  op:              i64,
+  ks:              Transform,
+  ao:              i64,
+  tt:              MatteMode,
+  tp:              i64,
   masksProperties: []Mask,
-  sw: i64,
-  sh: i64,
-  sc: HexColor,
-  _flags: u64,
+  sw:              i64,
+  sh:              i64,
+  sc:              HexColor,
+  _flags:          u64,
 }
 
 PRECOMP_LAYER_FIELDS :: fields(PrecompLayer) - 1
 PrecompLayer :: struct {
-  nm: string,
-  hd: bool,
-  ty: LayerType,
-  ind: i64,
-  parent: i64,
-  ip: i64,
-  op: i64,
-  ks: Transform,
-  ao: i64,
-  tt: MatteMode,
-  tp: i64,
+  nm:              string,
+  hd:              bool,
+  ty:              LayerType,
+  ind:             i64,
+  parent:          i64,
+  ip:              i64,
+  op:              i64,
+  ks:              Transform,
+  ao:              i64,
+  tt:              MatteMode,
+  tp:              i64,
   masksProperties: []Mask,
-  refId: string,
-  w: i64,
-  h: i64,
-  sr: i64,
-  st: i64,
-  tm: PropScalar,
-  _flags: u64
+  refId:           string,
+  w:               i64,
+  h:               i64,
+  sr:              i64,
+  st:              i64,
+  tm:              PropScalar,
+  _flags:          u64,
 }
 
 // Assets
@@ -714,36 +712,36 @@ PrecompLayer :: struct {
 
 Asset :: union {
   PrecompAsset,
-  ImageAsset
+  ImageAsset,
 }
 
 PRECOMP_ASSET_FIELDS :: fields(PrecompAsset) - 1
 PrecompAsset :: struct {
-  nm: string,
-  id: string,
+  nm:     string,
+  id:     string,
   layers: []Layer,
-  _flags: u64
+  _flags: u64,
 }
 
 IMAGE_ASSET_FIELDS :: fields(ImageAsset) - 1
 ImageAsset :: struct {
-  nm: string,
-  id: string,
-  sid: string,
-  w: i64,
-  h: i64,
-  p: string,
-  u: string,
-  e: i64,
-  _flags: u64
+  nm:     string,
+  id:     string,
+  sid:    string,
+  w:      i64,
+  h:      i64,
+  p:      string,
+  u:      string,
+  e:      i64,
+  _flags: u64,
 }
 
 // Marker
 Marker :: struct {
-  cm: string,
-  tm: i64,
-  dr: i64,
-  _flags: u64
+  cm:     string,
+  tm:     i64,
+  dr:     i64,
+  _flags: u64,
 }
 
 JsonLottie :: struct {
