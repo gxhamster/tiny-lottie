@@ -22,6 +22,7 @@ ReaderError :: enum {
   InvalidHex,
   InvalidPalleteIdx,
   InvalidEasingEnum,
+  InvalidPositionUnionTag
 }
 
 Reader :: struct {
@@ -666,4 +667,75 @@ read_prop_scalar :: proc(reader: ^Reader) -> (v: PropScalar, err: ReaderError) {
     vec_single._flags = transmute(u64)flags
     return vec_single, .None
   }
+}
+
+read_prop_position_keyframe :: proc(reader: ^Reader) -> (v: PropPositionKeyframe, err: ReaderError) {
+  flags := read_flags(reader, PROP_POSITION_KEYFRAME_FIELDS) or_return
+  if isset(flags, 0) {
+    t := read_varint(reader) or_return
+    v.t = u64(t)
+  }
+  if isset(flags, 1) {
+    h := read_varint(reader) or_return
+    v.h = i64(h)
+  }
+  if isset(flags, 2) && isset(flags, 3) {
+    p0, p1 := read_easing_curve(reader) or_return
+    v.o = p0
+    v.i = p1 
+  }
+  if isset(flags, 4) {
+    v.s.xy = cast([2]f64)read_vector2(reader) or_return
+  }
+  if isset(flags, 5) {
+    v.ti.xy = cast([2]f64)read_vector2(reader) or_return
+  }
+  if isset(flags, 6) {
+    v.to.xy = cast([2]f64)read_vector2(reader) or_return
+  }
+  v._flags = transmute(u64)flags
+
+  return v, .None
+}
+
+read_prop_position :: proc(reader: ^Reader) -> (v: PropPosition, err: ReaderError) {
+  union_tag, _ := read_bits(reader, PROP_POSITION_UNION_TAG_BITS) or_return
+  position_type := PropPositionUnionTag(union_tag)
+  switch position_type {
+  case .PropPositionSingle:
+    {
+      flags := read_flags(reader, PROP_VECTOR_SINGLE_FIELDS) or_return
+      pos_single := PropPositionSingle{}
+      pos_single._flags = transmute(u64)flags
+      if isset(flags, 0) do pos_single.sid = read_string(reader) or_return
+      pos_single.a = false
+      if isset(flags, 2) do pos_single.k = read_vector3(reader) or_return
+      return pos_single, .None
+    }
+  case .PropPositionAnim:
+    {
+      pos_anim := PropPositionAnim{}
+      flags := read_flags(reader, PROP_POSITION_ANIM_FIELDS) or_return
+      if isset(flags, 0) do pos_anim.sid = read_string(reader) or_return
+      pos_anim.a = true
+      keyframe_len := read_varint(reader) or_return
+      keyframes := make([]PropPositionKeyframe, keyframe_len, reader.allocator)
+      for i in 0..<keyframe_len {
+        keyframes[i] = read_prop_position_keyframe(reader) or_return
+      }
+      pos_anim.k = keyframes[:]
+      pos_anim._flags = transmute(u64)flags
+      return pos_anim, .None
+    }
+  case .PropSplitPosition:
+    {
+      pos_split := PropSplitPosition{}
+      flags := read_flags(reader, PROP_SPLIT_POSITION_FIELDS) or_return
+      if isset(flags, 0) do pos_split.s =  read_bool(reader) or_return
+      if isset(flags, 1) do pos_split.x = read_prop_scalar(reader) or_return
+      if isset(flags, 2) do pos_split.y = read_prop_scalar(reader) or_return
+      pos_split._flags = transmute(u64)flags
+    }    
+  }
+  return v, .InvalidPositionUnionTag
 }

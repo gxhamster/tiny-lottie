@@ -1311,6 +1311,12 @@ write_prop_position_keyframe :: proc(writer: ^Writer, position_keyframe: PropPos
   end_debug_info(writer)
 }
 
+PROP_POSITION_UNION_TAG_BITS :: 2
+PropPositionUnionTag :: enum {
+  PropPositionSingle,
+  PropPositionAnim,
+  PropSplitPosition,
+}
 write_prop_position :: proc(writer: ^Writer, position: PropPosition, debug_name := "prop_position") {
   switch type in position {
   case PropPositionSingle:
@@ -1322,12 +1328,12 @@ write_prop_position :: proc(writer: ^Writer, position: PropPosition, debug_name 
         {offset_of(PropPositionSingle, a), size_of(position_single.a)},
         {offset_of(PropPositionSingle, k), size_of(position_single.k)},
       }
-
       #assert(PROP_VECTOR_SINGLE_FIELDS == len(position_single_offset_tbl), "Not equal")
       temp_struct := position_single
       remove_zero_default_value_optim(&flags, &temp_struct, position_single_offset_tbl)
 
       begin_debug_info(writer, debug_name, .meta)
+      write_bits(writer, int(PropPositionUnionTag.PropPositionSingle), PROP_POSITION_UNION_TAG_BITS)
       write_flags(writer, flags, PROP_VECTOR_SINGLE_FIELDS)
       vec2 := Vec2{position_single.k.x, position_single.k.y}
       if isset(flags, 0) do write_string(writer, position_single.sid, "sid")
@@ -1352,6 +1358,7 @@ write_prop_position :: proc(writer: ^Writer, position: PropPosition, debug_name 
       remove_zero_default_value_optim(&flags, &temp_struct, position_anim_offset_tbl)
 
       begin_debug_info(writer, debug_name, .meta)
+      write_bits(writer, int(PropPositionUnionTag.PropPositionAnim), PROP_POSITION_UNION_TAG_BITS)
       write_flags(writer, flags, PROP_VECTOR_ANIM_FIELDS)
       if isset(flags, 0) do write_string(writer, position_anim.sid, "sid")
       write_varint(writer, i128(len(position_anim.k)))
@@ -1379,6 +1386,7 @@ write_prop_position :: proc(writer: ^Writer, position: PropPosition, debug_name 
       remove_zero_default_value_optim(&flags, &temp_struct, split_position_offset_tbl)
 
       begin_debug_info(writer, debug_name, .meta)
+      write_bits(writer, int(PropPositionUnionTag.PropSplitPosition), PROP_POSITION_UNION_TAG_BITS)
       write_flags(writer, flags, PROP_SPLIT_POSITION_FIELDS)
       write_bool(writer, position_split.s, "s")
       write_prop_scalar(writer, position_split.x, "x")
