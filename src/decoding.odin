@@ -739,3 +739,50 @@ read_prop_position :: proc(reader: ^Reader) -> (v: PropPosition, err: ReaderErro
   }
   return v, .InvalidPositionUnionTag
 }
+
+read_prop_bezier_keyframe :: proc(reader: ^Reader) -> (v: PropBezierKeyframe, err: ReaderError) {
+  flags := read_flags(reader, PROP_BEZIER_KEYFRAME_FIELDS) or_return
+   if isset(flags, 0) {
+    t := read_varint(reader) or_return
+    v.t = u64(t)
+  }
+  if isset(flags, 1) {
+    h := read_varint(reader) or_return
+    v.h = i64(h)
+  }
+  if isset(flags, 2) && isset(flags, 3) {
+    p0, p1 := read_easing_curve(reader) or_return
+    v.o = p0
+    v.i = p1 
+  }
+  bezier_array_len := read_varint(reader) or_return
+  beziers := make([]BezierShapeValue, bezier_array_len, reader.allocator)
+  for idx in 0..<bezier_array_len {
+    beziers[idx] = read_bezier(reader, reader.allocator) or_return
+  }
+  v.s = beziers
+  v._flags = transmute(u64)flags
+
+  return v, .None
+}
+
+read_prop_bezier :: proc(reader: ^Reader) -> (v: PropBezier, err: ReaderError) {
+  #assert(PROP_BEZIER_SINGLE_FIELDS == PROP_BEZIER_ANIM_FIELDS, "why not equal?")
+  flags := read_flags(reader, PROP_BEZIER_SINGLE_FIELDS) or_return
+  if isset(flags, 0) {
+    bezier_anim := PropBezierAnim{}
+    bezier_anim.a = true
+    keyframes_len := read_varint(reader) or_return
+    keyframes := make([]PropBezierKeyframe, keyframes_len, reader.allocator)
+    for idx in 0..<keyframes_len {
+      keyframes[idx] = read_prop_bezier_keyframe(reader) or_return
+    }
+    bezier_anim.k = keyframes
+    return bezier_anim, .None
+  } else {
+    bezier_single := PropBezierSingle{}
+    bezier_single.a = false
+    bezier_single.k = read_bezier(reader) or_return
+    return bezier_single, .None
+  }
+}
