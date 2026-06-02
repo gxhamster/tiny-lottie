@@ -22,6 +22,7 @@ ReaderError :: enum {
   InvalidHex,
   InvalidPalleteIdx,
   InvalidEasingEnum,
+  InvalidPositionUnionTag
 }
 
 Reader :: struct {
@@ -255,6 +256,17 @@ read_bool :: proc(reader: ^Reader) -> (v: bool, err: ReaderError) {
   return bool(bool_val), bool_err
 }
 
+read_string :: proc(reader: ^Reader) -> (v: string, err: ReaderError) {
+  str_size := read_varint(reader) or_return
+  buffer := make_dynamic_array_len([dynamic]u8, str_size, reader.allocator)
+
+  for i in 0..<str_size {
+    b := read_byte(reader) or_return
+    append(&buffer, b)
+  }
+  str := string(buffer[:])
+  return str, .None
+}
 
 read_vector_intern :: proc(reader: ^Reader, vec: ^[$Y]f64) -> (err: ReaderError) {
   vec_flags, vec_err := read_flags(reader, VECTOR_INTERN_FLAG_BITS)
@@ -556,8 +568,221 @@ read_prop_vector_keyframe :: proc(reader: ^Reader) -> (v: PropVectorKeyframe, er
     v.h = i64(h)
   }
   if isset(flags, 2) && isset(flags, 3) {
-
+    p0, p1 := read_easing_curve(reader) or_return
+    v.o = p0
+    v.i = p1
   }
+  if isset(flags, 4) {
+    v.s = read_vector3(reader) or_return
+  }
+  v._flags = transmute(u64)flags
 
   return v, .None
+}
+
+read_prop_vector :: proc(reader: ^Reader) -> (v: PropVector, err: ReaderError) {
+  #assert(PROP_VECTOR_ANIM_FIELDS == PROP_VECTOR_SINGLE_FIELDS, "why not equal?")
+  flags := read_flags(reader, PROP_VECTOR_SINGLE_FIELDS) or_return
+  if isset(flags, 1) {
+    // Animated
+    vec_anim := PropVectorAnim{}
+    if isset(flags, 0) do vec_anim.sid = read_string(reader) or_return
+    vec_anim.a = true
+    keyframe_len := read_varint(reader) or_return
+    keyframes := make([]PropVectorKeyframe, keyframe_len, reader.allocator)
+    for i in 0..<keyframe_len {
+      keyframes[i] = read_prop_vector_keyframe(reader) or_return
+    }
+    vec_anim.k = keyframes[:]
+    vec_anim._flags = transmute(u64)flags
+    return vec_anim, .None
+  } else {
+    // Not-animated
+    vec_single := PropVectorSingle{}
+    truncated_to_vec2 := false
+    if isset(flags, PROP_VECTOR_SINGLE_FIELDS) do truncated_to_vec2 = true 
+    if isset(flags, 0) do vec_single.sid = read_string(reader) or_return
+    vec_single.a = false
+    if truncated_to_vec2 {
+      vec_single.k.xy = cast([2]f64)read_vector2(reader) or_return
+    } else {
+      vec_single.k = read_vector3(reader) or_return
+    }
+    vec_single._flags = transmute(u64)flags
+    return vec_single, .None
+  }
+}
+
+read_scalar_value :: proc(reader: ^Reader) -> (v: f64, err: ReaderError) {
+  scalar := [1]f64{}
+  read_vector_intern(reader, &scalar) or_return
+  return scalar.x, .None
+}
+
+read_prop_scalar_keyframe :: proc(reader: ^Reader) -> (v: PropScalarKeyframe, err: ReaderError) {
+  flags := read_flags(reader, PROP_VECTOR_KEYFRAME_FIELDS) or_return
+  if isset(flags, 0) {
+    t := read_varint(reader) or_return
+    v.t = i64(t)
+  }
+  if isset(flags, 1) {
+    h := read_varint(reader) or_return
+    v.h = i64(h)
+  }
+  if isset(flags, 2) && isset(flags, 3) {
+    p0, p1 := read_easing_curve(reader) or_return
+    v.o = p0
+    v.i = p1
+  }
+  if isset(flags, 4) {
+    v.s = read_scalar_value(reader) or_return
+  }
+  v._flags = transmute(u64)flags
+
+  return v, .None
+}
+
+read_prop_scalar :: proc(reader: ^Reader) -> (v: PropScalar, err: ReaderError) {
+  #assert(PROP_SCALAR_ANIM_FIELDS == PROP_SCALAR_SINGLE_FIELDS, "why not equal?")
+  flags := read_flags(reader, PROP_SCALAR_SINGLE_FIELDS) or_return
+  if isset(flags, 1) {
+    // Animated
+    scalar_anim := PropScalarAnim{}
+    if isset(flags, 0) do scalar_anim.sid = read_string(reader) or_return
+    scalar_anim.a = true
+    keyframe_len := read_varint(reader) or_return
+    keyframes := make([]PropScalarKeyframe, keyframe_len, reader.allocator)
+    for i in 0..<keyframe_len {
+      keyframes[i] = read_prop_scalar_keyframe(reader) or_return
+    }
+    scalar_anim.k = keyframes[:]
+    scalar_anim._flags = transmute(u64)flags
+    return scalar_anim, .None
+  } else {
+    // Not-animated
+    vec_single := PropScalarSingle{}
+    if isset(flags, 0) do vec_single.sid = read_string(reader) or_return
+    vec_single.a = false
+    if isset(flags, 2) do vec_single.k = read_scalar_value(reader) or_return
+    vec_single._flags = transmute(u64)flags
+    return vec_single, .None
+  }
+}
+
+read_prop_position_keyframe :: proc(reader: ^Reader) -> (v: PropPositionKeyframe, err: ReaderError) {
+  flags := read_flags(reader, PROP_POSITION_KEYFRAME_FIELDS) or_return
+  if isset(flags, 0) {
+    t := read_varint(reader) or_return
+    v.t = u64(t)
+  }
+  if isset(flags, 1) {
+    h := read_varint(reader) or_return
+    v.h = i64(h)
+  }
+  if isset(flags, 2) && isset(flags, 3) {
+    p0, p1 := read_easing_curve(reader) or_return
+    v.o = p0
+    v.i = p1 
+  }
+  if isset(flags, 4) {
+    v.s.xy = cast([2]f64)read_vector2(reader) or_return
+  }
+  if isset(flags, 5) {
+    v.ti.xy = cast([2]f64)read_vector2(reader) or_return
+  }
+  if isset(flags, 6) {
+    v.to.xy = cast([2]f64)read_vector2(reader) or_return
+  }
+  v._flags = transmute(u64)flags
+
+  return v, .None
+}
+
+read_prop_position :: proc(reader: ^Reader) -> (v: PropPosition, err: ReaderError) {
+  union_tag, _ := read_bits(reader, PROP_POSITION_UNION_TAG_BITS) or_return
+  position_type := PropPositionUnionTag(union_tag)
+  switch position_type {
+  case .PropPositionSingle:
+    {
+      flags := read_flags(reader, PROP_VECTOR_SINGLE_FIELDS) or_return
+      pos_single := PropPositionSingle{}
+      pos_single._flags = transmute(u64)flags
+      if isset(flags, 0) do pos_single.sid = read_string(reader) or_return
+      pos_single.a = false
+      if isset(flags, 2) do pos_single.k = read_vector3(reader) or_return
+      return pos_single, .None
+    }
+  case .PropPositionAnim:
+    {
+      pos_anim := PropPositionAnim{}
+      flags := read_flags(reader, PROP_POSITION_ANIM_FIELDS) or_return
+      if isset(flags, 0) do pos_anim.sid = read_string(reader) or_return
+      pos_anim.a = true
+      keyframe_len := read_varint(reader) or_return
+      keyframes := make([]PropPositionKeyframe, keyframe_len, reader.allocator)
+      for i in 0..<keyframe_len {
+        keyframes[i] = read_prop_position_keyframe(reader) or_return
+      }
+      pos_anim.k = keyframes[:]
+      pos_anim._flags = transmute(u64)flags
+      return pos_anim, .None
+    }
+  case .PropSplitPosition:
+    {
+      pos_split := PropSplitPosition{}
+      flags := read_flags(reader, PROP_SPLIT_POSITION_FIELDS) or_return
+      if isset(flags, 0) do pos_split.s =  read_bool(reader) or_return
+      if isset(flags, 1) do pos_split.x = read_prop_scalar(reader) or_return
+      if isset(flags, 2) do pos_split.y = read_prop_scalar(reader) or_return
+      pos_split._flags = transmute(u64)flags
+    }    
+  }
+  return v, .InvalidPositionUnionTag
+}
+
+read_prop_bezier_keyframe :: proc(reader: ^Reader) -> (v: PropBezierKeyframe, err: ReaderError) {
+  flags := read_flags(reader, PROP_BEZIER_KEYFRAME_FIELDS) or_return
+   if isset(flags, 0) {
+    t := read_varint(reader) or_return
+    v.t = u64(t)
+  }
+  if isset(flags, 1) {
+    h := read_varint(reader) or_return
+    v.h = i64(h)
+  }
+  if isset(flags, 2) && isset(flags, 3) {
+    p0, p1 := read_easing_curve(reader) or_return
+    v.o = p0
+    v.i = p1 
+  }
+  bezier_array_len := read_varint(reader) or_return
+  beziers := make([]BezierShapeValue, bezier_array_len, reader.allocator)
+  for idx in 0..<bezier_array_len {
+    beziers[idx] = read_bezier(reader, reader.allocator) or_return
+  }
+  v.s = beziers
+  v._flags = transmute(u64)flags
+
+  return v, .None
+}
+
+read_prop_bezier :: proc(reader: ^Reader) -> (v: PropBezier, err: ReaderError) {
+  #assert(PROP_BEZIER_SINGLE_FIELDS == PROP_BEZIER_ANIM_FIELDS, "why not equal?")
+  flags := read_flags(reader, PROP_BEZIER_SINGLE_FIELDS) or_return
+  if isset(flags, 0) {
+    bezier_anim := PropBezierAnim{}
+    bezier_anim.a = true
+    keyframes_len := read_varint(reader) or_return
+    keyframes := make([]PropBezierKeyframe, keyframes_len, reader.allocator)
+    for idx in 0..<keyframes_len {
+      keyframes[idx] = read_prop_bezier_keyframe(reader) or_return
+    }
+    bezier_anim.k = keyframes
+    return bezier_anim, .None
+  } else {
+    bezier_single := PropBezierSingle{}
+    bezier_single.a = false
+    bezier_single.k = read_bezier(reader) or_return
+    return bezier_single, .None
+  }
 }

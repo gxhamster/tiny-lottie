@@ -1055,7 +1055,9 @@ write_prop_vector :: proc(writer: ^Writer, vector: PropVector, debug_name := "pr
       }
 
       begin_debug_info(writer, debug_name, .meta)
-      write_flags(writer, flags, PROP_VECTOR_SINGLE_FIELDS)
+      // note(iyaan): accomodate for the truncate_to_vec2
+      // flag
+      write_flags(writer, flags, PROP_VECTOR_SINGLE_FIELDS + 1)
 
       if isset(flags, 0) do write_string(writer, vector_single.sid, "sid")
       if isset(flags, 1) do write_bool(writer, vector_single.a, "a")
@@ -1182,19 +1184,19 @@ write_prop_scalar :: proc(writer: ^Writer, scalar: PropScalar, debug_name := "pr
   }
 }
 
-EASING_CURVE_PREM_FLAGS_BITS :: 2 // Number of enums must match this bit width. Enough 
-                                  // to hold the EasingCurveFlag_Set
+EASING_CURVE_PREM_FLAGS_BITS :: 2 // Number of enums must match this bit width. Enough
+// to hold the EasingCurveFlag_Set
 EASING_CURVE_ELEM_FLAGS_BITS :: 1
 EasingCurvePremFlag :: enum {
-  IsVector,  // if not set it is a scalar
+  IsVector, // if not set it is a scalar
   IsVector2, // Specify the either vector3 or vector2
 }
 EasingCurveElemFlag :: enum {
-  IsEnum     // if set the curve is represented as enum otherwise
-             // its points are written
+  IsEnum, // if set the curve is represented as enum otherwise
+  // its points are written
 }
-EasingCurveFlagPrem_Set :: bit_set[EasingCurvePremFlag; u64]
-EasingCurveElemFlag_Set :: bit_set[EasingCurveElemFlag; u64]
+EasingCurveFlagPrem_Set :: bit_set[EasingCurvePremFlag;u64]
+EasingCurveElemFlag_Set :: bit_set[EasingCurveElemFlag;u64]
 write_easing_curve :: proc(writer: ^Writer, p0, p1: PropKeyframeEasing) {
   // note(iyaan): if one point is a scalar then the other point
   // also has to be scalar
@@ -1237,12 +1239,12 @@ write_easing_curve :: proc(writer: ^Writer, p0, p1: PropKeyframeEasing) {
 
     write_flags(writer, transmute(Bit64)prem_flags, EASING_CURVE_PREM_FLAGS_BITS)
     for i in 0 ..< vec_length {
-      elem_flags : EasingCurveElemFlag_Set
+      elem_flags: EasingCurveElemFlag_Set
       point0 := Vec2{p0_vector.x[i], p0_vector.y[i]}
       point1 := Vec2{p1_vector.x[i], p1_vector.y[i]}
       easing := cubic_curve_approx(point0, point1)
       if easing != .Error {
-        elem_flags  = {.IsEnum}
+        elem_flags = {.IsEnum}
         write_flags(writer, transmute(Bit64)elem_flags, EASING_CURVE_ELEM_FLAGS_BITS)
         write_enum(writer, u8(easing), EASING_FUNCTION_BITS)
       } else {
@@ -1309,6 +1311,12 @@ write_prop_position_keyframe :: proc(writer: ^Writer, position_keyframe: PropPos
   end_debug_info(writer)
 }
 
+PROP_POSITION_UNION_TAG_BITS :: 2
+PropPositionUnionTag :: enum {
+  PropPositionSingle,
+  PropPositionAnim,
+  PropSplitPosition,
+}
 write_prop_position :: proc(writer: ^Writer, position: PropPosition, debug_name := "prop_position") {
   switch type in position {
   case PropPositionSingle:
@@ -1320,12 +1328,12 @@ write_prop_position :: proc(writer: ^Writer, position: PropPosition, debug_name 
         {offset_of(PropPositionSingle, a), size_of(position_single.a)},
         {offset_of(PropPositionSingle, k), size_of(position_single.k)},
       }
-
       #assert(PROP_VECTOR_SINGLE_FIELDS == len(position_single_offset_tbl), "Not equal")
       temp_struct := position_single
       remove_zero_default_value_optim(&flags, &temp_struct, position_single_offset_tbl)
 
       begin_debug_info(writer, debug_name, .meta)
+      write_bits(writer, int(PropPositionUnionTag.PropPositionSingle), PROP_POSITION_UNION_TAG_BITS)
       write_flags(writer, flags, PROP_VECTOR_SINGLE_FIELDS)
       vec2 := Vec2{position_single.k.x, position_single.k.y}
       if isset(flags, 0) do write_string(writer, position_single.sid, "sid")
@@ -1350,6 +1358,7 @@ write_prop_position :: proc(writer: ^Writer, position: PropPosition, debug_name 
       remove_zero_default_value_optim(&flags, &temp_struct, position_anim_offset_tbl)
 
       begin_debug_info(writer, debug_name, .meta)
+      write_bits(writer, int(PropPositionUnionTag.PropPositionAnim), PROP_POSITION_UNION_TAG_BITS)
       write_flags(writer, flags, PROP_VECTOR_ANIM_FIELDS)
       if isset(flags, 0) do write_string(writer, position_anim.sid, "sid")
       write_varint(writer, i128(len(position_anim.k)))
@@ -1377,6 +1386,7 @@ write_prop_position :: proc(writer: ^Writer, position: PropPosition, debug_name 
       remove_zero_default_value_optim(&flags, &temp_struct, split_position_offset_tbl)
 
       begin_debug_info(writer, debug_name, .meta)
+      write_bits(writer, int(PropPositionUnionTag.PropSplitPosition), PROP_POSITION_UNION_TAG_BITS)
       write_flags(writer, flags, PROP_SPLIT_POSITION_FIELDS)
       write_bool(writer, position_split.s, "s")
       write_prop_scalar(writer, position_split.x, "x")

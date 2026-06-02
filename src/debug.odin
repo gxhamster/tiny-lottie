@@ -4,9 +4,7 @@ import str "core:strings"
 import "core:math/bits"
 import "core:encoding/hex"
 import "core:encoding/endian"
-import "core:log"
 import "core:slice"
-import "core:os"
 
 
 gen_html_alt :: proc(writer: ^Writer, allocator := context.allocator) -> str.Builder {
@@ -403,10 +401,12 @@ INJECTED_HTML_HEADER :: `<!DOCTYPE html>
       text-align: center;
       position: relative;
       padding: 0.5em;
+      min-width: var(--prim-height);
       height: var(--prim-height);
       border: 3px solid var(--flags-border-color);
       background-color: var(--flags-background);
       display: flex;
+      justify-content: center;
       gap: 15px;
       line-height: var(--prim-height);
       font-size: large;
