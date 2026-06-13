@@ -339,6 +339,7 @@ ShapeDirection :: enum {
   Reversed = 3,
 }
 
+ELLIPSE_FIELDS :: fields(Ellipse) - 1
 Ellipse :: struct {
   nm:     string,
   hd:     bool,
@@ -349,6 +350,7 @@ Ellipse :: struct {
   _flags: u64,
 }
 
+RECTANGLE_FIELDS :: fields(Rectangle) - 1
 Rectangle :: struct {
   nm:     string,
   hd:     bool,
@@ -376,6 +378,7 @@ StarType :: enum {
   Polygon = 2,
 }
 
+POLYSTAR_FIELDS :: fields(Polystar) - 1
 Polystar :: struct {
   nm:     string,
   hd:     bool,

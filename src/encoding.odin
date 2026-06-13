@@ -1689,7 +1689,7 @@ conv_graphic_elem_type_to_enum :: proc(str: string) -> GraphicElemType {
 write_ellipse :: proc(writer: ^Writer, ellipse: Ellipse, debug_name := "ellipse") {
   flags := transmute(Bit64)ellipse._flags
   begin_debug_info(writer, debug_name, .meta)
-  write_flags(writer, flags, PATH_FIELDS)
+  write_flags(writer, flags, ELLIPSE_FIELDS)
   if isset(flags, 0) do write_string(writer, ellipse.nm, "nm")
   if isset(flags, 1) do write_bool(writer, ellipse.hd, "hd")
   graphic_elem_type := conv_graphic_elem_type_to_enum(ellipse.ty)
@@ -1704,7 +1704,7 @@ write_ellipse :: proc(writer: ^Writer, ellipse: Ellipse, debug_name := "ellipse"
 write_rectangle :: proc(writer: ^Writer, rect: Rectangle, debug_name := "rectangle") {
   flags := transmute(Bit64)rect._flags
   begin_debug_info(writer, debug_name, .meta)
-  write_flags(writer, flags, PATH_FIELDS)
+  write_flags(writer, flags, RECTANGLE_FIELDS)
   if isset(flags, 0) do write_string(writer, rect.nm, "nm")
   if isset(flags, 1) do write_bool(writer, rect.hd, "hd")
   graphic_elem_type := conv_graphic_elem_type_to_enum(rect.ty)
@@ -1734,7 +1734,7 @@ write_path :: proc(writer: ^Writer, path: Path, debug_name := "path") {
 write_polystar :: proc(writer: ^Writer, star: Polystar, debug_name := "polystar") {
   flags := transmute(Bit64)star._flags
   begin_debug_info(writer, debug_name, .meta)
-  write_flags(writer, flags, PATH_FIELDS)
+  write_flags(writer, flags, POLYSTAR_FIELDS)
   if isset(flags, 0) do write_string(writer, star.nm, "nm")
   if isset(flags, 1) do write_bool(writer, star.hd, "hd")
   graphic_elem_type := conv_graphic_elem_type_to_enum(star.ty)

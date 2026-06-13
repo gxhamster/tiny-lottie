@@ -22,7 +22,7 @@ ReaderError :: enum {
   InvalidHex,
   InvalidPalleteIdx,
   InvalidEasingEnum,
-  InvalidPositionUnionTag
+  InvalidPositionUnionTag,
 }
 
 Reader :: struct {
@@ -260,7 +260,7 @@ read_string :: proc(reader: ^Reader) -> (v: string, err: ReaderError) {
   str_size := read_varint(reader) or_return
   buffer := make_dynamic_array_len([dynamic]u8, str_size, reader.allocator)
 
-  for i in 0..<str_size {
+  for i in 0 ..< str_size {
     b := read_byte(reader) or_return
     append(&buffer, b)
   }
@@ -526,28 +526,40 @@ read_easing_curve_test :: proc(t: ^testing.T) {
   p1 := PropKeyframeEasingScalar{1, 1}
   write_easing_curve(&writer, p0, p1)
 
-  p2 := PropKeyframeEasingVec{x = {0, 0, 0}, y = {0, 0, 0}}
-  p3 := PropKeyframeEasingVec{x = {1, 1, 1}, y = {1, 1, 1}}
+  p2 := PropKeyframeEasingVec {
+    x = {0, 0, 0},
+    y = {0, 0, 0},
+  }
+  p3 := PropKeyframeEasingVec {
+    x = {1, 1, 1},
+    y = {1, 1, 1},
+  }
   write_easing_curve(&writer, p2, p3)
 
   // the vector encoder will probably encode them
   // as f16 instead of full f64. So need to take that
   // into consideration
-  p4 := PropKeyframeEasingVec{x = {0.1, 2, 0}, y = {0.5, 4, 0}}
-  p5 := PropKeyframeEasingVec{x = {7, 0.2, 0}, y = {9, 0.6, 0}}
+  p4 := PropKeyframeEasingVec {
+    x = {0.1, 2, 0},
+    y = {0.5, 4, 0},
+  }
+  p5 := PropKeyframeEasingVec {
+    x = {7, 0.2, 0},
+    y = {9, 0.6, 0},
+  }
   write_easing_curve(&writer, p4, p5)
 
   reader := reader_from_writer(&writer)
   pp0, pp1, e0 := read_easing_curve(&reader)
   testing.expect_value(t, pp0, p0)
   testing.expect_value(t, pp1, p1)
-  
+
   pp2, pp3, e1 := read_easing_curve(&reader)
   testing.expect_value(t, pp2, p2)
   testing.expect_value(t, pp3, p3)
 
   pp4, pp5, e2 := read_easing_curve(&reader)
-  for i in 0..<3 {
+  for i in 0 ..< 3 {
     testing.expect_value(t, f16(pp4.(PropKeyframeEasingVec).x[i]), f16(p4.x[i]))
     testing.expect_value(t, f16(pp4.(PropKeyframeEasingVec).y[i]), f16(p4.y[i]))
     testing.expect_value(t, f16(pp5.(PropKeyframeEasingVec).x[i]), f16(p5.x[i]))
@@ -590,7 +602,7 @@ read_prop_vector :: proc(reader: ^Reader) -> (v: PropVector, err: ReaderError) {
     vec_anim.a = true
     keyframe_len := read_varint(reader) or_return
     keyframes := make([]PropVectorKeyframe, keyframe_len, reader.allocator)
-    for i in 0..<keyframe_len {
+    for i in 0 ..< keyframe_len {
       keyframes[i] = read_prop_vector_keyframe(reader) or_return
     }
     vec_anim.k = keyframes[:]
@@ -600,7 +612,7 @@ read_prop_vector :: proc(reader: ^Reader) -> (v: PropVector, err: ReaderError) {
     // Not-animated
     vec_single := PropVectorSingle{}
     truncated_to_vec2 := false
-    if isset(flags, PROP_VECTOR_SINGLE_FIELDS) do truncated_to_vec2 = true 
+    if isset(flags, PROP_VECTOR_SINGLE_FIELDS) do truncated_to_vec2 = true
     if isset(flags, 0) do vec_single.sid = read_string(reader) or_return
     vec_single.a = false
     if truncated_to_vec2 {
@@ -652,7 +664,7 @@ read_prop_scalar :: proc(reader: ^Reader) -> (v: PropScalar, err: ReaderError) {
     scalar_anim.a = true
     keyframe_len := read_varint(reader) or_return
     keyframes := make([]PropScalarKeyframe, keyframe_len, reader.allocator)
-    for i in 0..<keyframe_len {
+    for i in 0 ..< keyframe_len {
       keyframes[i] = read_prop_scalar_keyframe(reader) or_return
     }
     scalar_anim.k = keyframes[:]
@@ -682,7 +694,7 @@ read_prop_position_keyframe :: proc(reader: ^Reader) -> (v: PropPositionKeyframe
   if isset(flags, 2) && isset(flags, 3) {
     p0, p1 := read_easing_curve(reader) or_return
     v.o = p0
-    v.i = p1 
+    v.i = p1
   }
   if isset(flags, 4) {
     v.s.xy = cast([2]f64)read_vector2(reader) or_return
@@ -720,7 +732,7 @@ read_prop_position :: proc(reader: ^Reader) -> (v: PropPosition, err: ReaderErro
       pos_anim.a = true
       keyframe_len := read_varint(reader) or_return
       keyframes := make([]PropPositionKeyframe, keyframe_len, reader.allocator)
-      for i in 0..<keyframe_len {
+      for i in 0 ..< keyframe_len {
         keyframes[i] = read_prop_position_keyframe(reader) or_return
       }
       pos_anim.k = keyframes[:]
@@ -731,18 +743,18 @@ read_prop_position :: proc(reader: ^Reader) -> (v: PropPosition, err: ReaderErro
     {
       pos_split := PropSplitPosition{}
       flags := read_flags(reader, PROP_SPLIT_POSITION_FIELDS) or_return
-      if isset(flags, 0) do pos_split.s =  read_bool(reader) or_return
+      if isset(flags, 0) do pos_split.s = read_bool(reader) or_return
       if isset(flags, 1) do pos_split.x = read_prop_scalar(reader) or_return
       if isset(flags, 2) do pos_split.y = read_prop_scalar(reader) or_return
       pos_split._flags = transmute(u64)flags
-    }    
+    }
   }
   return v, .InvalidPositionUnionTag
 }
 
 read_prop_bezier_keyframe :: proc(reader: ^Reader) -> (v: PropBezierKeyframe, err: ReaderError) {
   flags := read_flags(reader, PROP_BEZIER_KEYFRAME_FIELDS) or_return
-   if isset(flags, 0) {
+  if isset(flags, 0) {
     t := read_varint(reader) or_return
     v.t = u64(t)
   }
@@ -753,11 +765,11 @@ read_prop_bezier_keyframe :: proc(reader: ^Reader) -> (v: PropBezierKeyframe, er
   if isset(flags, 2) && isset(flags, 3) {
     p0, p1 := read_easing_curve(reader) or_return
     v.o = p0
-    v.i = p1 
+    v.i = p1
   }
   bezier_array_len := read_varint(reader) or_return
   beziers := make([]BezierShapeValue, bezier_array_len, reader.allocator)
-  for idx in 0..<bezier_array_len {
+  for idx in 0 ..< bezier_array_len {
     beziers[idx] = read_bezier(reader, reader.allocator) or_return
   }
   v.s = beziers
@@ -774,15 +786,134 @@ read_prop_bezier :: proc(reader: ^Reader) -> (v: PropBezier, err: ReaderError) {
     bezier_anim.a = true
     keyframes_len := read_varint(reader) or_return
     keyframes := make([]PropBezierKeyframe, keyframes_len, reader.allocator)
-    for idx in 0..<keyframes_len {
+    for idx in 0 ..< keyframes_len {
       keyframes[idx] = read_prop_bezier_keyframe(reader) or_return
     }
     bezier_anim.k = keyframes
+    bezier_anim._flags = transmute(u64)flags
     return bezier_anim, .None
   } else {
     bezier_single := PropBezierSingle{}
     bezier_single.a = false
     bezier_single.k = read_bezier(reader) or_return
+    bezier_single._flags = transmute(u64)flags
     return bezier_single, .None
   }
+}
+
+read_prop_color_keyframe :: proc(reader: ^Reader) -> (v: PropColorKeyframe, err: ReaderError) {
+  flags := read_flags(reader, PROP_COLOR_KEYFRAME_FIELDS) or_return
+  if isset(flags, 0) {
+    t := read_varint(reader) or_return
+    v.t = u64(t)
+  }
+  if isset(flags, 1) {
+    h := read_varint(reader) or_return
+    v.h = i64(h)
+  }
+  if isset(flags, 2) && isset(flags, 3) {
+    p0, p1 := read_easing_curve(reader) or_return
+    v.o = p0
+    v.i = p1
+  }
+
+  v.s = read_color4(reader) or_return
+  v._flags = transmute(u64)flags
+
+  return v, .None
+}
+
+read_prop_color :: proc(reader: ^Reader) -> (v: PropColor, err: ReaderError) {
+  #assert(PROP_COLOR_SINGLE_FIELDS == PROP_COLOR_ANIM_FIELDS, "why not equal?")
+  flags := read_flags(reader, PROP_BEZIER_SINGLE_FIELDS) or_return
+  if isset(flags, 0) {
+    color_anim := PropColorAnim{}
+    color_anim.a = true
+    keyframes_len := read_varint(reader) or_return
+    keyframes := make([]PropColorKeyframe, keyframes_len, reader.allocator)
+    for idx in 0 ..< keyframes_len {
+      keyframes[idx] = read_prop_color_keyframe(reader) or_return
+    }
+    color_anim.k = keyframes
+    color_anim._flags = transmute(u64)flags
+    return color_anim, .None
+  } else {
+    color_single := PropColorSingle{}
+    color_single.a = false
+    color_single.k = read_color4(reader) or_return
+    color_single._flags = transmute(u64)flags
+    return color_single, .None
+  }
+}
+
+read_prop_gradient_keyframe :: proc(reader: ^Reader) -> (v: GradientKeyframe, err: ReaderError) {
+  flags := read_flags(reader, PROP_GRADIENT_KEYFRAME_FIELDS) or_return
+  if isset(flags, 0) {
+    t := read_varint(reader) or_return
+    v.t = i64(t)
+  }
+  if isset(flags, 1) {
+    h := read_varint(reader) or_return
+    v.h = i64(h)
+  }
+  if isset(flags, 2) && isset(flags, 3) {
+    p0, p1 := read_easing_curve(reader) or_return
+    v.o = p0
+    v.i = p1
+  }
+
+  v.s = read_gradient(reader) or_return
+  v._flags = transmute(u64)flags
+
+  return v, .None
+}
+
+read_prop_gradient :: proc(reader: ^Reader) -> (v: PropGradient, err: ReaderError) {
+  p := read_varint(reader) or_return
+  a := read_bool(reader) or_return
+  if a {
+    grad_stop_anim := v.k.(GradientStopAnim)
+    grad_stop_anim.a = a
+    keyframes_len := read_varint(reader) or_return
+    keyframes := make([]GradientKeyframe, keyframes_len, reader.allocator)
+    for idx in 0 ..< keyframes_len {
+      keyframes[idx] = read_prop_gradient_keyframe(reader) or_return
+    }
+    grad_stop_anim.k = keyframes
+    v.p = u64(p)
+    v.k = grad_stop_anim
+    return v, .None
+  } else {
+    grad_stop_single := v.k.(GradientStopSingle)
+    grad_stop_single.a = a
+    grad_stop_single.k = read_gradient(reader) or_return
+    v.p = u64(p)
+    v.k = grad_stop_single
+    return v, .None
+  }
+}
+
+read_transform :: proc(reader: ^Reader) -> (v: Transform, err: ReaderError) {
+  flags := read_flags(reader, TRANSFORM_FIELDS) or_return
+  if isset(flags, 0) do v.a = read_prop_position(reader) or_return
+  if isset(flags, 1) do v.p = read_prop_position(reader) or_return
+  if isset(flags, 2) do v.r = read_prop_scalar(reader) or_return
+  if isset(flags, 3) do v.s = read_prop_vector(reader) or_return
+  if isset(flags, 4) do v.o = read_prop_scalar(reader) or_return
+  if isset(flags, 5) do v.sk = read_prop_scalar(reader) or_return
+  if isset(flags, 6) do v.sa = read_prop_scalar(reader) or_return
+  v._flags = transmute(u64)flags
+  return v, .None
+}
+
+read_ellipse :: proc(reader: ^Reader) -> (v: Ellipse, err: ReaderError) {
+  flags := read_flags(reader, ELLIPSE_FIELDS) or_return
+  if isset(flags, 0) do v.nm = read_string(reader) or_return
+  if isset(flags, 1) do v.hd = read_bool(reader) or_return
+  v.ty = read_enum(reader) or_return
+  if isset(flags, 3) do v.d = read_enum(reader) or_return
+  if isset(flags, 4) do v.p = read_prop_position(reader) or_return
+  if isset(flags, 5) do v.s = read_prop_vector(reader) or_return
+
+  return v, .None
 }
