@@ -551,17 +551,18 @@ TrimPath :: struct {
 
 GRAPHIC_ELEM_TYPE_BITS :: 4
 GraphicElemType :: enum {
-  el    = 0, // Ellipse
-  fl    = 1, // Fill
-  gf    = 2, // Gradient Fill
-  gs    = 3, // Gradient Stroke
-  gr    = 4, // Group
-  sh    = 5, // Path
-  sr    = 6, // PolyStar
-  rc    = 7, // Rectangle
-  st    = 8, // Stroke
-  tr    = 9, // Transform Shape
-  tm    = 10, // Trim Path
+  el = 0, // Ellipse
+  fl = 1, // Fill
+  gf = 2, // Gradient Fill
+  gs = 3, // Gradient Stroke
+  gr = 4, // Group
+  sh = 5, // Path
+  sr = 6, // PolyStar
+  rc = 7, // Rectangle
+  st = 8, // Stroke
+  tr = 9, // Transform Shape
+  tm = 10, // Trim Path
+  Size,
   Error = -1,
 }
 
