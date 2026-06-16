@@ -1043,7 +1043,7 @@ read_polystar :: proc(reader: ^Reader) -> (v: Polystar, err: ReaderError) {
 }
 
 read_group :: proc(reader: ^Reader) -> (v: Group, err: ReaderError) {
-  flags := read_flags(reader, POLYSTAR_FIELDS) or_return
+  flags := read_flags(reader, GROUP_FIELDS) or_return
   if isset(flags, 0) do v.nm = read_string(reader) or_return
   if isset(flags, 1) do v.hd = read_bool(reader) or_return
   ty := read_enum(reader, GRAPHIC_ELEM_TYPE_BITS) or_return
@@ -1061,7 +1061,7 @@ read_group :: proc(reader: ^Reader) -> (v: Group, err: ReaderError) {
 }
 
 read_transform_shape :: proc(reader: ^Reader) -> (v: TransformShape, err: ReaderError) {
-  flags := read_flags(reader, POLYSTAR_FIELDS) or_return
+  flags := read_flags(reader, TRANSFORM_SHAPE_FIELDS) or_return
   if isset(flags, 0) do v.nm = read_string(reader) or_return
   if isset(flags, 1) do v.hd = read_bool(reader) or_return
   ty := read_enum(reader, GRAPHIC_ELEM_TYPE_BITS) or_return
@@ -1080,7 +1080,7 @@ read_transform_shape :: proc(reader: ^Reader) -> (v: TransformShape, err: Reader
 }
 
 read_fill :: proc(reader: ^Reader) -> (v: Fill, err: ReaderError) {
-  flags := read_flags(reader, POLYSTAR_FIELDS) or_return
+  flags := read_flags(reader, FILL_FIELDS) or_return
   if isset(flags, 0) do v.nm = read_string(reader) or_return
   if isset(flags, 1) do v.hd = read_bool(reader) or_return
   ty := read_enum(reader, GRAPHIC_ELEM_TYPE_BITS) or_return
@@ -1100,7 +1100,7 @@ read_fill :: proc(reader: ^Reader) -> (v: Fill, err: ReaderError) {
 }
 
 read_stroke_dash :: proc(reader: ^Reader) -> (v: StrokeDash, err: ReaderError) {
-  flags := read_flags(reader, POLYSTAR_FIELDS) or_return
+  flags := read_flags(reader, STROKE_DASH_FIELDS) or_return
   if isset(flags, 0) do v.nm = read_string(reader) or_return
   if isset(flags, 1) {
     enum_val := read_enum(reader, STROKE_DASH_TYPE_BITS) or_return
@@ -1122,7 +1122,7 @@ read_stroke_dash :: proc(reader: ^Reader) -> (v: StrokeDash, err: ReaderError) {
 }
 
 read_stroke :: proc(reader: ^Reader) -> (v: Stroke, err: ReaderError) {
-  flags := read_flags(reader, POLYSTAR_FIELDS) or_return
+  flags := read_flags(reader, STROKE_FIELDS) or_return
   if isset(flags, 0) do v.nm = read_string(reader) or_return
   if isset(flags, 1) do v.hd = read_bool(reader) or_return
   ty := read_enum(reader, GRAPHIC_ELEM_TYPE_BITS) or_return
@@ -1155,7 +1155,7 @@ read_stroke :: proc(reader: ^Reader) -> (v: Stroke, err: ReaderError) {
 }
 
 read_gradient_fill :: proc(reader: ^Reader) -> (v: GradientFill, err: ReaderError) {
-  flags := read_flags(reader, POLYSTAR_FIELDS) or_return
+  flags := read_flags(reader, GRADIENT_FILL_FIELDS) or_return
   if isset(flags, 0) do v.nm = read_string(reader) or_return
   if isset(flags, 1) do v.hd = read_bool(reader) or_return
   ty := read_enum(reader, GRAPHIC_ELEM_TYPE_BITS) or_return
@@ -1177,7 +1177,7 @@ read_gradient_fill :: proc(reader: ^Reader) -> (v: GradientFill, err: ReaderErro
 }
 
 read_gradient_stroke :: proc(reader: ^Reader) -> (v: GradientStroke, err: ReaderError) {
-  flags := read_flags(reader, POLYSTAR_FIELDS) or_return
+  flags := read_flags(reader, GRADIENT_STROKE_FIELDS) or_return
   if isset(flags, 0) do v.nm = read_string(reader) or_return
   if isset(flags, 1) do v.hd = read_bool(reader) or_return
   ty := read_enum(reader, GRAPHIC_ELEM_TYPE_BITS) or_return
@@ -1204,6 +1204,22 @@ read_gradient_stroke :: proc(reader: ^Reader) -> (v: GradientStroke, err: Reader
   if isset(flags, 13) do v.t = GradientType(read_enum(reader, GRADIENT_TYPE_BITS) or_return)
   if isset(flags, 14) do v.h = read_prop_scalar(reader) or_return
   if isset(flags, 15) do v.a = read_prop_scalar(reader) or_return
+
+  v._flags = transmute(u64)flags
+  return v, .None
+}
+
+read_trim_path :: proc(reader: ^Reader) -> (v: TrimPath, err: ReaderError) {
+  flags := read_flags(reader, TRIM_PATH_FIELDS) or_return
+  if isset(flags, 0) do v.nm = read_string(reader) or_return
+  if isset(flags, 1) do v.hd = read_bool(reader) or_return
+  ty := read_enum(reader, GRAPHIC_ELEM_TYPE_BITS) or_return
+  v.ty = conv_enum_val_to_graphic_elem_type_str(i8(ty)) or_return
+
+  if isset(flags, 3) do v.s = read_prop_scalar(reader) or_return
+  if isset(flags, 4) do v.e = read_prop_scalar(reader) or_return
+  if isset(flags, 5) do v.o = read_prop_scalar(reader) or_return
+  if isset(flags, 6) do v.m = TrimMultipleShapes(read_enum(reader, TRIM_MULTIPLE_SHAPES_BITS) or_return)
 
   v._flags = transmute(u64)flags
   return v, .None
@@ -1246,7 +1262,7 @@ read_graphic_elem :: proc(reader: ^Reader) -> (v: GraphicElement, err: ReaderErr
   case .tr:
     v = read_transform_shape(reader) or_return
   case .tm:
-  // TODO: TrimPath
+    v = read_trim_path(reader) or_return
   case .Size, .Error:
     return v, .InvalidGraphicElemEnum
   case:

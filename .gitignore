@@ -1,3 +1,5 @@
 build/
 
 *.dSYM
+
+node_modules/*
