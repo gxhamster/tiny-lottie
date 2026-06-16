@@ -28,6 +28,7 @@ ReaderError :: enum {
   InvalidShapeDirection,
   InvalidStarType,
   InvalidStrokeDashType,
+  InvalidMaskModeEnum,
 }
 
 Reader :: struct {
@@ -1231,6 +1232,7 @@ read_graphic_elem :: proc(reader: ^Reader) -> (v: GraphicElement, err: ReaderErr
   hd: bool
   ty: u8
   // note(iyaan): Read the fields to get the type of graphic element
+  // TODO: Maybe we can have the encoder encode a tag after the flag for each graphic elem.
   flags := read_flags(reader, POLYSTAR_FIELDS) or_return
   if isset(flags, 0) do nm = read_string(reader) or_return
   if isset(flags, 1) do hd = read_bool(reader) or_return
@@ -1269,5 +1271,180 @@ read_graphic_elem :: proc(reader: ^Reader) -> (v: GraphicElement, err: ReaderErr
     return v, .InvalidGraphicElemEnum
   }
 
+  return v, .None
+}
+
+read_mask :: proc(reader: ^Reader) -> (v: Mask, err: ReaderError) {
+  flags := read_flags(reader, MASK_FIELDS) or_return
+  if isset(flags, 0) {
+    enum_val := read_enum(reader, MASK_MODE_BITS) or_return
+    if enum_val == 0 {
+      v.mode = .None
+    } else if  enum_val == 1 {
+      v.mode = .Add
+    } else if enum_val == 2 {
+      v.mode = .Subtract
+    } else if enum_val == 3 {
+      v.mode = .Intersect
+    } else {
+      return v, .InvalidMaskModeEnum
+    }
+  }
+
+  if isset(flags, 1) do v.o = read_prop_scalar(reader) or_return
+  if isset(flags, 2) do v.pt = read_prop_bezier(reader) or_return
+ 
+  v._flags = transmute(u64)flags
+  return v, .None
+}
+
+read_shape_layer :: proc(reader: ^Reader) -> (v: ShapeLayer, err: ReaderError) {
+  flags := read_flags(reader, SHAPE_LAYER_FIELDS) or_return
+
+  if isset(flags, 0) do v.nm = read_string(reader) or_return
+  if isset(flags, 1) do v.hd = read_bool(reader) or_return
+  if isset(flags, 2) do v.ty = LayerType(read_enum(reader, LAYER_TYPE_BITS) or_return)
+  if isset(flags, 3) do v.ind = i64(read_varint(reader) or_return)
+  if isset(flags, 4) do v.parent = i64(read_varint(reader) or_return)
+  if isset(flags, 5) do v.ip = i64(read_varint(reader) or_return)
+  if isset(flags, 6) do v.op = i64(read_varint(reader) or_return)
+  if isset(flags, 7) do v.ks = read_transform(reader) or_return
+  if isset(flags, 8) do v.ao = i64(read_varint(reader) or_return)
+  if isset(flags, 9) do v.tt = MatteMode(read_enum(reader, MATTE_MODE_BITS) or_return)
+  if isset(flags, 10) do v.tp = i64(read_varint(reader) or_return)
+  
+  if isset(flags, 11) {
+    no_of_masks := read_varint(reader) or_return
+    masks := make([]Mask, no_of_masks, reader.allocator)
+    for i in 0..<no_of_masks {
+      masks[i] = read_mask(reader) or_return
+    }
+  }
+
+  if isset(flags, 12) {
+    no_of_shapes := read_varint(reader) or_return
+    shapes := make([]GraphicElement, no_of_shapes, reader.allocator)
+    for i in 0..<no_of_shapes {
+      shapes[i] = read_graphic_elem(reader) or_return
+    }
+  }
+
+  v._flags = transmute(u64)flags
+  return v, .None
+}
+
+read_image_layer :: proc(reader: ^Reader) -> (v: ImageLayer, err: ReaderError) {
+  flags := read_flags(reader, IMAGE_LAYER_FIELDS) or_return
+  if isset(flags, 0) do v.nm = read_string(reader) or_return
+  if isset(flags, 1) do v.hd = read_bool(reader) or_return
+  if isset(flags, 2) do v.ty = LayerType(read_enum(reader, LAYER_TYPE_BITS) or_return)
+  if isset(flags, 3) do v.ind = i64(read_varint(reader) or_return)
+  if isset(flags, 4) do v.parent = i64(read_varint(reader) or_return)
+  if isset(flags, 5) do v.ip = i64(read_varint(reader) or_return)
+  if isset(flags, 6) do v.op = i64(read_varint(reader) or_return)
+  if isset(flags, 7) do v.ks = read_transform(reader) or_return
+  if isset(flags, 8) do v.ao = i64(read_varint(reader) or_return)
+  if isset(flags, 9) do v.tt = MatteMode(read_enum(reader, MATTE_MODE_BITS) or_return)
+  if isset(flags, 10) do v.tp = i64(read_varint(reader) or_return)
+
+  if isset(flags, 11) {
+    no_of_masks := read_varint(reader) or_return
+    masks := make([]Mask, no_of_masks, reader.allocator)
+    for i in 0..<no_of_masks {
+      masks[i] = read_mask(reader) or_return
+    }
+  }
+
+  if isset(flags, 12) do v.refId = read_string(reader) or_return
+
+  v._flags = transmute(u64)flags
+  return v, .None
+}
+
+read_null_layer :: proc(reader: ^Reader) -> (v: NullLayer, err: ReaderError) {
+  flags := read_flags(reader, NULL_LAYER_FIELDS) or_return
+  if isset(flags, 0) do v.nm = read_string(reader) or_return
+  if isset(flags, 1) do v.hd = read_bool(reader) or_return
+  if isset(flags, 2) do v.ty = LayerType(read_enum(reader, LAYER_TYPE_BITS) or_return)
+  if isset(flags, 3) do v.ind = i64(read_varint(reader) or_return)
+  if isset(flags, 4) do v.parent = i64(read_varint(reader) or_return)
+  if isset(flags, 5) do v.ip = i64(read_varint(reader) or_return)
+  if isset(flags, 6) do v.op = i64(read_varint(reader) or_return)
+  if isset(flags, 7) do v.ks = read_transform(reader) or_return
+  if isset(flags, 8) do v.ao = i64(read_varint(reader) or_return)
+  if isset(flags, 9) do v.tt = MatteMode(read_enum(reader, MATTE_MODE_BITS) or_return)
+  if isset(flags, 10) do v.tp = i64(read_varint(reader) or_return)
+
+  if isset(flags, 11) {
+    no_of_masks := read_varint(reader) or_return
+    masks := make([]Mask, no_of_masks, reader.allocator)
+    for i in 0..<no_of_masks {
+      masks[i] = read_mask(reader) or_return
+    }
+  }
+
+  v._flags = transmute(u64)flags
+  return v, .None
+}
+
+read_solid_layer :: proc(reader: ^Reader) -> (v: SolidLayer, err: ReaderError) {
+  flags := read_flags(reader, SOLID_LAYER_FIELDS) or_return
+  if isset(flags, 0) do v.nm = read_string(reader) or_return
+  if isset(flags, 1) do v.hd = read_bool(reader) or_return
+  if isset(flags, 2) do v.ty = LayerType(read_enum(reader, LAYER_TYPE_BITS) or_return)
+  if isset(flags, 3) do v.ind = i64(read_varint(reader) or_return)
+  if isset(flags, 4) do v.parent = i64(read_varint(reader) or_return)
+  if isset(flags, 5) do v.ip = i64(read_varint(reader) or_return)
+  if isset(flags, 6) do v.op = i64(read_varint(reader) or_return)
+  if isset(flags, 7) do v.ks = read_transform(reader) or_return
+  if isset(flags, 8) do v.ao = i64(read_varint(reader) or_return)
+  if isset(flags, 9) do v.tt = MatteMode(read_enum(reader, MATTE_MODE_BITS) or_return)
+  if isset(flags, 10) do v.tp = i64(read_varint(reader) or_return)
+
+  if isset(flags, 11) {
+    no_of_masks := read_varint(reader) or_return
+    masks := make([]Mask, no_of_masks, reader.allocator)
+    for i in 0..<no_of_masks {
+      masks[i] = read_mask(reader) or_return
+    }
+  }
+
+  if isset(flags, 12) do v.sw = i64(read_varint(reader) or_return)
+  if isset(flags, 13) do v.sh = i64(read_varint(reader) or_return)
+  if isset(flags, 14) do v.sc = read_hexcolor(reader) or_return
+
+  v._flags = transmute(u64)flags
+  return v, .None
+}
+
+read_precomp_layer :: proc(reader: ^Reader) -> (v: PrecompLayer, err: ReaderError) {
+  flags := read_flags(reader, PRECOMP_LAYER_FIELDS) or_return
+  if isset(flags, 0) do v.nm = read_string(reader) or_return
+  if isset(flags, 1) do v.hd = read_bool(reader) or_return
+  if isset(flags, 2) do v.ty = LayerType(read_enum(reader, LAYER_TYPE_BITS) or_return)
+  if isset(flags, 3) do v.ind = i64(read_varint(reader) or_return)
+  if isset(flags, 4) do v.parent = i64(read_varint(reader) or_return)
+  if isset(flags, 5) do v.ip = i64(read_varint(reader) or_return)
+  if isset(flags, 6) do v.op = i64(read_varint(reader) or_return)
+  if isset(flags, 7) do v.ks = read_transform(reader) or_return
+  if isset(flags, 8) do v.ao = i64(read_varint(reader) or_return)
+  if isset(flags, 9) do v.tt = MatteMode(read_enum(reader, MATTE_MODE_BITS) or_return)
+  if isset(flags, 10) do v.tp = i64(read_varint(reader) or_return)
+
+  if isset(flags, 11) {
+    no_of_masks := read_varint(reader) or_return
+    masks := make([]Mask, no_of_masks, reader.allocator)
+    for i in 0..<no_of_masks {
+      masks[i] = read_mask(reader) or_return
+    }
+  }
+
+  if isset(flags, 12) do v.refId = read_string(reader) or_return
+  if isset(flags, 13) do v.w = i64(read_varint(reader) or_return)
+  if isset(flags, 14) do v.h = i64(read_varint(reader) or_return)
+  if isset(flags, 15) do v.sr = i64(read_varint(reader) or_return)
+  if isset(flags, 16) do v.st = i64(read_varint(reader) or_return)
+
+  v._flags = transmute(u64)flags
   return v, .None
 }
