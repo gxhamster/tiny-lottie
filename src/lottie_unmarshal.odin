@@ -258,7 +258,7 @@ _unmarshal_graphic_element_union :: proc(object: json.Object, field_ptr: rawptr)
     _unmarshal_graphic_elem_internal(object, field_ptr, TransformShape) or_return
   case .tm:
     _unmarshal_graphic_elem_internal(object, field_ptr, TrimPath) or_return
-  case .Error:
+  case .Error, .Size:
     fmt.println(graphic_elem_type_str)
     panic("unknown graphic element type")
   }

@@ -2199,12 +2199,15 @@ write_image_asset :: proc(writer: ^Writer, image_asset: ImageAsset, debug_name :
 write_asset :: proc(writer: ^Writer, asset: Asset, debug_name := "asset") {
   switch _ in asset {
   case PrecompAsset:
+    write_enum(writer, u8(AssetType.PrecompAsset), 1)
     write_precomp_asset(writer, asset.(PrecompAsset), debug_name)
   case ImageAsset:
+    write_enum(writer, u8(AssetType.ImageAsset), 1)
     write_image_asset(writer, asset.(ImageAsset), debug_name)
   }
 }
 
+// Top of the hierarchy
 write_animation :: proc(writer: ^Writer, animation: Animation, debug_name := "animation") {
   begin_debug_info(writer, debug_name, .meta)
   write_string(writer, animation.nm, "nm")
@@ -2232,7 +2235,7 @@ write_animation :: proc(writer: ^Writer, animation: Animation, debug_name := "an
   begin_debug_info(writer, "markers", .meta)
   write_varint(writer, i128(len(animation.markers)))
   for marker in animation.markers {
-
+    // TODO: WTH
   }
   end_debug_info(writer)
 

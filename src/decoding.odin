@@ -1,6 +1,5 @@
 package main
 
-import "core:c"
 /* This is the default implementation for the decoder
  * for tiny lottie. In the future I want to make the decoder
  * a separate module so that it can be compiled as different
@@ -29,6 +28,8 @@ ReaderError :: enum {
   InvalidStarType,
   InvalidStrokeDashType,
   InvalidMaskModeEnum,
+  InvalidLayerType,
+  InvalidAssetType,
 }
 
 Reader :: struct {
@@ -1319,6 +1320,7 @@ read_shape_layer :: proc(reader: ^Reader) -> (v: ShapeLayer, err: ReaderError) {
     for i in 0..<no_of_masks {
       masks[i] = read_mask(reader) or_return
     }
+    v.masksProperties = masks
   }
 
   if isset(flags, 12) {
@@ -1327,6 +1329,7 @@ read_shape_layer :: proc(reader: ^Reader) -> (v: ShapeLayer, err: ReaderError) {
     for i in 0..<no_of_shapes {
       shapes[i] = read_graphic_elem(reader) or_return
     }
+    v.shapes = shapes
   }
 
   v._flags = transmute(u64)flags
@@ -1353,6 +1356,7 @@ read_image_layer :: proc(reader: ^Reader) -> (v: ImageLayer, err: ReaderError) {
     for i in 0..<no_of_masks {
       masks[i] = read_mask(reader) or_return
     }
+    v.masksProperties = masks
   }
 
   if isset(flags, 12) do v.refId = read_string(reader) or_return
@@ -1381,6 +1385,8 @@ read_null_layer :: proc(reader: ^Reader) -> (v: NullLayer, err: ReaderError) {
     for i in 0..<no_of_masks {
       masks[i] = read_mask(reader) or_return
     }
+    v.masksProperties = masks
+
   }
 
   v._flags = transmute(u64)flags
@@ -1407,6 +1413,7 @@ read_solid_layer :: proc(reader: ^Reader) -> (v: SolidLayer, err: ReaderError) {
     for i in 0..<no_of_masks {
       masks[i] = read_mask(reader) or_return
     }
+    v.masksProperties = masks
   }
 
   if isset(flags, 12) do v.sw = i64(read_varint(reader) or_return)
@@ -1437,6 +1444,7 @@ read_precomp_layer :: proc(reader: ^Reader) -> (v: PrecompLayer, err: ReaderErro
     for i in 0..<no_of_masks {
       masks[i] = read_mask(reader) or_return
     }
+    v.masksProperties = masks
   }
 
   if isset(flags, 12) do v.refId = read_string(reader) or_return
@@ -1446,5 +1454,111 @@ read_precomp_layer :: proc(reader: ^Reader) -> (v: PrecompLayer, err: ReaderErro
   if isset(flags, 16) do v.st = i64(read_varint(reader) or_return)
 
   v._flags = transmute(u64)flags
+  return v, .None
+}
+
+read_layer :: proc(reader: ^Reader) -> (v: Layer, err: ReaderError) {
+  old_pos, old_bits := reader_get_cur_pos(reader)
+  
+  flags := read_flags(reader, NULL_LAYER_FIELDS) or_return
+  if isset(flags, 0) do read_string(reader) or_return
+  if isset(flags, 1) do read_bool(reader) or_return
+  layer_type := LayerType(read_enum(reader, LAYER_TYPE_BITS) or_return)
+  
+  reader_set_cur_pos(reader, old_pos, old_bits)
+
+  switch layer_type {
+  case .PrecompLayer:
+    v = read_precomp_layer(reader) or_return
+  case .ImageLayer:
+    v = read_image_layer(reader) or_return
+  case .NullLayer:
+    v = read_null_layer(reader) or_return
+  case .SoildLayer:
+    v = read_solid_layer(reader) or_return
+  case .ShapeLayer:
+    v = read_shape_layer(reader) or_return
+  case:
+    return v, .InvalidLayerType
+  }
+  
+  return v, .None
+}
+
+read_precomp_asset :: proc(reader: ^Reader) -> (v: PrecompAsset, err: ReaderError) {
+  flags := read_flags(reader, PRECOMP_ASSET_FIELDS) or_return
+  if isset(flags, 0) do v.nm = read_string(reader) or_return
+  if isset(flags, 1) do v.id = read_string(reader) or_return
+  if isset(flags, 2) {
+    no_of_layers := read_varint(reader) or_return
+    layers := make([]Layer, no_of_layers, reader.allocator)
+    for i in 0..<no_of_layers {
+      layers[i] = read_layer(reader) or_return
+    }
+    v.layers = layers
+  }
+
+  v._flags = transmute(u64)flags
+  return v, .None
+}
+
+read_image_asset :: proc(reader: ^Reader) -> (v: ImageAsset, err: ReaderError) {
+  flags := read_flags(reader, IMAGE_ASSET_FIELDS) or_return
+  if isset(flags, 0) do v.nm = read_string(reader) or_return
+  if isset(flags, 1) do v.id = read_string(reader) or_return
+  if isset(flags, 2) do v.sid = read_string(reader) or_return
+  if isset(flags, 3) do v.w = i64(read_uint32(reader) or_return)
+  if isset(flags, 4) do v.h = i64(read_uint32(reader) or_return)
+  if isset(flags, 5) do v.p = read_string(reader) or_return
+  if isset(flags, 6) do v.u = read_string(reader) or_return
+  if isset(flags, 7) do v.e = i64(read_bool(reader) or_return)
+
+  v._flags = transmute(u64)flags
+  return v, .None
+}
+
+read_asset :: proc(reader: ^Reader) -> (v: Asset, err: ReaderError) {
+  asset_type := AssetType(read_enum(reader, ASSET_TYPE_BITS) or_return)
+  if asset_type == .PrecompAsset {
+    v = read_precomp_asset(reader) or_return
+  } else if  asset_type == .ImageAsset {
+    v = read_image_asset(reader) or_return
+  } else {
+    return v, .InvalidAssetType
+  }
+
+  return v, .None
+}
+
+read_animation :: proc(reader: ^Reader) -> (v: Animation, err: ReaderError) {
+  v.nm = read_string(reader) or_return
+  v.ver = i64(read_varint(reader) or_return)
+  v.fr = i64(read_varint(reader) or_return)
+  v.ip = i64(read_varint(reader) or_return)
+  v.op = i64(read_varint(reader) or_return)
+  v.w = i64(read_varint(reader) or_return)
+  v.h = i64(read_varint(reader) or_return)
+
+  no_of_layers := read_varint(reader) or_return
+  layers := make([]Layer, no_of_layers, reader.allocator)
+  for i in 0..<no_of_layers {
+    layers[i] = read_layer(reader) or_return
+  }
+  v.layers = layers
+
+  no_of_assets := read_varint(reader) or_return
+  assets := make([]Asset, no_of_assets, reader.allocator)
+  for i in 0..<no_of_assets {
+    assets[i] = read_asset(reader) or_return
+  }
+  v.assets = assets
+
+  no_of_markers := read_varint(reader) or_return
+  markers := make([]Marker, no_of_markers, reader.allocator)
+  for i in 0..<no_of_markers {
+    // TODO:
+  }
+  v.markers = markers
+
   return v, .None
 }

@@ -714,6 +714,12 @@ PrecompLayer :: struct {
 // TODO: for the future I hope to support packing all dependent
 // assets of an animation directly into the format
 
+ASSET_TYPE_BITS :: 1
+AssetType :: enum {
+  PrecompAsset = 0,
+  ImageAsset = 1
+}
+
 Asset :: union {
   PrecompAsset,
   ImageAsset,
