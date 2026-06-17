@@ -87,13 +87,14 @@ read_bits :: proc(reader: ^Reader, num_bits: uint) -> (v: u64, read_bits: uint, 
 }
 
 // No allocation variant
-reader_from_writer :: proc(writer: ^Writer) -> Reader {
+reader_from_writer :: proc(writer: ^Writer, allocator := context.allocator) -> Reader {
   reader := Reader{}
   reader.data = writer.data
   reader.end_bits = writer.bits
   reader.end_offset = writer.offset
   reader.cur_bits = 0
   reader.cur_offset = 0
+  reader.allocator = allocator
 
   return reader
 }
@@ -1304,7 +1305,6 @@ read_shape_layer :: proc(reader: ^Reader) -> (v: ShapeLayer, err: ReaderError) {
 
   if isset(flags, 0) do v.nm = read_string(reader) or_return
   if isset(flags, 1) do v.hd = read_bool(reader) or_return
-  if isset(flags, 2) do v.ty = LayerType(read_enum(reader, LAYER_TYPE_BITS) or_return)
   if isset(flags, 3) do v.ind = i64(read_varint(reader) or_return)
   if isset(flags, 4) do v.parent = i64(read_varint(reader) or_return)
   if isset(flags, 5) do v.ip = i64(read_varint(reader) or_return)
@@ -1340,7 +1340,6 @@ read_image_layer :: proc(reader: ^Reader) -> (v: ImageLayer, err: ReaderError) {
   flags := read_flags(reader, IMAGE_LAYER_FIELDS) or_return
   if isset(flags, 0) do v.nm = read_string(reader) or_return
   if isset(flags, 1) do v.hd = read_bool(reader) or_return
-  if isset(flags, 2) do v.ty = LayerType(read_enum(reader, LAYER_TYPE_BITS) or_return)
   if isset(flags, 3) do v.ind = i64(read_varint(reader) or_return)
   if isset(flags, 4) do v.parent = i64(read_varint(reader) or_return)
   if isset(flags, 5) do v.ip = i64(read_varint(reader) or_return)
@@ -1369,7 +1368,6 @@ read_null_layer :: proc(reader: ^Reader) -> (v: NullLayer, err: ReaderError) {
   flags := read_flags(reader, NULL_LAYER_FIELDS) or_return
   if isset(flags, 0) do v.nm = read_string(reader) or_return
   if isset(flags, 1) do v.hd = read_bool(reader) or_return
-  if isset(flags, 2) do v.ty = LayerType(read_enum(reader, LAYER_TYPE_BITS) or_return)
   if isset(flags, 3) do v.ind = i64(read_varint(reader) or_return)
   if isset(flags, 4) do v.parent = i64(read_varint(reader) or_return)
   if isset(flags, 5) do v.ip = i64(read_varint(reader) or_return)
@@ -1397,7 +1395,6 @@ read_solid_layer :: proc(reader: ^Reader) -> (v: SolidLayer, err: ReaderError) {
   flags := read_flags(reader, SOLID_LAYER_FIELDS) or_return
   if isset(flags, 0) do v.nm = read_string(reader) or_return
   if isset(flags, 1) do v.hd = read_bool(reader) or_return
-  if isset(flags, 2) do v.ty = LayerType(read_enum(reader, LAYER_TYPE_BITS) or_return)
   if isset(flags, 3) do v.ind = i64(read_varint(reader) or_return)
   if isset(flags, 4) do v.parent = i64(read_varint(reader) or_return)
   if isset(flags, 5) do v.ip = i64(read_varint(reader) or_return)
@@ -1428,7 +1425,6 @@ read_precomp_layer :: proc(reader: ^Reader) -> (v: PrecompLayer, err: ReaderErro
   flags := read_flags(reader, PRECOMP_LAYER_FIELDS) or_return
   if isset(flags, 0) do v.nm = read_string(reader) or_return
   if isset(flags, 1) do v.hd = read_bool(reader) or_return
-  if isset(flags, 2) do v.ty = LayerType(read_enum(reader, LAYER_TYPE_BITS) or_return)
   if isset(flags, 3) do v.ind = i64(read_varint(reader) or_return)
   if isset(flags, 4) do v.parent = i64(read_varint(reader) or_return)
   if isset(flags, 5) do v.ip = i64(read_varint(reader) or_return)
@@ -1458,26 +1454,29 @@ read_precomp_layer :: proc(reader: ^Reader) -> (v: PrecompLayer, err: ReaderErro
 }
 
 read_layer :: proc(reader: ^Reader) -> (v: Layer, err: ReaderError) {
-  old_pos, old_bits := reader_get_cur_pos(reader)
-  
-  flags := read_flags(reader, NULL_LAYER_FIELDS) or_return
-  if isset(flags, 0) do read_string(reader) or_return
-  if isset(flags, 1) do read_bool(reader) or_return
   layer_type := LayerType(read_enum(reader, LAYER_TYPE_BITS) or_return)
   
-  reader_set_cur_pos(reader, old_pos, old_bits)
-
   switch layer_type {
   case .PrecompLayer:
-    v = read_precomp_layer(reader) or_return
+    v1 := read_precomp_layer(reader) or_return
+    v1.ty = .PrecompLayer
+    v = v1
   case .ImageLayer:
-    v = read_image_layer(reader) or_return
+    v1 := read_image_layer(reader) or_return
+    v1.ty = .ImageLayer
+    v = v1
   case .NullLayer:
-    v = read_null_layer(reader) or_return
+    v1 := read_null_layer(reader) or_return
+    v1.ty = .NullLayer
+    v = v1
   case .SoildLayer:
-    v = read_solid_layer(reader) or_return
+    v1 := read_solid_layer(reader) or_return
+    v1.ty = .SoildLayer
+    v = v1
   case .ShapeLayer:
-    v = read_shape_layer(reader) or_return
+    v1 := read_shape_layer(reader) or_return
+    v1.ty = .ShapeLayer
+    v = v1
   case:
     return v, .InvalidLayerType
   }
@@ -1539,7 +1538,7 @@ read_animation :: proc(reader: ^Reader) -> (v: Animation, err: ReaderError) {
   v.w = i64(read_varint(reader) or_return)
   v.h = i64(read_varint(reader) or_return)
 
-  no_of_layers := read_varint(reader) or_return
+  no_of_layers := i64(read_varint(reader) or_return)
   layers := make([]Layer, no_of_layers, reader.allocator)
   for i in 0..<no_of_layers {
     layers[i] = read_layer(reader) or_return

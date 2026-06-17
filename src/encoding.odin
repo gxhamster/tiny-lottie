@@ -1,5 +1,6 @@
 package main
 
+import "core:crypto/aegis"
 import "base:intrinsics"
 import "base:runtime"
 import "core:encoding/varint"
@@ -1986,11 +1987,17 @@ write_mask :: proc(writer: ^Writer, mask: Mask, debug_name := "mask") {
 write_shape_layer :: proc(writer: ^Writer, shape_layer: ShapeLayer, debug_name := "shape_layer") {
   flags := transmute(Bit64)shape_layer._flags
   begin_debug_info(writer, debug_name, .meta)
+
+  assert(isset(flags, 2) && shape_layer.ty == .ShapeLayer)
+  // note(iyaan): Write the enum first so that the decoder will detect the type of the
+  // layer before reading the flags. Flags is different for layer types, so this is
+  // neccessary
+  write_enum(writer, u8(LayerType.ShapeLayer), LAYER_TYPE_BITS, "ty")
+
   write_flags(writer, flags, SHAPE_LAYER_FIELDS)
 
   if isset(flags, 0) do write_string(writer, shape_layer.nm, "nm")
   if isset(flags, 1) do write_bool(writer, shape_layer.hd, "hd")
-  if isset(flags, 2) do write_enum(writer, u8(shape_layer.ty), LAYER_TYPE_BITS, "ty")
   if isset(flags, 3) do write_varint(writer, i128(shape_layer.ind), "ind")
   if isset(flags, 4) do write_varint(writer, i128(shape_layer.parent), "parent")
   if isset(flags, 5) do write_varint(writer, i128(shape_layer.ip), "ip")
@@ -2024,11 +2031,13 @@ write_shape_layer :: proc(writer: ^Writer, shape_layer: ShapeLayer, debug_name :
 write_image_layer :: proc(writer: ^Writer, image_layer: ImageLayer, debug_name := "image_layer") {
   flags := transmute(Bit64)image_layer._flags
   begin_debug_info(writer, debug_name, .meta)
+  assert(isset(flags, 2) && image_layer.ty == .ImageLayer)
+  write_enum(writer, u8(LayerType.ImageLayer), LAYER_TYPE_BITS, "ty")
+
   write_flags(writer, flags, IMAGE_LAYER_FIELDS)
 
   if isset(flags, 0) do write_string(writer, image_layer.nm, "nm")
   if isset(flags, 1) do write_bool(writer, image_layer.hd, "hd")
-  if isset(flags, 2) do write_enum(writer, u8(image_layer.ty), LAYER_TYPE_BITS, "ty")
   if isset(flags, 3) do write_varint(writer, i128(image_layer.ind), "ind")
   if isset(flags, 4) do write_varint(writer, i128(image_layer.parent), "parent")
   if isset(flags, 5) do write_varint(writer, i128(image_layer.ip), "ip")
@@ -2055,11 +2064,13 @@ write_image_layer :: proc(writer: ^Writer, image_layer: ImageLayer, debug_name :
 write_null_layer :: proc(writer: ^Writer, null_layer: NullLayer, debug_name := "null_layer") {
   flags := transmute(Bit64)null_layer._flags
   begin_debug_info(writer, debug_name, .meta)
+  assert(isset(flags, 2) && null_layer.ty == .NullLayer)
+  write_enum(writer, u8(LayerType.NullLayer), LAYER_TYPE_BITS, "ty")
+
   write_flags(writer, flags, NULL_LAYER_FIELDS)
 
   if isset(flags, 0) do write_string(writer, null_layer.nm, "nm")
   if isset(flags, 1) do write_bool(writer, null_layer.hd, "hd")
-  if isset(flags, 2) do write_enum(writer, u8(null_layer.ty), LAYER_TYPE_BITS, "ty")
   if isset(flags, 3) do write_varint(writer, i128(null_layer.ind), "ind")
   if isset(flags, 4) do write_varint(writer, i128(null_layer.parent), "parent")
   if isset(flags, 5) do write_varint(writer, i128(null_layer.ip), "ip")
@@ -2083,11 +2094,13 @@ write_null_layer :: proc(writer: ^Writer, null_layer: NullLayer, debug_name := "
 write_solid_layer :: proc(writer: ^Writer, solid_layer: SolidLayer, debug_name := "solid_layer") {
   flags := transmute(Bit64)solid_layer._flags
   begin_debug_info(writer, debug_name, .meta)
+  assert(isset(flags, 2) && solid_layer.ty == .SoildLayer)
+  write_enum(writer, u8(LayerType.SoildLayer), LAYER_TYPE_BITS, "ty")
+
   write_flags(writer, flags, SOLID_LAYER_FIELDS)
 
   if isset(flags, 0) do write_string(writer, solid_layer.nm, "nm")
   if isset(flags, 1) do write_bool(writer, solid_layer.hd, "hd")
-  if isset(flags, 2) do write_enum(writer, u8(solid_layer.ty), LAYER_TYPE_BITS, "ty")
   if isset(flags, 3) do write_varint(writer, i128(solid_layer.ind), "ind")
   if isset(flags, 4) do write_varint(writer, i128(solid_layer.parent), "parent")
   if isset(flags, 5) do write_varint(writer, i128(solid_layer.ip), "ip")
@@ -2114,11 +2127,13 @@ write_solid_layer :: proc(writer: ^Writer, solid_layer: SolidLayer, debug_name :
 write_precomp_layer :: proc(writer: ^Writer, precomp_layer: PrecompLayer, debug_name := "precomp_layer") {
   flags := transmute(Bit64)precomp_layer._flags
   begin_debug_info(writer, debug_name, .meta)
+  assert(isset(flags, 2) && precomp_layer.ty == .PrecompLayer)
+  write_enum(writer, u8(LayerType.PrecompLayer), LAYER_TYPE_BITS, "ty")
+  
   write_flags(writer, flags, PRECOMP_LAYER_FIELDS)
 
   if isset(flags, 0) do write_string(writer, precomp_layer.nm, "nm")
   if isset(flags, 1) do write_bool(writer, precomp_layer.hd, "hd")
-  if isset(flags, 2) do write_enum(writer, u8(precomp_layer.ty), LAYER_TYPE_BITS, "ty")
   if isset(flags, 3) do write_varint(writer, i128(precomp_layer.ind), "ind")
   if isset(flags, 4) do write_varint(writer, i128(precomp_layer.parent), "parent")
   if isset(flags, 5) do write_varint(writer, i128(precomp_layer.ip), "ip")

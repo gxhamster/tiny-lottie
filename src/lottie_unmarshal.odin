@@ -11,6 +11,7 @@ import "core:reflect"
 // to take json values and convert them or unmarshal
 // them into lottie structs as best as possible
 
+FLAG_FIELD_IDENTIFIER :: "_flags"
 
 _parse_enum_internal :: proc(value: json.Value, loc := #caller_location) -> (i64, LottieError) {
   #partial switch elem_type in value {
@@ -389,7 +390,7 @@ unmarshal_object :: proc(val: json.Value, p: any, allocator := context.allocator
   for field, idx in fields {
     field_type_as_base := reflect.type_info_base(field.type)
     field_ptr := rawptr(uintptr(p.data) + field.offset)
-    if field.name == "_flags" {
+    if field.name == FLAG_FIELD_IDENTIFIER {
       flags_field_exists = true
       flags_field_ptr = field_ptr
       continue

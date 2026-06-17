@@ -466,6 +466,10 @@ animation_unmarshal_test :: proc(t: ^testing.T) {
   writer_init(&writer, data_len = 1 << 33, allocator = arena_allocator)
   write_animation(&writer, anim)
 
+  fmt.println(len(anim.layers))
+  reader := reader_from_writer(&writer, arena_allocator)
+  anim1, err1 := read_animation(&reader)
+  fmt.println(anim, err1)
 
   // total_bits := 0
   // for d, idx in writer.debug {
@@ -475,7 +479,7 @@ animation_unmarshal_test :: proc(t: ^testing.T) {
   // }
   builder := gen_html(&writer)
   builder_str := strings.to_string(builder)
-  FILE_NAME :: "data.debug"
+  FILE_NAME :: "data.html"
   succ := os.write_entire_file(FILE_NAME, transmute([]u8)builder_str)
   if !succ {
     panic("something went very wrong while file writing") 
