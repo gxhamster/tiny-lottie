@@ -19,7 +19,7 @@
       "name": "Launch (Test Bin)",
       "type": "lldb",
       "request": "launch",
-      "program": "${workspaceRoot}/src.bin",
+      "program": "${workspaceRoot}/src.exe",
       "args": [
       ],
       "cwd": "${workspaceRoot}/"

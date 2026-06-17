@@ -30,6 +30,7 @@ ReaderError :: enum {
   InvalidMaskModeEnum,
   InvalidLayerType,
   InvalidAssetType,
+  NegativeStringSize,
 }
 
 Reader :: struct {
@@ -275,6 +276,11 @@ read_bool :: proc(reader: ^Reader) -> (v: bool, err: ReaderError) {
 
 read_string :: proc(reader: ^Reader) -> (v: string, err: ReaderError) {
   str_size := read_varint(reader) or_return
+  if str_size < 0 {
+    // note(iyaan): The decoder is probably out of sync atp
+    panic("String size negaitve")
+    // return v, .NegativeStringSize
+  }
   buffer := make_dynamic_array_len([dynamic]u8, str_size, reader.allocator)
 
   for i in 0 ..< str_size {
@@ -728,7 +734,7 @@ read_prop_position_keyframe :: proc(reader: ^Reader) -> (v: PropPositionKeyframe
 }
 
 read_prop_position :: proc(reader: ^Reader) -> (v: PropPosition, err: ReaderError) {
-  union_tag, _ := read_bits(reader, PROP_POSITION_UNION_TAG_BITS) or_return
+  union_tag := read_enum(reader, PROP_POSITION_UNION_TAG_BITS) or_return
   position_type := PropPositionUnionTag(union_tag)
   switch position_type {
   case .PropPositionSingle:
@@ -738,7 +744,10 @@ read_prop_position :: proc(reader: ^Reader) -> (v: PropPosition, err: ReaderErro
       pos_single._flags = transmute(u64)flags
       if isset(flags, 0) do pos_single.sid = read_string(reader) or_return
       pos_single.a = false
-      if isset(flags, 2) do pos_single.k = read_vector3(reader) or_return
+      if isset(flags, 2) {
+        vec2 := read_vector2(reader) or_return
+        pos_single.k.xy = vec2.xy
+      }
       return pos_single, .None
     }
   case .PropPositionAnim:
@@ -1055,7 +1064,7 @@ read_group :: proc(reader: ^Reader) -> (v: Group, err: ReaderError) {
 
   graphic_arr_len := u64(read_varint(reader) or_return)
   for i in 0 ..< graphic_arr_len {
-
+    // TODO: Need to write the proper graphic elem
   }
 
   v._flags = transmute(u64)flags

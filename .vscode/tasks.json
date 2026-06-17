@@ -3,7 +3,7 @@
   "tasks": [
     {
       "type": "shell",
-      "command": "odin build src/ -build-mode:test -debug && ${workspaceFolder}/src.bin",
+      "command": "odin build src/ -build-mode:test -debug -define:ODIN_TEST_NAMES=animation_unmarshal_test",
       "label": "Odin Test Build",
       "detail": "Compile all the test procs into an executable",
       "presentation": {

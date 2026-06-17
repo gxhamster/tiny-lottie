@@ -570,7 +570,7 @@ ENUM_DEFAULT_BITS :: size_of(u8) * BYTE_BITS
 write_enum :: proc(writer: ^Writer, e: u8, enum_bits: uint = ENUM_DEFAULT_BITS, debug_name: string = "") {
   // note(iyaan): Lottie does not have any enums that requires
   // more than 1 byte of storage.
-
+  
   begin_debug_info(writer, debug_name, .Enum)
   write_bits(writer, int(e), enum_bits)
   end_debug_info(writer)
@@ -1334,7 +1334,7 @@ write_prop_position :: proc(writer: ^Writer, position: PropPosition, debug_name 
       remove_zero_default_value_optim(&flags, &temp_struct, position_single_offset_tbl)
 
       begin_debug_info(writer, debug_name, .meta)
-      write_bits(writer, int(PropPositionUnionTag.PropPositionSingle), PROP_POSITION_UNION_TAG_BITS)
+      write_enum(writer, u8(PropPositionUnionTag.PropPositionSingle), PROP_POSITION_UNION_TAG_BITS)
       write_flags(writer, flags, PROP_VECTOR_SINGLE_FIELDS)
       vec2 := Vec2{position_single.k.x, position_single.k.y}
       if isset(flags, 0) do write_string(writer, position_single.sid, "sid")
@@ -2129,7 +2129,7 @@ write_precomp_layer :: proc(writer: ^Writer, precomp_layer: PrecompLayer, debug_
   begin_debug_info(writer, debug_name, .meta)
   assert(isset(flags, 2) && precomp_layer.ty == .PrecompLayer)
   write_enum(writer, u8(LayerType.PrecompLayer), LAYER_TYPE_BITS, "ty")
-  
+
   write_flags(writer, flags, PRECOMP_LAYER_FIELDS)
 
   if isset(flags, 0) do write_string(writer, precomp_layer.nm, "nm")

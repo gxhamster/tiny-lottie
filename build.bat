@@ -23,6 +23,13 @@ if "%~1" == "bench" (
     ) else (
         odin build tools\cubic_curve_generator\main.odin -file -show-timings -collection:src=src -out:build\cubic_curve_gen.exe -o:speed
     )
+) else if "%~1" == "bench_decode" (
+    shift /1
+    if "%~1" == "debug" (
+        odin build tools\decoder_benchmark\ -show-timings -collection:src=src -out:build\decoder_benchmark.exe -o:none -debug
+    ) else (
+        odin build tools\decoder_benchmark\ -show-timings -collection:src=src -out:build\decoder_benchmark.exe -o:speed
+    )
 )
 
 

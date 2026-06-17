@@ -439,7 +439,7 @@ animation_unmarshal_test :: proc(t: ^testing.T) {
   arena: vmem.Arena
 	arena_allocator := vmem.arena_allocator(&arena)
 
-  data, ok := os.read_entire_file_from_filename("./data/Fire.json")
+  data, ok := os.read_entire_file_from_filename("./data/dataset/Loader Cat.json")
   
   defer delete(data)
 
