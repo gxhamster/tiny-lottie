@@ -28,4 +28,13 @@ if [[ $1 == "validator" ]]; then
     fi
 fi
 
+if [[ $1 == "bench_decode" ]]; then
+    shift
+    if [[ $1 == "debug" ]]; then
+        odin build tools/decoder_benchmark/ -show-timings -collection:src=src -out:build/decoder_benchmark -o:none -debug
+    else
+        odin build tools/decoder_benchmark/ -show-timings -collection:src=src -out:build/decoder_benchmark -o:speed
+    fi
+fi
+
 

@@ -1,10 +1,10 @@
 package main
 
-import str "core:strings"
-import "core:math/bits"
-import "core:encoding/hex"
 import "core:encoding/endian"
+import "core:encoding/hex"
+import "core:math/bits"
 import "core:slice"
+import str "core:strings"
 
 
 gen_html_alt :: proc(writer: ^Writer, allocator := context.allocator) -> str.Builder {
@@ -25,12 +25,12 @@ gen_html_alt :: proc(writer: ^Writer, allocator := context.allocator) -> str.Bui
       // internal things in it. So need to insert the ending
       // divs
       if info.type == .meta {
-        str.write_string(&builder, "<div class=\"meta_closing\">") 
+        str.write_string(&builder, "<div class=\"meta_closing\">")
         str.write_string(&builder, info.name)
         str.write_string(&builder, " (")
         str.write_int(&builder, cur_idx)
         str.write_string(&builder, ")")
-        str.write_string(&builder, "</div>") 
+        str.write_string(&builder, "</div>")
       }
     }
 
@@ -40,13 +40,13 @@ gen_html_alt :: proc(writer: ^Writer, allocator := context.allocator) -> str.Bui
     for {
       found_idx, found := slice.linear_search_reverse(end_tag_idxs[:], cur_idx)
       if found {
-        str.write_string(&builder, "<div class=\"meta_closing\">") 
+        str.write_string(&builder, "<div class=\"meta_closing\">")
         start_idx := start_tag_idxs[found_idx]
         str.write_string(&builder, infos[start_idx].name)
         str.write_string(&builder, " (")
         str.write_int(&builder, start_idx)
         str.write_string(&builder, ")")
-        str.write_string(&builder, "</div>") 
+        str.write_string(&builder, "</div>")
 
         unordered_remove(&end_tag_idxs, found_idx)
         unordered_remove(&start_tag_idxs, found_idx)
@@ -78,7 +78,7 @@ gen_html :: proc(writer: ^Writer, allocator := context.allocator) -> str.Builder
       // internal things in it. So need to insert the ending
       // divs
       if info.type == .meta {
-        str.write_string(&builder, "</div></div>") 
+        str.write_string(&builder, "</div></div>")
       }
     }
     gen_html_for_info(&builder, info, writer, allocator)
@@ -87,7 +87,7 @@ gen_html :: proc(writer: ^Writer, allocator := context.allocator) -> str.Builder
     for {
       found_idx, found := slice.linear_search(end_tag_idxs[:], cur_idx)
       if found {
-        str.write_string(&builder, "</div></div>") 
+        str.write_string(&builder, "</div></div>")
         unordered_remove(&end_tag_idxs, found_idx)
       } else {
         break
@@ -100,7 +100,14 @@ gen_html :: proc(writer: ^Writer, allocator := context.allocator) -> str.Builder
   return builder
 }
 
-gen_prim_div_tag_for_type :: proc(builder: ^str.Builder, info: DebugInfo, writer: ^Writer, class_name: string, $T: typeid, allocator := context.temp_allocator) {
+gen_prim_div_tag_for_type :: proc(
+  builder: ^str.Builder,
+  info: DebugInfo,
+  writer: ^Writer,
+  class_name: string,
+  $T: typeid,
+  allocator := context.temp_allocator,
+) {
   count := calc_bits_from(info.start_byte, info.end_byte, info.start_bit, info.end_bit)
   str.write_string(builder, "<div class=\"")
   str.write_string(builder, class_name)
@@ -131,7 +138,13 @@ gen_prim_div_tag_for_type :: proc(builder: ^str.Builder, info: DebugInfo, writer
 }
 
 // For types such as varint or strings which have byte sequences
-gen_html_for_byte_sequence_types :: proc(builder: ^str.Builder, info: DebugInfo, writer: ^Writer, class_name: string, allocator := context.temp_allocator) {
+gen_html_for_byte_sequence_types :: proc(
+  builder: ^str.Builder,
+  info: DebugInfo,
+  writer: ^Writer,
+  class_name: string,
+  allocator := context.temp_allocator,
+) {
   count := calc_bits_from(info.start_byte, info.end_byte, info.start_bit, info.end_bit)
   bit_offset := info.start_bit
   str.write_string(builder, "<div class=\"")
@@ -146,16 +159,17 @@ gen_html_for_byte_sequence_types :: proc(builder: ^str.Builder, info: DebugInfo,
     int_val := bits.bitfield_extract_int(ptr^, bit_offset, BYTE_BITS)
     varint_bytes := [?]byte{byte(int_val)}
     hexes := hex.encode(varint_bytes[:], context.temp_allocator)
-    
+
     assert(len(hexes) == 2, "one byte has two hex characters")
     str.write_byte(builder, hexes[0])
     str.write_byte(builder, hexes[1])
-    
+
     if cur_byte < end - 1 do str.write_string(builder, " ")
   }
   str.write_string(builder, "</div>")
 }
 
+// note(iyaan): Btw this would generate the bits in Little Endian
 gen_html_for_enum :: proc(builder: ^str.Builder, info: DebugInfo, writer: ^Writer) {
   ptr := cast(^int)raw_data(writer.data[info.start_byte:])
   enum_bits := calc_bits_from(info.start_byte, info.end_byte, info.start_bit, info.end_bit)
@@ -165,16 +179,16 @@ gen_html_for_enum :: proc(builder: ^str.Builder, info: DebugInfo, writer: ^Write
   str.write_string(builder, " bits\">")
   enum_val := bits.bitfield_extract_int(ptr^, info.start_bit, uint(enum_bits))
   enum_bitset := transmute(Bit64)enum_val
-  for bit in 0..<enum_bits {
+  for bit in 0 ..< enum_bits {
     str.write_string(builder, "<span>")
     if int(bit) in enum_bitset {
-      str.write_int(builder, 1)   
+      str.write_int(builder, 1)
     } else {
-      str.write_int(builder, 0)   
+      str.write_int(builder, 0)
     }
     str.write_string(builder, "</span>")
   }
-  str.write_string(builder, "</div>") 
+  str.write_string(builder, "</div>")
 }
 
 gen_html_for_bool :: proc(builder: ^str.Builder, info: DebugInfo, writer: ^Writer) {
@@ -186,97 +200,118 @@ gen_html_for_bool :: proc(builder: ^str.Builder, info: DebugInfo, writer: ^Write
   str.write_string(builder, " bits\">")
   bool_val := bits.bitfield_extract_u8(ptr^, info.start_bit, uint(bool_bits))
   assert(bool_val == 0 || bool_val == 1, "bool has only two possibiilites")
-  assert(bool_bits == 1, "why is a bool more than 1 bit") 
+  assert(bool_bits == 1, "why is a bool more than 1 bit")
   str.write_int(builder, int(bool_val))
-  str.write_string(builder, "</div>") 
+  str.write_string(builder, "</div>")
 }
 
-gen_html_for_info_alt :: proc(builder: ^str.Builder, info: DebugInfo, writer: ^Writer, debug_count: int, allocator := context.allocator) {
+gen_html_for_info_alt :: proc(
+  builder: ^str.Builder,
+  info: DebugInfo,
+  writer: ^Writer,
+  debug_count: int,
+  allocator := context.allocator,
+) {
   #partial switch info.type {
   case .meta:
-  {
-    // note(iyaan): Wull only change the meta type rendering
-    // others are just the same
+    {
+      // note(iyaan): Wull only change the meta type rendering
+      // others are just the same
 
-    bits := calc_bits_from(info.start_byte, info.end_byte, info.start_bit, info.end_bit)
-    str.write_string(builder, "<div class=\"meta\"")
-    str.write_string(builder, " title=\"")
-    str.write_int(builder, bits)
-    str.write_string(builder, " bits\">")
-    str.write_string(builder, "<span class=\"bit_count\">")
-    str.write_int(builder, bits)
-    str.write_string(builder, " bits</span>")
-    str.write_string(builder, info.name)
-    str.write_string(builder, " (")
-    str.write_int(builder, debug_count)
-    str.write_string(builder, ")")
-    str.write_string(builder, "</div>")
-  }
+      bits := calc_bits_from(info.start_byte, info.end_byte, info.start_bit, info.end_bit)
+      str.write_string(builder, "<div class=\"meta\"")
+      str.write_string(builder, " title=\"")
+      str.write_int(builder, bits)
+      str.write_string(builder, " bits\">")
+      str.write_string(builder, "<span class=\"bit_count\">")
+      str.write_int(builder, bits)
+      str.write_string(builder, " bits</span>")
+      str.write_string(builder, info.name)
+      str.write_string(builder, " (")
+      str.write_int(builder, debug_count)
+      str.write_string(builder, ")")
+      str.write_string(builder, "</div>")
+    }
   case:
     gen_html_for_info(builder, info, writer, allocator)
-  } 
+  }
 }
 
 gen_html_for_info :: proc(builder: ^str.Builder, info: DebugInfo, writer: ^Writer, allocator := context.allocator) {
 
   switch info.type {
   case .meta:
-  {
-    bits := calc_bits_from(info.start_byte, info.end_byte, info.start_bit, info.end_bit)
-    str.write_string(builder, "<div class=\"meta\"")
-    str.write_string(builder, " title=\"")
-    str.write_int(builder, bits)
-    str.write_string(builder, " bits\">")
-    str.write_string(builder, "<div class=\"meta_title\">")
-    str.write_string(builder, "<span>")
-    str.write_string(builder, info.name)
-    str.write_string(builder, "</span>")
-    str.write_string(builder, "<span class=\"bit_count\">")
-    str.write_int(builder, bits)
-    str.write_string(builder, " bits</span>")
-    str.write_string(builder, "</div>")
-    str.write_string(builder, "<div class=\"meta_content\">")
-    // note(iyaan): Remeber that closing </div> needs to be inserted
-    // after all the child debug info has been written
-  }
-  case .flags:
-  {
-    ptr := cast(^int)raw_data(writer.data[info.start_byte:])
-    flag_bits := calc_bits_from(info.start_byte, info.end_byte, info.start_bit, info.end_bit)
-    str.write_string(builder, "<div class=\"flags\"")
-    str.write_string(builder, " title=\"")
-    str.write_int(builder, flag_bits)
-    str.write_string(builder, " bits\">")
-    flags := bits.bitfield_extract_int(ptr^, info.start_bit, uint(flag_bits))
-    flags_bitset := transmute(Bit64)flags
-    for bit in 0..<flag_bits {
-      if int(bit) in flags_bitset {
-        str.write_string(builder, "<span>")
-        str.write_int(builder, 1)   
-        str.write_string(builder, "</span>")
-      } else {
-        str.write_string(builder, "<span>")
-        str.write_int(builder, 0)   
-        str.write_string(builder, "</span>")
-      }
+    {
+      bits := calc_bits_from(info.start_byte, info.end_byte, info.start_bit, info.end_bit)
+      str.write_string(builder, "<div class=\"meta\"")
+      str.write_string(builder, " title=\"")
+      str.write_int(builder, bits)
+      str.write_string(builder, " bits\">")
+      str.write_string(builder, "<div class=\"meta_title\">")
+      str.write_string(builder, "<span>")
+      str.write_string(builder, info.name)
+      str.write_string(builder, "</span>")
+      str.write_string(builder, "<span class=\"bit_count\">")
+      str.write_int(builder, bits)
+      str.write_string(builder, " bits</span>")
+      str.write_string(builder, "</div>")
+      str.write_string(builder, "<div class=\"meta_content\">")
+      // note(iyaan): Remeber that closing </div> needs to be inserted
+      // after all the child debug info has been written
     }
-    str.write_string(builder, "</div>") 
-  }
-  case .f16:    gen_prim_div_tag_for_type(builder, info, writer, "float16", f16)
-  case .f32:    gen_prim_div_tag_for_type(builder, info, writer, "float32", f32)
-  case .f64:    gen_prim_div_tag_for_type(builder, info, writer, "float64", f64)
-  case .i8:     gen_prim_div_tag_for_type(builder, info, writer, "int8", i8)
-  case .i16:    gen_prim_div_tag_for_type(builder, info, writer, "int16", i16)
-  case .i32:    gen_prim_div_tag_for_type(builder, info, writer, "int32", i32)
-  case .i64:    gen_prim_div_tag_for_type(builder, info, writer, "int64", i64)
-  case .u8:     gen_prim_div_tag_for_type(builder, info, writer, "uint8", u8)
-  case .u16:    gen_prim_div_tag_for_type(builder, info, writer, "uint16", u16)
-  case .u32:    gen_prim_div_tag_for_type(builder, info, writer, "uint32", u32)
-  case .u64:    gen_prim_div_tag_for_type(builder, info, writer, "uint64", u64)
-  case .bool:   gen_html_for_bool(builder, info, writer)
-  case .varint: gen_html_for_byte_sequence_types(builder, info, writer, "varint") 
-  case .string: gen_html_for_byte_sequence_types(builder, info, writer, "string") 
-  case .Enum:   gen_html_for_enum(builder, info, writer)
+  case .flags:
+    {
+      ptr := cast(^int)raw_data(writer.data[info.start_byte:])
+      flag_bits := calc_bits_from(info.start_byte, info.end_byte, info.start_bit, info.end_bit)
+      str.write_string(builder, "<div class=\"flags\"")
+      str.write_string(builder, " title=\"")
+      str.write_int(builder, flag_bits)
+      str.write_string(builder, " bits\">")
+      flags := bits.bitfield_extract_int(ptr^, info.start_bit, uint(flag_bits))
+      flags_bitset := transmute(Bit64)flags
+      for bit in 0 ..< flag_bits {
+        if int(bit) in flags_bitset {
+          str.write_string(builder, "<span>")
+          str.write_int(builder, 1)
+          str.write_string(builder, "</span>")
+        } else {
+          str.write_string(builder, "<span>")
+          str.write_int(builder, 0)
+          str.write_string(builder, "</span>")
+        }
+      }
+      str.write_string(builder, "</div>")
+    }
+  case .f16:
+    gen_prim_div_tag_for_type(builder, info, writer, "float16", f16)
+  case .f32:
+    gen_prim_div_tag_for_type(builder, info, writer, "float32", f32)
+  case .f64:
+    gen_prim_div_tag_for_type(builder, info, writer, "float64", f64)
+  case .i8:
+    gen_prim_div_tag_for_type(builder, info, writer, "int8", i8)
+  case .i16:
+    gen_prim_div_tag_for_type(builder, info, writer, "int16", i16)
+  case .i32:
+    gen_prim_div_tag_for_type(builder, info, writer, "int32", i32)
+  case .i64:
+    gen_prim_div_tag_for_type(builder, info, writer, "int64", i64)
+  case .u8:
+    gen_prim_div_tag_for_type(builder, info, writer, "uint8", u8)
+  case .u16:
+    gen_prim_div_tag_for_type(builder, info, writer, "uint16", u16)
+  case .u32:
+    gen_prim_div_tag_for_type(builder, info, writer, "uint32", u32)
+  case .u64:
+    gen_prim_div_tag_for_type(builder, info, writer, "uint64", u64)
+  case .bool:
+    gen_html_for_bool(builder, info, writer)
+  case .varint:
+    gen_html_for_byte_sequence_types(builder, info, writer, "varint")
+  case .string:
+    gen_html_for_byte_sequence_types(builder, info, writer, "string")
+  case .Enum:
+    gen_html_for_enum(builder, info, writer)
   case:
 
   }

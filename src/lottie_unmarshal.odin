@@ -363,6 +363,23 @@ unmarshal_union :: proc(val: json.Value, p: any, allocator := context.allocator)
         }
       }
     }
+  case Asset:
+    {
+      // Asset has no type field so lets check if width and height
+      // are specified for an image asset
+      asset_ptr := transmute(^Asset)ptr
+      if "w" in object && "h" in object {
+        // Image Asset
+        asset_ptr^ = ImageAsset{}
+        asset_any := any{ptr, typeid_of(ImageAsset)}
+        unmarshal_object(object, asset_any, allocator = allocator) or_return
+      } else if "layers" in object {
+        // Precomp Asset
+        asset_ptr^ = PrecompAsset{}
+        asset_any := any{ptr, typeid_of(PrecompAsset)}
+        unmarshal_object(object, asset_any, allocator = allocator) or_return
+      }
+    }
   case:
     log.fatalf("unknown union type encountered %v", p.id)
   }
