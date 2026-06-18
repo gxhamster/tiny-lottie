@@ -2,7 +2,6 @@ package main
 
 import "base:intrinsics"
 import "base:runtime"
-import "core:crypto/aegis"
 import "core:encoding/varint"
 import "core:log"
 import "core:math"
@@ -1057,7 +1056,7 @@ write_prop_vector :: proc(writer: ^Writer, vector: PropVector, debug_name := "pr
 
       begin_debug_info(writer, debug_name, .meta)
       // note(iyaan): accomodate for the truncate_to_vec2
-      // flag
+      // flag. Need to watch for the extra flag in decoder
       write_flags(writer, flags, PROP_VECTOR_SINGLE_FIELDS + 1)
 
       if isset(flags, 0) do write_string(writer, vector_single.sid, "sid")
@@ -1153,7 +1152,6 @@ write_prop_scalar :: proc(writer: ^Writer, scalar: PropScalar, debug_name := "pr
       begin_debug_info(writer, debug_name, .meta)
       write_flags(writer, flags, PROP_SCALAR_SINGLE_FIELDS)
       if isset(flags, 0) do write_string(writer, scalar_single.sid, "sid")
-      if isset(flags, 1) do write_bool(writer, scalar_single.a, "a")
       if isset(flags, 2) do write_scalar_value(writer, scalar_single.k, "k")
       end_debug_info(writer)
     }
@@ -1174,7 +1172,6 @@ write_prop_scalar :: proc(writer: ^Writer, scalar: PropScalar, debug_name := "pr
       begin_debug_info(writer, debug_name, .meta)
       write_flags(writer, flags, PROP_SCALAR_ANIM_FIELDS)
       if isset(flags, 0) do write_string(writer, scalar_anim.sid, "sid")
-      if isset(flags, 1) do write_bool(writer, scalar_anim.a, "a")
 
       write_varint(writer, i128(len(scalar_anim.k)))
       for frame in scalar_anim.k {

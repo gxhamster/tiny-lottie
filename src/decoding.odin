@@ -614,10 +614,13 @@ read_prop_vector_keyframe :: proc(reader: ^Reader) -> (v: PropVectorKeyframe, er
 }
 
 read_prop_vector :: proc(reader: ^Reader) -> (v: PropVector, err: ReaderError) {
-  #assert(PROP_VECTOR_ANIM_FIELDS == PROP_VECTOR_SINGLE_FIELDS, "why not equal?")
+  old_offset, old_bits := reader_get_cur_pos(reader)
   flags := read_flags(reader, PROP_VECTOR_SINGLE_FIELDS) or_return
+  reader_set_cur_pos(reader, old_offset, old_bits)
+
   if isset(flags, 1) {
     // Animated
+    flags := read_flags(reader, PROP_VECTOR_ANIM_FIELDS) or_return
     vec_anim := PropVectorAnim{}
     if isset(flags, 0) do vec_anim.sid = read_string(reader) or_return
     vec_anim.a = true
@@ -631,6 +634,8 @@ read_prop_vector :: proc(reader: ^Reader) -> (v: PropVector, err: ReaderError) {
     return vec_anim, .None
   } else {
     // Not-animated
+    // note(iyaan): +1 is for accomodating the truncate_to_vec2 flag 
+    flags := read_flags(reader, PROP_VECTOR_SINGLE_FIELDS + 1) or_return
     vec_single := PropVectorSingle{}
     truncated_to_vec2 := false
     if isset(flags, PROP_VECTOR_SINGLE_FIELDS) do truncated_to_vec2 = true
