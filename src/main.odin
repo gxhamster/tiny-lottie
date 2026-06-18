@@ -67,11 +67,7 @@ parse_prop_scalar :: proc(
       }
     }
   case:
-    return req_or_err(
-      required,
-      scalar,
-      .IncompatiblePropScalarType,
-    )
+    return req_or_err(required, scalar, .IncompatiblePropScalarType)
   }
 
 }
@@ -128,11 +124,7 @@ parse_prop_vector :: proc(
     }
 
   case:
-    return req_or_err(
-      required,
-      vector_prop,
-      .IncompatibleObjectType,
-    )
+    return req_or_err(required, vector_prop, .IncompatibleObjectType)
   }
 }
 
@@ -199,25 +191,13 @@ parse_prop_color :: proc(
         anim_color_prop.k = keyframes[:]
         return anim_color_prop, .None
       case:
-        return req_or_err(
-          required,
-          color_prop,
-          .IncompatibleArrayType,
-        )
+        return req_or_err(required, color_prop, .IncompatibleArrayType)
       }
     } else {
-      return req_or_err(
-        required,
-        color_prop,
-        .IncompatibleBooleanType,
-      )
+      return req_or_err(required, color_prop, .IncompatibleBooleanType)
     }
   case:
-    return req_or_err(
-      required,
-      color_prop,
-      .IncompatibleObjectType,
-    )
+    return req_or_err(required, color_prop, .IncompatibleObjectType)
   }
 }
 
@@ -231,8 +211,7 @@ parse_bezier_keyframe :: proc(
   err: LottieError,
 ) {
 
-  if err := unmarshal_object(value, bezier_keyframe);
-     err != .None {
+  if err := unmarshal_object(value, bezier_keyframe); err != .None {
     return req_or_err(required, bezier_keyframe, err)
   } else {
     return bezier_keyframe, .None
@@ -282,25 +261,13 @@ parse_prop_bezier :: proc(
         anim_vector.k = keyframes[:]
         return anim_vector, .None
       case:
-        return req_or_err(
-          required,
-          bezier_prop,
-          .IncompatibleArrayType,
-        )
+        return req_or_err(required, bezier_prop, .IncompatibleArrayType)
       }
     } else {
-      return req_or_err(
-        required,
-        bezier_prop,
-        .IncompatibleBooleanType,
-      )
+      return req_or_err(required, bezier_prop, .IncompatibleBooleanType)
     }
   case:
-    return req_or_err(
-      required,
-      bezier_prop,
-      .IncompatibleObjectType,
-    )
+    return req_or_err(required, bezier_prop, .IncompatibleObjectType)
   }
 }
 
@@ -395,14 +362,7 @@ parse_integer :: proc(
 // Some conveninent syntax to allow to use or_return
 // The calling function will not return the error value
 // if the callee function is called as non-required
-req_or_err :: #force_inline proc(
-  required: bool,
-  ret_value: $T,
-  error_type: LottieError,
-) -> (
-  T,
-  LottieError,
-) {
+req_or_err :: #force_inline proc(required: bool, ret_value: $T, error_type: LottieError) -> (T, LottieError) {
   if required {
     return ret_value, error_type
   } else {
@@ -459,23 +419,13 @@ parse_keyframe_easing_vec :: proc(
   case json.Object:
     value_as_obj := value.(json.Object)
 
-    easing_vec.x = parse_value_vector(
-      value_as_obj["x"],
-      true,
-    ) or_return
-    easing_vec.y = parse_value_vector(
-      value_as_obj["y"],
-      true,
-    ) or_return
+    easing_vec.x = parse_value_vector(value_as_obj["x"], true) or_return
+    easing_vec.y = parse_value_vector(value_as_obj["y"], true) or_return
 
     return easing_vec, .None
 
   case:
-    return req_or_err(
-      required,
-      easing_vec,
-      .IncompatibleObjectType,
-    )
+    return req_or_err(required, easing_vec, .IncompatibleObjectType)
 
   }
 }
@@ -495,19 +445,12 @@ parse_keyframe_easing_scalar :: proc(
     required_fields := []string{"x", "y"}
     for field in required_fields {
       if ok := field in value_as_obj; ok == false {
-        return PropKeyframeEasingScalar{},
-          .MissingRequiredValue
+        return PropKeyframeEasingScalar{}, .MissingRequiredValue
       }
     }
 
-    r_keyframe_easing.x = parse_number(
-      value_as_obj["x"],
-      true,
-    ) or_return
-    r_keyframe_easing.x = parse_number(
-      value_as_obj["y"],
-      true,
-    ) or_return
+    r_keyframe_easing.x = parse_number(value_as_obj["x"], true) or_return
+    r_keyframe_easing.x = parse_number(value_as_obj["y"], true) or_return
     return r_keyframe_easing, .None
   case:
     return PropKeyframeEasingScalar{}, .IncompatibleObjectType
@@ -585,22 +528,14 @@ parse_scalar_keyframe :: proc(
 
     scalar_keyframe.t = parse_integer(object["t"]) or_return
     scalar_keyframe.h = parse_integer(object["h"]) or_return
-    scalar_keyframe.i = parse_keyframe_easing_scalar(
-      object["i"],
-    ) or_return
-    scalar_keyframe.o = parse_keyframe_easing_scalar(
-      object["o"],
-    ) or_return
+    scalar_keyframe.i = parse_keyframe_easing_scalar(object["i"]) or_return
+    scalar_keyframe.o = parse_keyframe_easing_scalar(object["o"]) or_return
     scalar_keyframe.s = parse_number(object["s"]) or_return
 
     return scalar_keyframe, .None
 
   case:
-    return req_or_err(
-      required,
-      scalar_keyframe,
-      .IncompatibleObjectType,
-    )
+    return req_or_err(required, scalar_keyframe, .IncompatibleObjectType)
   }
 }
 
@@ -619,22 +554,14 @@ parse_vector_keyframe :: proc(
     object := value.(json.Object)
 
     vec_keyframe.h = parse_integer(object["h"]) or_return
-    vec_keyframe.i = parse_keyframe_easing_vec(
-      object["i"],
-    ) or_return
-    vec_keyframe.o = parse_keyframe_easing_vec(
-      object["o"],
-    ) or_return
+    vec_keyframe.i = parse_keyframe_easing_vec(object["i"]) or_return
+    vec_keyframe.o = parse_keyframe_easing_vec(object["o"]) or_return
     vec_keyframe.s = parse_value_vector(object["s"]) or_return
 
     return vec_keyframe, .None
 
   case:
-    return req_or_err(
-      required,
-      vec_keyframe,
-      .IncompatibleObjectType,
-    )
+    return req_or_err(required, vec_keyframe, .IncompatibleObjectType)
   }
 }
 
@@ -652,12 +579,8 @@ parse_position_keyframe :: proc(
     object := value.(json.Object)
 
     pos_keyframe.h = parse_integer(object["h"]) or_return
-    pos_keyframe.i = parse_keyframe_easing_vec(
-      object["i"],
-    ) or_return
-    pos_keyframe.o = parse_keyframe_easing_vec(
-      object["o"],
-    ) or_return
+    pos_keyframe.i = parse_keyframe_easing_vec(object["i"]) or_return
+    pos_keyframe.o = parse_keyframe_easing_vec(object["o"]) or_return
     pos_keyframe.s = parse_value_vector(object["s"]) or_return
     pos_keyframe.ti = parse_value_vector(object["ti"]) or_return
     pos_keyframe.to = parse_value_vector(object["to"]) or_return
@@ -665,11 +588,7 @@ parse_position_keyframe :: proc(
     return pos_keyframe, .None
 
   case:
-    return req_or_err(
-      required,
-      pos_keyframe,
-      .IncompatibleObjectType,
-    )
+    return req_or_err(required, pos_keyframe, .IncompatibleObjectType)
   }
 }
 
@@ -694,9 +613,7 @@ parse_position :: proc(
       single_pos := PropPositionSingle {
         a = false,
       }
-      single_pos.k = parse_value_vector(
-        position_obj["k"],
-      ) or_return
+      single_pos.k = parse_value_vector(position_obj["k"]) or_return
       return single_pos, .None
     } else {
       position_anim := PropPositionAnim {
@@ -740,7 +657,7 @@ parse_transform :: proc(
 }
 
 read_file_handle :: proc(
-  fd: os.Handle,
+  fd: ^os.File,
   allocator := context.allocator,
   loc := #caller_location,
 ) -> (
@@ -748,11 +665,7 @@ read_file_handle :: proc(
   err: Error,
 ) {
 
-  data.raw = os.read_entire_file_from_handle_or_err(
-    fd,
-    allocator,
-    loc,
-  ) or_return
+  data.raw = os.read_entire_file_from_file(fd, allocator, loc) or_return
   parsed_json, parse_err := json.parse(data.raw)
   if parse_err != nil {
     return JsonLottie{}, parse_err
@@ -774,7 +687,7 @@ read_file_name :: proc(
   err: Error,
 ) {
   context.allocator = allocator
-  fd := os.open(file_name, os.O_RDONLY, 0) or_return
+  fd := os.open(file_name) or_return
   defer os.close(fd)
   return read_file_handle(fd, allocator, loc)
 }
@@ -794,10 +707,7 @@ main :: proc() {
       log.destroy_console_logger(logger, allocator = tracking_allocator)
 
       if len(track.allocation_map) > 0 {
-        fmt.eprintf(
-          "=== %v allocations not freed: ===\n",
-          len(track.allocation_map),
-        )
+        fmt.eprintf("=== %v allocations not freed: ===\n", len(track.allocation_map))
         for _, entry in track.allocation_map {
           fmt.eprintf("- %v bytes @ %v\n", entry.size, entry.location)
         }
@@ -828,10 +738,7 @@ main :: proc() {
   }
 
 
-  lottie_struct, err := read_file_name(
-    "../data/Fire.json",
-    context.allocator,
-  )
+  lottie_struct, err := read_file_name("../data/Fire.json", context.allocator)
   if err != nil && err != LottieError.None {
     fmt.eprintf("Could not read lottie json file due to %s\n", err)
     panic("Could not read lottie json file")

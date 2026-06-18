@@ -1,8 +1,8 @@
 package main
 
-import "core:crypto/aegis"
 import "base:intrinsics"
 import "base:runtime"
+import "core:crypto/aegis"
 import "core:encoding/varint"
 import "core:log"
 import "core:math"
@@ -1359,7 +1359,7 @@ write_prop_position :: proc(writer: ^Writer, position: PropPosition, debug_name 
       remove_zero_default_value_optim(&flags, &temp_struct, position_anim_offset_tbl)
 
       begin_debug_info(writer, debug_name, .meta)
-      write_bits(writer, int(PropPositionUnionTag.PropPositionAnim), PROP_POSITION_UNION_TAG_BITS)
+      write_enum(writer, u8(PropPositionUnionTag.PropPositionAnim), PROP_POSITION_UNION_TAG_BITS)
       write_flags(writer, flags, PROP_VECTOR_ANIM_FIELDS)
       if isset(flags, 0) do write_string(writer, position_anim.sid, "sid")
       write_varint(writer, i128(len(position_anim.k)))
@@ -1387,7 +1387,7 @@ write_prop_position :: proc(writer: ^Writer, position: PropPosition, debug_name 
       remove_zero_default_value_optim(&flags, &temp_struct, split_position_offset_tbl)
 
       begin_debug_info(writer, debug_name, .meta)
-      write_bits(writer, int(PropPositionUnionTag.PropSplitPosition), PROP_POSITION_UNION_TAG_BITS)
+      write_enum(writer, u8(PropPositionUnionTag.PropSplitPosition), PROP_POSITION_UNION_TAG_BITS)
       write_flags(writer, flags, PROP_SPLIT_POSITION_FIELDS)
       write_bool(writer, position_split.s, "s")
       write_prop_scalar(writer, position_split.x, "x")
@@ -1690,11 +1690,10 @@ conv_graphic_elem_type_to_enum :: proc(str: string) -> GraphicElemType {
 write_ellipse :: proc(writer: ^Writer, ellipse: Ellipse, debug_name := "ellipse") {
   flags := transmute(Bit64)ellipse._flags
   begin_debug_info(writer, debug_name, .meta)
+  write_enum(writer, u8(GraphicElemType.el), GRAPHIC_ELEM_TYPE_BITS, "ty")
   write_flags(writer, flags, ELLIPSE_FIELDS)
   if isset(flags, 0) do write_string(writer, ellipse.nm, "nm")
   if isset(flags, 1) do write_bool(writer, ellipse.hd, "hd")
-  graphic_elem_type := conv_graphic_elem_type_to_enum(ellipse.ty)
-  write_enum(writer, u8(graphic_elem_type), GRAPHIC_ELEM_TYPE_BITS, "ty")
 
   if isset(flags, 3) do write_enum(writer, u8(ellipse.d), SHAPE_DIR_ENUM_BITS, "d")
   if isset(flags, 4) do write_prop_position(writer, ellipse.p, "p")
@@ -1705,12 +1704,10 @@ write_ellipse :: proc(writer: ^Writer, ellipse: Ellipse, debug_name := "ellipse"
 write_rectangle :: proc(writer: ^Writer, rect: Rectangle, debug_name := "rectangle") {
   flags := transmute(Bit64)rect._flags
   begin_debug_info(writer, debug_name, .meta)
+  write_enum(writer, u8(GraphicElemType.rc), GRAPHIC_ELEM_TYPE_BITS, "ty")
   write_flags(writer, flags, RECTANGLE_FIELDS)
   if isset(flags, 0) do write_string(writer, rect.nm, "nm")
   if isset(flags, 1) do write_bool(writer, rect.hd, "hd")
-  graphic_elem_type := conv_graphic_elem_type_to_enum(rect.ty)
-  write_enum(writer, u8(graphic_elem_type), GRAPHIC_ELEM_TYPE_BITS, "ty")
-
   if isset(flags, 3) do write_enum(writer, u8(rect.d), SHAPE_DIR_ENUM_BITS, "d")
   if isset(flags, 4) do write_prop_position(writer, rect.p, "p")
   if isset(flags, 5) do write_prop_vector(writer, rect.s, "s")
@@ -1721,12 +1718,10 @@ write_rectangle :: proc(writer: ^Writer, rect: Rectangle, debug_name := "rectang
 write_path :: proc(writer: ^Writer, path: Path, debug_name := "path") {
   flags := transmute(Bit64)path._flags
   begin_debug_info(writer, debug_name, .meta)
+  write_enum(writer, u8(GraphicElemType.sh), GRAPHIC_ELEM_TYPE_BITS, "ty")
   write_flags(writer, flags, PATH_FIELDS)
   if isset(flags, 0) do write_string(writer, path.nm, "nm")
   if isset(flags, 1) do write_bool(writer, path.hd, "hd")
-  graphic_elem_type := conv_graphic_elem_type_to_enum(path.ty)
-  write_enum(writer, u8(graphic_elem_type), GRAPHIC_ELEM_TYPE_BITS, "ty")
-
   if isset(flags, 3) do write_enum(writer, u8(path.d), SHAPE_DIR_ENUM_BITS, "d")
   if isset(flags, 4) do write_prop_bezier_shape(writer, path.ks, "ks")
   end_debug_info(writer)
@@ -1735,12 +1730,10 @@ write_path :: proc(writer: ^Writer, path: Path, debug_name := "path") {
 write_polystar :: proc(writer: ^Writer, star: Polystar, debug_name := "polystar") {
   flags := transmute(Bit64)star._flags
   begin_debug_info(writer, debug_name, .meta)
+  write_enum(writer, u8(GraphicElemType.sr), GRAPHIC_ELEM_TYPE_BITS, "ty")
   write_flags(writer, flags, POLYSTAR_FIELDS)
   if isset(flags, 0) do write_string(writer, star.nm, "nm")
   if isset(flags, 1) do write_bool(writer, star.hd, "hd")
-  graphic_elem_type := conv_graphic_elem_type_to_enum(star.ty)
-  write_enum(writer, u8(graphic_elem_type), GRAPHIC_ELEM_TYPE_BITS, "ty")
-
   if isset(flags, 3) do write_enum(writer, u8(star.d), SHAPE_DIR_ENUM_BITS, "d")
   if isset(flags, 4) do write_prop_position(writer, star.p, "p")
   if isset(flags, 5) do write_prop_scalar(writer, star.or, "or")
@@ -1757,11 +1750,10 @@ write_polystar :: proc(writer: ^Writer, star: Polystar, debug_name := "polystar"
 write_group :: proc(writer: ^Writer, group: Group, debug_name := "group") {
   flags := transmute(Bit64)group._flags
   begin_debug_info(writer, debug_name, .meta)
+  write_enum(writer, u8(GraphicElemType.gr), GRAPHIC_ELEM_TYPE_BITS, "ty")
   write_flags(writer, flags, GROUP_FIELDS)
   if isset(flags, 0) do write_string(writer, group.nm, "nm")
   if isset(flags, 1) do write_bool(writer, group.hd, "hd")
-  graphic_elem_type := conv_graphic_elem_type_to_enum(group.ty)
-  write_enum(writer, u8(graphic_elem_type), GRAPHIC_ELEM_TYPE_BITS, "ty")
   if isset(flags, 3) do write_varint(writer, i128(group.np), "np")
 
   // Group can store any GraphicElement
@@ -1805,13 +1797,11 @@ write_graphic_elem :: proc(writer: ^Writer, graphic_elem: GraphicElement, debug_
 write_transform_shape :: proc(writer: ^Writer, transform_shape: TransformShape, debug_name := "Transform_Shape") {
   flags := transmute(Bit64)transform_shape._flags
   begin_debug_info(writer, debug_name, .meta)
+  write_enum(writer, u8(GraphicElemType.tr), GRAPHIC_ELEM_TYPE_BITS, "ty")
   write_flags(writer, flags, TRANSFORM_SHAPE_FIELDS)
 
   if isset(flags, 0) do write_string(writer, transform_shape.nm, "nm")
   if isset(flags, 1) do write_bool(writer, transform_shape.hd, "hd")
-  graphic_elem_type := conv_graphic_elem_type_to_enum(transform_shape.ty)
-  write_enum(writer, u8(graphic_elem_type), GRAPHIC_ELEM_TYPE_BITS, "ty")
-
   if isset(flags, 3) do write_prop_position(writer, transform_shape.a, "a")
   if isset(flags, 4) do write_prop_position(writer, transform_shape.p, "p")
   if isset(flags, 5) do write_prop_scalar(writer, transform_shape.r, "r")
@@ -1826,13 +1816,10 @@ write_transform_shape :: proc(writer: ^Writer, transform_shape: TransformShape, 
 write_fill :: proc(writer: ^Writer, fill: Fill, debug_name := "Fill") {
   flags := transmute(Bit64)fill._flags
   begin_debug_info(writer, debug_name, .meta)
+  write_enum(writer, u8(GraphicElemType.fl), GRAPHIC_ELEM_TYPE_BITS, "ty")
   write_flags(writer, flags, FILL_FIELDS)
-
   if isset(flags, 0) do write_string(writer, fill.nm, "nm")
   if isset(flags, 1) do write_bool(writer, fill.hd, "hd")
-  graphic_elem_type := conv_graphic_elem_type_to_enum(fill.ty)
-  write_enum(writer, u8(graphic_elem_type), GRAPHIC_ELEM_TYPE_BITS, "ty")
-
   if isset(flags, 3) do write_prop_scalar(writer, fill.o, "o")
   if isset(flags, 4) do write_prop_color(writer, fill.c, "c")
   if isset(flags, 5) do write_enum(writer, u8(fill.r), FILL_RULE_BITS, "r")
@@ -1843,12 +1830,11 @@ write_fill :: proc(writer: ^Writer, fill: Fill, debug_name := "Fill") {
 write_stroke :: proc(writer: ^Writer, stroke: Stroke, debug_name := "Stroke") {
   flags := transmute(Bit64)stroke._flags
   begin_debug_info(writer, debug_name, .meta)
+  write_enum(writer, u8(GraphicElemType.st), GRAPHIC_ELEM_TYPE_BITS, "ty")
   write_flags(writer, flags, STROKE_FIELDS)
 
   if isset(flags, 0) do write_string(writer, stroke.nm, "nm")
   if isset(flags, 1) do write_bool(writer, stroke.hd, "hd")
-  graphic_elem_type := conv_graphic_elem_type_to_enum(stroke.ty)
-  write_enum(writer, u8(graphic_elem_type), GRAPHIC_ELEM_TYPE_BITS, "ty")
   if isset(flags, 3) do write_prop_scalar(writer, stroke.o, "o")
   if isset(flags, 4) do write_enum(writer, u8(stroke.lc), LINE_CAP_BITS, "lc")
   if isset(flags, 5) do write_enum(writer, u8(stroke.lj), LINE_JOIN_BITS, "lj")
@@ -1870,13 +1856,11 @@ write_stroke :: proc(writer: ^Writer, stroke: Stroke, debug_name := "Stroke") {
 write_gradient_fill :: proc(writer: ^Writer, gradient_fill: GradientFill, debug_name := "Gradient_Fill") {
   flags := transmute(Bit64)gradient_fill._flags
   begin_debug_info(writer, debug_name, .meta)
+  write_enum(writer, u8(GraphicElemType.gf), GRAPHIC_ELEM_TYPE_BITS, "ty")
   write_flags(writer, flags, GRADIENT_FILL_FIELDS)
 
   if isset(flags, 0) do write_string(writer, gradient_fill.nm, "nm")
   if isset(flags, 1) do write_bool(writer, gradient_fill.hd, "hd")
-  graphic_elem_type := conv_graphic_elem_type_to_enum(gradient_fill.ty)
-  write_enum(writer, u8(graphic_elem_type), GRAPHIC_ELEM_TYPE_BITS, "ty")
-
   if isset(flags, 3) do write_prop_scalar(writer, gradient_fill.o, "o")
   if isset(flags, 4) do write_prop_gradient(writer, gradient_fill.g, "g")
   if isset(flags, 5) do write_prop_position(writer, gradient_fill.s, "s")
@@ -1914,13 +1898,11 @@ write_stroke_dash :: proc(writer: ^Writer, dash: StrokeDash, debug_name := "Stro
 write_gradient_stroke :: proc(writer: ^Writer, stroke: GradientStroke, debug_name := "Gradient_Stroke") {
   flags := transmute(Bit64)stroke._flags
   begin_debug_info(writer, debug_name, .meta)
+  write_enum(writer, u8(GraphicElemType.gs), GRAPHIC_ELEM_TYPE_BITS, "ty")
   write_flags(writer, flags, GRADIENT_STROKE_FIELDS)
 
   if isset(flags, 0) do write_string(writer, stroke.nm, "nm")
   if isset(flags, 1) do write_bool(writer, stroke.hd, "hd")
-  graphic_elem_type := conv_graphic_elem_type_to_enum(stroke.ty)
-  write_enum(writer, u8(graphic_elem_type), GRAPHIC_ELEM_TYPE_BITS, "ty")
-
   if isset(flags, 3) do write_prop_scalar(writer, stroke.o, "o")
   if isset(flags, 4) do write_enum(writer, u8(stroke.lc), LINE_CAP_BITS, "lc")
   if isset(flags, 5) do write_enum(writer, u8(stroke.lj), LINE_JOIN_BITS, "lj")
@@ -1945,13 +1927,11 @@ write_gradient_stroke :: proc(writer: ^Writer, stroke: GradientStroke, debug_nam
 write_trim_path :: proc(writer: ^Writer, trim_path: TrimPath, debug_name := "TrimPath") {
   flags := transmute(Bit64)trim_path._flags
   begin_debug_info(writer, debug_name, .meta)
+  write_enum(writer, u8(GraphicElemType.tm), GRAPHIC_ELEM_TYPE_BITS, "ty")
   write_flags(writer, flags, FILL_FIELDS)
 
   if isset(flags, 0) do write_string(writer, trim_path.nm, "nm")
   if isset(flags, 1) do write_bool(writer, trim_path.hd, "hd")
-  graphic_elem_type := conv_graphic_elem_type_to_enum(trim_path.ty)
-  write_enum(writer, u8(graphic_elem_type), GRAPHIC_ELEM_TYPE_BITS, "ty")
-
   if isset(flags, 3) do write_prop_scalar(writer, trim_path.s, "s")
   if isset(flags, 4) do write_prop_scalar(writer, trim_path.e, "e")
   if isset(flags, 5) do write_prop_scalar(writer, trim_path.o, "o")

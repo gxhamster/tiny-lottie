@@ -717,7 +717,7 @@ PrecompLayer :: struct {
 ASSET_TYPE_BITS :: 1
 AssetType :: enum {
   PrecompAsset = 0,
-  ImageAsset = 1
+  ImageAsset   = 1,
 }
 
 Asset :: union {
