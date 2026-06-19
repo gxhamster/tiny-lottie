@@ -3,6 +3,7 @@ package main
 import "base:intrinsics"
 import "base:runtime"
 import "core:encoding/varint"
+import "core:fmt"
 import "core:log"
 import "core:math"
 import "core:math/bits"
@@ -569,7 +570,7 @@ ENUM_DEFAULT_BITS :: size_of(u8) * BYTE_BITS
 write_enum :: proc(writer: ^Writer, e: u8, enum_bits: uint = ENUM_DEFAULT_BITS, debug_name: string = "") {
   // note(iyaan): Lottie does not have any enums that requires
   // more than 1 byte of storage.
-  
+
   begin_debug_info(writer, debug_name, .Enum)
   write_bits(writer, int(e), enum_bits)
   end_debug_info(writer)
@@ -769,16 +770,17 @@ write_pallete_idx :: proc(writer: ^Writer, pallete_idx: u8, debug_name := "palle
   end_debug_info(writer)
 }
 
-write_color3 :: proc(writer: ^Writer, color3: Color3, debug_name: string = "color3") {
+write_color3 :: proc(writer: ^Writer, color3: Color3, debug_name: string = "color3", loc := #caller_location) {
   if .ColorPallete in writer.header.optimization_flags {
     color3_as_color4 := Color4{color3.x, color3.y, color3.z, 0}
-    pallete_idx, found := slice.linear_search(writer.header.pallete[:writer.header.pallete_size], color3_as_color4)
+    pallete_idx, found := color4_linear_search(writer.header.pallete[:writer.header.pallete_size], color3_as_color4)
     if found {
       begin_debug_info(writer, debug_name, .meta)
       write_pallete_idx(writer, u8(pallete_idx))
       end_debug_info(writer)
     } else {
-      panic("has the color_pallete_optim_pass has been done yet")
+      panic_string := fmt.tprintf("write_color3: has the color_pallete_optim_pass has been done yet, %v", loc)
+      panic(panic_string)
     }
   } else {
     begin_debug_info(writer, debug_name, .meta)
@@ -787,15 +789,16 @@ write_color3 :: proc(writer: ^Writer, color3: Color3, debug_name: string = "colo
   }
 }
 
-write_color4 :: proc(writer: ^Writer, color4: Color4, debug_name: string = "color4") {
+write_color4 :: proc(writer: ^Writer, color4: Color4, debug_name: string = "color4", loc := #caller_location) {
   if .ColorPallete in writer.header.optimization_flags {
-    pallete_idx, found := slice.linear_search(writer.header.pallete[:writer.header.pallete_size], color4)
+    pallete_idx, found := color4_linear_search(writer.header.pallete[:writer.header.pallete_size], color4)
     if found {
       begin_debug_info(writer, debug_name, .meta)
       write_pallete_idx(writer, u8(pallete_idx))
       end_debug_info(writer)
     } else {
-      panic("has the color_pallete_optim_pass has been done yet")
+      panic_string := fmt.tprintf("write_colo4: has the color_pallete_optim_pass has been done yet, %v", loc)
+      panic(panic_string)
     }
   } else {
     begin_debug_info(writer, debug_name, .meta)
@@ -2241,6 +2244,27 @@ nm_string_shorten_optim_pass :: proc(animation: ^Animation, header: ^Header) -> 
   return true
 }
 
+color4_linear_search :: proc(color4_slice: []Color4, target_color: Color4) -> (idx: int, found: bool) {
+  for i in 0 ..< len(color4_slice) {
+    if color4_slice[i] == target_color {
+      return i, true
+    }
+  }
+  return -1, false
+}
+
+@(test)
+color_linear_search_test :: proc(t: ^testing.T) {
+  colors := [?]Color4{{1, 2, 3, 4}, {5, 6, 7, 8}}
+  idx1, f1 := slice.linear_search(colors[:], Color4{1, 3, 2, 4})
+  idx2, f2 := slice.linear_search(colors[:], Color4{1, 2, 3, 4})
+
+  idx3, f3 := color4_linear_search(colors[:], Color4{1, 2, 3, 4})
+  testing.expect(t, idx3 == 1 && f3 == true)
+  testing.expect(t, idx1 == -1 && f1 == false)
+  testing.expect(t, idx1 == -1 && f1 == false)
+}
+
 color_pallete_optim_pass :: proc(animation: ^Animation, header: ^Header) -> (ok: bool) {
   PalleteInfo :: struct {
     color: Color4,
@@ -2251,7 +2275,7 @@ color_pallete_optim_pass :: proc(animation: ^Animation, header: ^Header) -> (ok:
   cur_pallete_idx := 0
 
   add_to_pallete :: proc(pallete: ^#soa[PALLETE_MAX]PalleteInfo, cur_len: ^int, color4: Color4) {
-    found_idx, found := slice.linear_search(pallete.color[:], color4)
+    found_idx, found := color4_linear_search(pallete.color[:], color4)
     if found {
       pallete[found_idx].count += 1
     } else {
@@ -2310,7 +2334,20 @@ color_pallete_optim_pass :: proc(animation: ^Animation, header: ^Header) -> (ok:
     }
   }
 
-  if len(pallete) < 1 do return false
+  // Also need to descend into Assets
+  for asset in animation.assets {
+    if precomp_asset, ok := asset.(PrecompAsset); ok {
+      for layer in precomp_asset.layers {
+        if shape_layer, ok := layer.(ShapeLayer); ok {
+          for elem in shape_layer.shapes {
+            process_elem(elem, &pallete, &cur_pallete_idx)
+          }
+        }
+      }
+    }
+  }
+
+  if cur_pallete_idx < 1 do return false
   // note(iyaan): Need to put the encoded pallete table somewhere
   // in the header. Serializing the header will come later. This is
   // because information is highly likely to be changed in the optim passes,

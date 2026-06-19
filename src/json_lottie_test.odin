@@ -412,7 +412,7 @@ animation_unmarshal_test :: proc(t: ^testing.T) {
   arena: vmem.Arena
   arena_allocator := vmem.arena_allocator(&arena)
 
-  data, error := os.read_entire_file_from_path("./data/dataset/Burger.json", arena_allocator)
+  data, error := os.read_entire_file_from_path("./data/dataset/bulldog flying on the rocket.json", arena_allocator)
 
   defer delete(data)
 
@@ -452,7 +452,8 @@ animation_unmarshal_test :: proc(t: ^testing.T) {
   anim1, err1 := read_animation(&reader)
   fmt.println(anim, err1)
 
-
+  writer_destroy(&writer)
+  reader_destroy(&reader)
   vmem.arena_destroy(&arena)
 
 }
