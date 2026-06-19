@@ -39,7 +39,7 @@ json_lottie_unmarshal_test :: proc(t: ^testing.T) {
   testing.expect(t, t1.sid == "1234", "Unmarshal value correctly")
 
 
-  unmarshal_object(m, t1)
+  unmarshal_object(m, t1, context.temp_allocator)
   testing.expect_value(t, t1.sid, "1234")
   testing.expect_value(t, t1.a, true)
   for elem, idx in a {
@@ -56,10 +56,12 @@ json_lottie_unmarshal_test :: proc(t: ^testing.T) {
   m1 := json.Object {
     "j" = json.Array{json.Object{"x" = 1, "y" = 2}, json.Object{"x" = 3, "y" = 4}},
   }
-  unmarshal_object(m1, t2)
+  unmarshal_object(m1, t2, context.temp_allocator)
   testing.expect(t, len(t2.j) == 2, "Length should be 2")
   testing.expect_value(t, t2.j[0], PropKeyframeEasingScalar{1, 2})
   testing.expect_value(t, t2.j[1], PropKeyframeEasingScalar{3, 4})
+
+  free_all(context.temp_allocator)
 }
 
 @(test)
@@ -67,7 +69,7 @@ json_lottie_gradient_test :: proc(t: ^testing.T) {
   json_arr := json.Array{0.0, 0.161, 0.184, 0.459, 0.5, 0.196, 0.314, 0.69, 1.0, 0.769, 0.851, 0.961}
   defer free_all()
   p: Gradient
-  unmarshal_array(json_arr, p)
+  unmarshal_array(json_arr, p, context.allocator)
 
   testing.expect(t, len(json_arr) == len(p), "Both lengths should be same")
 
@@ -103,7 +105,7 @@ json_lottie_bezier_shape_test :: proc(t: ^testing.T) {
   }
   defer free_all()
   p := BezierShapeValue{}
-  if err := unmarshal_object(json_obj, p); err != .None {
+  if err := unmarshal_object(json_obj, p, context.temp_allocator); err != .None {
     err_str := fmt.tprintf("Unmarshal returned an error: %v", err)
     testing.expect(t, err == .None, err_str)
   }
@@ -117,6 +119,7 @@ json_lottie_bezier_shape_test :: proc(t: ^testing.T) {
   }
 
   log.destroy_console_logger(logger)
+  free_all(context.temp_allocator)
 }
 
 @(test)
@@ -159,8 +162,9 @@ json_lottie_test_prop_position_keyframe :: proc(t: ^testing.T) {
 
   defer free_all()
   keyframe := PropPositionKeyframe{}
-  err := unmarshal_object(m, keyframe)
+  err := unmarshal_object(m, keyframe, context.temp_allocator)
   log.debug(keyframe)
+  free_all(context.temp_allocator)
 }
 
 @(test)
@@ -212,7 +216,8 @@ json_lottie_parse_transform_test :: proc(t: ^testing.T) {
     log.fatalf("json.parse returned error = %v", err)
   } else {
     tr := Transform{}
-    err := unmarshal_object(value, tr)
+    err := unmarshal_object(value, tr, context.temp_allocator)
+    defer free_all(context.temp_allocator)
     if err != .None {
       log.fatalf("parse_transform returned error = %v, %v", err, tr)
     } else {
@@ -313,7 +318,8 @@ path_unmarshal_test :: proc(t: ^testing.T) {
     log.fatalf("json.parse returned error = %v", err)
   } else {
     path := Path{}
-    err := unmarshal_object(value, path)
+    err := unmarshal_object(value, path, context.temp_allocator)
+    defer free_all(context.temp_allocator)
     if err != .None {
       log.fatalf("unmarshal_object returned error = %v, %v", err, path)
     } else {
@@ -348,7 +354,8 @@ gradient_stroke_unmarshal_test :: proc(t: ^testing.T) {
     log.fatalf("json.parse returned error = %v", err)
   } else {
     gradient := GradientStroke{}
-    err := unmarshal_object(value, gradient)
+    err := unmarshal_object(value, gradient, context.temp_allocator)
+    defer free_all(context.temp_allocator)
     if err != .None {
       log.fatalf("unmarshal_object returned error = %v, %v", err, gradient)
     } else {
@@ -382,7 +389,8 @@ group_unmarshal_test :: proc(t: ^testing.T) {
     log.fatalf("json.parse returned error = %v", err)
   } else {
     group := Group{}
-    err := unmarshal_object(value, group)
+    err := unmarshal_object(value, group, context.temp_allocator)
+    defer free_all(context.temp_allocator)
     if err != .None {
       log.fatalf("unmarshal_object returned error = %v, %v", err, group)
     } else {
@@ -413,8 +421,6 @@ animation_unmarshal_test :: proc(t: ^testing.T) {
   arena_allocator := vmem.arena_allocator(&arena)
 
   data, error := os.read_entire_file_from_path("./data/dataset/bulldog flying on the rocket.json", arena_allocator)
-
-  defer delete(data)
 
   if error != os.ERROR_NONE {
     log.fatalf("could not read from file: %v", error)
@@ -454,6 +460,6 @@ animation_unmarshal_test :: proc(t: ^testing.T) {
 
   writer_destroy(&writer)
   reader_destroy(&reader)
+  free_all(arena_allocator)
   vmem.arena_destroy(&arena)
-
 }

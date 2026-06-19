@@ -138,7 +138,7 @@ parse_color_keyframe :: proc(
   err: LottieError,
 ) {
 
-  if err := unmarshal_object(value, color_keyframe); err != .None {
+  if err := unmarshal_object(value, color_keyframe, allocator); err != .None {
     return req_or_err(required, color_keyframe, err)
   } else {
     return color_keyframe, .None
@@ -166,7 +166,7 @@ parse_prop_color :: proc(
         sid = sid_val,
       }
       color_value: Color4
-      unmarshal_array(obj["k"], color_value) or_return
+      unmarshal_array(obj["k"], color_value, context.allocator) or_return
       single_color.k = color_value
       color_prop = single_color
       return color_prop, .None
@@ -211,7 +211,7 @@ parse_bezier_keyframe :: proc(
   err: LottieError,
 ) {
 
-  if err := unmarshal_object(value, bezier_keyframe); err != .None {
+  if err := unmarshal_object(value, bezier_keyframe, allocator); err != .None {
     return req_or_err(required, bezier_keyframe, err)
   } else {
     return bezier_keyframe, .None
@@ -237,7 +237,7 @@ parse_prop_bezier :: proc(
         a = false,
       }
       bezier_shape_struct := BezierShapeValue{}
-      unmarshal_object(obj["k"], bezier_shape_struct) or_return
+      unmarshal_object(obj["k"], bezier_shape_struct, allocator) or_return
       single_bezier.k = bezier_shape_struct
       bezier_prop = single_bezier
       return bezier_prop, .None
@@ -652,7 +652,7 @@ parse_transform :: proc(
   err: LottieError,
 ) {
   transform_struct := Transform{}
-  unmarshal_object(value, transform_struct) or_return
+  unmarshal_object(value, transform_struct, allocator) or_return
   return transform_struct, .None
 }
 

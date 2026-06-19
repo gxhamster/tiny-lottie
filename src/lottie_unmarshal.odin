@@ -104,7 +104,7 @@ unmarshal_value :: proc(
   return .None
 }
 
-unmarshal_array :: proc(val: json.Value, p: any, allocator := context.allocator) -> (err: LottieError) {
+unmarshal_array :: proc(val: json.Value, p: any, allocator: mem.Allocator) -> (err: LottieError) {
   type_info := reflect.type_info_base(type_info_of(p.id))
   ptr := p.data
 
@@ -196,6 +196,7 @@ _unmarshal_prop_union :: proc(
   object: json.Object,
   field_ptr: rawptr,
   $union_type, $single_variant, $anim_variant: typeid,
+  allocator: mem.Allocator
 ) -> (
   err: LottieError,
 ) {
@@ -207,11 +208,11 @@ _unmarshal_prop_union :: proc(
     // variant. This is true for all the cases of this switch statement
     field_val_ptr^ = anim_variant{}
     field_value_any := any{field_ptr, typeid_of(anim_variant)}
-    unmarshal_object(object, field_value_any) or_return
+    unmarshal_object(object, field_value_any, allocator) or_return
   } else {
     field_val_ptr^ = single_variant{}
     field_value_any := any{field_ptr, typeid_of(single_variant)}
-    unmarshal_object(object, field_value_any)
+    unmarshal_object(object, field_value_any, allocator)
   }
 
   return .None
@@ -221,44 +222,45 @@ _unmarshal_graphic_elem_internal :: proc(
   object: json.Object,
   field_ptr: rawptr,
   $intern_type: typeid,
+  allocator: mem.Allocator
 ) -> (
   err: LottieError,
 ) {
   field_val_ptr := transmute(^GraphicElement)field_ptr
   field_val_ptr^ = intern_type{}
   field_value_any := any{field_ptr, typeid_of(intern_type)}
-  unmarshal_object(object, field_value_any) or_return
+  unmarshal_object(object, field_value_any, allocator) or_return
   return .None
 }
 
 
-_unmarshal_graphic_element_union :: proc(object: json.Object, field_ptr: rawptr) -> (err: LottieError) {
+_unmarshal_graphic_element_union :: proc(object: json.Object, field_ptr: rawptr, allocator: mem.Allocator) -> (err: LottieError) {
   graphic_elem_type_str := parse_string(object["ty"]) or_return
   // Map the string `type` to an enum
   graphic_elem_type := conv_graphic_elem_type_to_enum(graphic_elem_type_str)
   switch graphic_elem_type {
   case .el:
-    _unmarshal_graphic_elem_internal(object, field_ptr, Ellipse) or_return
+    _unmarshal_graphic_elem_internal(object, field_ptr, Ellipse, allocator) or_return
   case .fl:
-    _unmarshal_graphic_elem_internal(object, field_ptr, Fill) or_return
+    _unmarshal_graphic_elem_internal(object, field_ptr, Fill, allocator) or_return
   case .gf:
-    _unmarshal_graphic_elem_internal(object, field_ptr, GradientFill) or_return
+    _unmarshal_graphic_elem_internal(object, field_ptr, GradientFill, allocator) or_return
   case .gs:
-    _unmarshal_graphic_elem_internal(object, field_ptr, GradientStroke) or_return
+    _unmarshal_graphic_elem_internal(object, field_ptr, GradientStroke, allocator) or_return
   case .gr:
-    _unmarshal_graphic_elem_internal(object, field_ptr, Group) or_return
+    _unmarshal_graphic_elem_internal(object, field_ptr, Group, allocator) or_return
   case .sh:
-    _unmarshal_graphic_elem_internal(object, field_ptr, Path) or_return
+    _unmarshal_graphic_elem_internal(object, field_ptr, Path, allocator) or_return
   case .sr:
-    _unmarshal_graphic_elem_internal(object, field_ptr, Polystar) or_return
+    _unmarshal_graphic_elem_internal(object, field_ptr, Polystar, allocator) or_return
   case .rc:
-    _unmarshal_graphic_elem_internal(object, field_ptr, Rectangle) or_return
+    _unmarshal_graphic_elem_internal(object, field_ptr, Rectangle, allocator) or_return
   case .st:
-    _unmarshal_graphic_elem_internal(object, field_ptr, Stroke) or_return
+    _unmarshal_graphic_elem_internal(object, field_ptr, Stroke, allocator) or_return
   case .tr:
-    _unmarshal_graphic_elem_internal(object, field_ptr, TransformShape) or_return
+    _unmarshal_graphic_elem_internal(object, field_ptr, TransformShape, allocator) or_return
   case .tm:
-    _unmarshal_graphic_elem_internal(object, field_ptr, TrimPath) or_return
+    _unmarshal_graphic_elem_internal(object, field_ptr, TrimPath, allocator) or_return
   case .Error, .Size:
     fmt.println(graphic_elem_type_str)
     panic("unknown graphic element type")
@@ -267,7 +269,7 @@ _unmarshal_graphic_element_union :: proc(object: json.Object, field_ptr: rawptr)
   return .None
 }
 
-unmarshal_union :: proc(val: json.Value, p: any, allocator := context.allocator) -> (err: LottieError) {
+unmarshal_union :: proc(val: json.Value, p: any, allocator: mem.Allocator) -> (err: LottieError) {
   type_info := reflect.type_info_base(type_info_of(p.id))
   ptr := p.data
 
@@ -282,17 +284,17 @@ unmarshal_union :: proc(val: json.Value, p: any, allocator := context.allocator)
   object := val.(json.Object)
   switch p.id {
   case PropScalar:
-    _unmarshal_prop_union(object, ptr, PropScalar, PropScalarSingle, PropScalarAnim) or_return
+    _unmarshal_prop_union(object, ptr, PropScalar, PropScalarSingle, PropScalarAnim, allocator) or_return
   case PropVector:
-    _unmarshal_prop_union(object, ptr, PropVector, PropVectorSingle, PropVectorAnim) or_return
+    _unmarshal_prop_union(object, ptr, PropVector, PropVectorSingle, PropVectorAnim, allocator) or_return
   case PropBezier:
-    _unmarshal_prop_union(object, ptr, PropBezier, PropBezierSingle, PropBezierAnim) or_return
+    _unmarshal_prop_union(object, ptr, PropBezier, PropBezierSingle, PropBezierAnim, allocator) or_return
   case PropPosition:
-    _unmarshal_prop_union(object, ptr, PropPosition, PropPositionSingle, PropPositionAnim) or_return
+    _unmarshal_prop_union(object, ptr, PropPosition, PropPositionSingle, PropPositionAnim, allocator) or_return
   case PropColor:
-    _unmarshal_prop_union(object, ptr, PropColor, PropColorSingle, PropColorAnim) or_return
+    _unmarshal_prop_union(object, ptr, PropColor, PropColorSingle, PropColorAnim, allocator) or_return
   case GradientStop:
-    _unmarshal_prop_union(object, ptr, GradientStop, GradientStopSingle, GradientStopAnim) or_return
+    _unmarshal_prop_union(object, ptr, GradientStop, GradientStopSingle, GradientStopAnim, allocator) or_return
   case PropKeyframeEasing:
     {
       is_vector_type := false
@@ -314,7 +316,7 @@ unmarshal_union :: proc(val: json.Value, p: any, allocator := context.allocator)
   case GraphicElement:
     {
       if "ty" in object {
-        _unmarshal_graphic_element_union(object, ptr) or_return
+        _unmarshal_graphic_element_union(object, ptr, allocator) or_return
       }
     }
   case Layer:
@@ -387,7 +389,7 @@ unmarshal_union :: proc(val: json.Value, p: any, allocator := context.allocator)
   return .None
 }
 
-unmarshal_object :: proc(val: json.Value, p: any, allocator := context.allocator) -> (err: LottieError) {
+unmarshal_object :: proc(val: json.Value, p: any, allocator: mem.Allocator) -> (err: LottieError) {
   type_info := reflect.type_info_base(type_info_of(p.id))
   ptr := p.data
 
