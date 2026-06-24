@@ -37,6 +37,13 @@ if "%~1" == "bench" (
     ) else (
         "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64\cl.exe" /EHsc /O2 tools\simdjson\bench.cpp tools\simdjson\simdjson.cpp /link /out:"build\simdjson.exe"
     )
+) else if "%~1" == "sample_app" (
+    shift /1
+    if "%~1" == "debug" (
+        odin build tools\sample_app\ -show-timings -collection:src=src -out:build\sample_app.exe -o:none -debug
+    ) else (
+        odin build tools\sample_app\ -show-timings -collection:src=src -out:build\sample_app.exe -o:speed
+    )
 )
 
 
