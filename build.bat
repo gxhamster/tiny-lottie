@@ -44,6 +44,13 @@ if "%~1" == "bench" (
     ) else (
         odin build tools\sample_app\ -show-timings -collection:src=src -out:build\sample_app.exe -o:speed
     )
+) else if "%~1" == "visualizer" (
+    shift /1
+    if "%~1" == "debug" (
+        odin build tools\visualizer\ -show-timings -collection:src=src -out:build\visualizer.exe -o:none -debug
+    ) else (
+        odin build tools\visualizer\ -show-timings -collection:src=src -out:build\visualizer.exe -o:speed
+    )
 )
 
 
