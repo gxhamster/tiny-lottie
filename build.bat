@@ -51,6 +51,13 @@ if "%~1" == "bench" (
     ) else (
         odin build tools\visualizer\ -show-timings -collection:src=src -out:build\visualizer.exe -o:speed
     )
+) else if "%~1" == "encoder_cli" (
+    shift /1
+    if "%~1" == "debug" (
+        odin build tools\encoder_cli\ -show-timings -collection:src=src -out:build\encoder_cli.exe -o:none -debug
+    ) else (
+        odin build tools\encoder_cli\ -show-timings -collection:src=src -out:build\encoder_cli.exe -o:speed
+    )
 )
 
 
