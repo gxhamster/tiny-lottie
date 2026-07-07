@@ -2258,10 +2258,14 @@ color_linear_search_test :: proc(t: ^testing.T) {
   colors := [?]Color4{{1, 2, 3, 4}, {5, 6, 7, 8}}
   idx1, f1 := slice.linear_search(colors[:], Color4{1, 3, 2, 4})
   idx2, f2 := slice.linear_search(colors[:], Color4{1, 2, 3, 4})
-
+  comparable := intrinsics.type_is_comparable(Color4)
+  testing.expect(t, comparable == true)
+  testing.expect(t, Color4{1, 2, 3, 4} == Color4{1, 2, 3, 4})
+  testing.expect(t, Color4{1, 2, 3, 4} != Color4{1, 2, 2, 4})
+  
   idx3, f3 := color4_linear_search(colors[:], Color4{1, 2, 3, 4})
-  testing.expect(t, idx3 == 1 && f3 == true)
-  testing.expect(t, idx1 == -1 && f1 == false)
+  testing.expect(t, idx3 == 0 && f3 == true)
+  testing.expect(t, idx2 == 0 && f2 == true)
   testing.expect(t, idx1 == -1 && f1 == false)
 }
 
