@@ -1,10 +1,10 @@
 package main
 
-import "core:strconv"
-import "core:fmt"
 import "core:encoding/json"
+import "core:fmt"
 import "core:mem"
 import "core:path/slashpath"
+import "core:strconv"
 import "core:strings"
 
 // The idea is to take a JSON schema file which contains some version
@@ -47,6 +47,8 @@ SchemaError :: enum {
   Unexpected_Token,
   Expected_Colon_After_Key,
   Expected_String_For_Object_Key,
+  Invalid_Const_Type,
+  Duplicate_Object_Key,
 
   // Allocating Errors
   Invalid_Allocator,
@@ -69,23 +71,42 @@ SchemaFields :: enum {
   FieldCount,
 }
 
-Schema :: struct {
-  key:         string,
-  schema_uri:  string,
-  id:          string,
-  version:     i64,
-  type:        DataTypes,
-  title:       string,
-  description: string,
-  allOf:       [dynamic]Schema,
-  oneOf:       [dynamic]Schema,
-  properties:  map[string]Schema,
-  items:       ^Schema,
-  ref:         string, // Only stores the path
-  required:    [dynamic]string,
-  _flags:      bit_set[SchemaFields],
-}
+Array :: distinct [dynamic]Any
+Object :: distinct map[string]Any
 
+// TODO: Check the JSON schema spec later
+Any :: union {
+  string,
+  bool,
+  i64,
+  f64,
+  Array,
+  Object,
+}
+Schema :: struct {
+  key:              string,
+  schema_uri:       string,
+  id:               string,
+  version:          i64,
+  type:             DataTypes,
+  title:            string,
+  description:      string,
+  allOf:            [dynamic]Schema,
+  oneOf:            [dynamic]Schema,
+  properties:       map[string]Schema,
+  items:            ^Schema,
+  ref:              string, // Only stores the path
+  defs:             ^Schema,
+  const:            Any,
+  minimum:          i64,
+  maximum:          i64,
+  exclusiveMinimum: i64,
+  required:         [dynamic]string,
+  _children:        map[string]Schema, // Parsed objects that are not part of schema keywords
+  _flags:           bit_set[SchemaFields],
+}
+// TODO: Do I really need my own Parser struct. Any new fields can just be put
+// into some other state context that will be passed around
 SchemaParser :: struct {
   tok:        json.Tokenizer,
   prev_token: json.Token,
@@ -99,7 +120,7 @@ make_schema_parser :: proc(data: []byte, allocator := context.allocator) -> Sche
 
 make_schema_parser_from_string :: proc(data: string, allocator := context.allocator) -> SchemaParser {
   p: SchemaParser
-  p.tok = json.make_tokenizer(data)
+  p.tok = json.make_tokenizer(data, json.DEFAULT_SPECIFICATION, parse_integers = true)
   p.allocator = allocator
   assert(p.allocator.procedure != nil)
   advance_token(&p)
@@ -176,11 +197,11 @@ parse_object_key :: proc(
   err: SchemaError,
 ) {
   tok := p.curr_token
-  
+
   if tok_err := expect_token(p, .String); tok_err != nil {
-		err = .Expected_String_For_Object_Key
-		return
-	} else {
+    err = .Expected_String_For_Object_Key
+    return
+  } else {
     key, key_err := json.unquote_string(tok, json.DEFAULT_SPECIFICATION, key_allocator, loc)
     if key_err != nil {
       err = .Unquote_Failed
@@ -208,7 +229,20 @@ parse_integer :: proc(p: ^SchemaParser, loc := #caller_location) -> (value: i64,
   return
 }
 
-parse_array_of_schemas :: proc(p: ^SchemaParser, loc := #caller_location) -> (value: [dynamic]Schema, err: SchemaError) {
+parse_float :: proc(p: ^SchemaParser, loc := #caller_location) -> (value: f64, err: SchemaError) {
+  advance_token(p)
+  i, _ := strconv.parse_f64(p.curr_token.text)
+  value = f64(i)
+  return
+}
+
+parse_array_of_schemas :: proc(
+  p: ^SchemaParser,
+  loc := #caller_location,
+) -> (
+  value: [dynamic]Schema,
+  err: SchemaError,
+) {
   err = .None
   expect_token(p, .Open_Bracket) or_return
 
@@ -229,6 +263,125 @@ parse_array_of_schemas :: proc(p: ^SchemaParser, loc := #caller_location) -> (va
   return
 }
 
+parse_array_of_strings :: proc(
+  p: ^SchemaParser,
+  loc := #caller_location,
+) -> (
+  value: [dynamic]string,
+  err: SchemaError,
+) {
+  err = .None
+  expect_token(p, .Open_Bracket) or_return
+
+  array: [dynamic]string
+  array.allocator = p.allocator
+
+  for p.curr_token.kind != .Close_Bracket {
+    elem := parse_string(p, loc) or_return
+    append(&array, elem)
+
+    if parse_comma(p) {
+      break
+    }
+  }
+
+  expect_token(p, .Close_Bracket) or_return
+  value = array
+  return
+}
+
+parse_any_value :: proc(p: ^SchemaParser, loc := #caller_location) -> (value: Any, err: SchemaError) {
+  err = .None
+  token := p.curr_token
+  #partial switch token.kind {
+  case .String:
+    value = parse_string(p, loc) or_return
+    return
+  case .True:
+    value = true
+    return
+  case .False:
+    value = false
+    return
+  case .Integer:
+    value = parse_integer(p, loc) or_return
+    return
+  case .Float:
+    value = parse_float(p, loc) or_return
+    return
+  case .Open_Brace:
+    parse_any_object(p, loc) or_return
+  case .Open_Bracket:
+    parse_any_array(p, loc) or_return
+  }
+  err = .Invalid_Const_Type
+  return
+}
+
+parse_any_object_body :: proc(
+  p: ^SchemaParser,
+  end_token: json.Token_Kind,
+  loc := #caller_location,
+) -> (
+  obj: Object,
+  err: SchemaError,
+) {
+  obj = make(Object, allocator = p.allocator, loc = loc)
+
+  // TODO: Need to cleanup dynamically allocated values
+
+  for p.curr_token.kind != end_token {
+    key := parse_object_key(p, p.allocator, loc) or_return
+    parse_colon(p) or_return
+    elem := parse_any_value(p, loc) or_return
+
+    if key in obj {
+      err = .Duplicate_Object_Key
+      delete(key, p.allocator, loc)
+      return
+    }
+
+    if key != "" {
+      reserve_error := reserve(&obj, len(obj) + 1, loc)
+      if reserve_error == mem.Allocator_Error.Out_Of_Memory {
+        return nil, .Out_Of_Memory
+      }
+      obj[key] = elem
+    }
+
+    if parse_comma(p) {
+      break
+    }
+  }
+  return obj, .None
+}
+
+parse_any_object :: proc(p: ^SchemaParser, loc := #caller_location) -> (value: Object, err: SchemaError) {
+
+}
+
+parse_any_array :: proc(p: ^SchemaParser, loc := #caller_location) -> (value: Array, err: SchemaError) {
+  err = .None
+  expect_token(p, .Open_Bracket) or_return
+
+  array: Array
+  array.allocator = p.allocator
+  // TODO: Need to cleanup array values if they are dynamically allocated
+
+  for p.curr_token.kind != .Close_Bracket {
+    elem := parse_any_value(p, loc) or_return
+    append(&array, elem, loc)
+
+    if parse_comma(p) {
+      break
+    }
+  }
+
+  expect_token(p, .Close_Bracket) or_return
+  value = array
+  return
+}
+
 parse_subschema_body :: proc(
   p: ^SchemaParser,
   end_token: json.Token_Kind,
@@ -238,40 +391,39 @@ parse_subschema_body :: proc(
   err: SchemaError,
 ) {
   for p.curr_token.kind != end_token {
-    token := p.curr_token
     field_key := parse_object_key(p, p.allocator, loc) or_return
     parse_colon(p) or_return
 
     if field_key == "$schema" {
-      if token.kind == .String {
+      if p.curr_token.kind == .String {
         schema.schema_uri = parse_string(p, loc) or_return
       } else {
         err = .Unexpected_Token
         return
       }
     } else if field_key == "$id" {
-      if token.kind == .String {
+      if p.curr_token.kind == .String {
         schema.id = parse_string(p, loc) or_return
       } else {
         err = .Unexpected_Token
         return
       }
     } else if field_key == "$version" {
-      if token.kind == .String {
+      if p.curr_token.kind == .Integer {
         schema.version = parse_integer(p, loc) or_return
       } else {
         err = .Unexpected_Token
         return
       }
     } else if field_key == "$ref" {
-      if token.kind == .String {
+      if p.curr_token.kind == .String {
         schema.ref = parse_string(p, loc) or_return
       } else {
         err = .Unexpected_Token
         return
       }
     } else if field_key == "type" {
-      if token.kind == .String {
+      if p.curr_token.kind == .String {
         type_str := parse_string(p, loc) or_return
         if type_str == "null" do schema.type = .Null
         if type_str == "boolean" do schema.type = .Boolean
@@ -285,21 +437,21 @@ parse_subschema_body :: proc(
         return
       }
     } else if field_key == "title" {
-      if token.kind == .String {
+      if p.curr_token.kind == .String {
         schema.title = parse_string(p, loc) or_return
       } else {
         err = .Unexpected_Token
         return
       }
     } else if field_key == "description" {
-      if token.kind == .String {
+      if p.curr_token.kind == .String {
         schema.description = parse_string(p, loc) or_return
       } else {
         err = .Unexpected_Token
         return
       }
     } else if field_key == "allOf" {
-      if token.kind == .Open_Bracket {
+      if p.curr_token.kind == .Open_Bracket {
         allof_array := parse_array_of_schemas(p, loc) or_return
         schema.allOf = allof_array
       } else {
@@ -307,7 +459,7 @@ parse_subschema_body :: proc(
         return
       }
     } else if field_key == "oneOf" {
-      if token.kind == .Open_Bracket {
+      if p.curr_token.kind == .Open_Bracket {
         oneof_array := parse_array_of_schemas(p, loc) or_return
         schema.oneOf = oneof_array
       } else {
@@ -319,15 +471,44 @@ parse_subschema_body :: proc(
       items_alloc := new(Schema, p.allocator)
       items_alloc^ = items_schema
       schema.items = items_alloc
+    } else if field_key == "$defs" {
+      defs_schema := parse_subschema(p, loc) or_return
+      defs_alloc := new(Schema, p.allocator)
+      defs_alloc^ = defs_schema
+      schema.defs = defs_alloc
+    } else if field_key == "required" {
+      schema.required = parse_array_of_strings(p, loc) or_return
+    } else if field_key == "const" {
+      schema.const = parse_any_value(p, loc) or_return
+    } else if field_key == "minimum" {
+      schema.minimum = parse_integer(p, loc) or_return
+    } else if field_key == "maximum" {
+      schema.maximum = parse_integer(p, loc) or_return
+    } else if field_key == "exclusiveMinimum" {
+      schema.exclusiveMinimum = parse_integer(p, loc) or_return
     } else {
       // Not accepted field
-      err_msg := fmt.tprintfln("not an accepted field, %v", field_key)
-      panic(err_msg)
+      // note: If the field is not an official field from JSON schema
+      // it still need to be parsed because a $ref might reference it later.
+      // so we cant just throw an error here
+
+      if p.curr_token.kind == .Open_Brace {
+        child_schema := parse_subschema(p, loc) or_return
+        // FIX: This would not use the correct allocator here
+        schema._children.allocator = p.allocator
+        schema._children[field_key] = child_schema
+      } else {
+        // If not an object it just doesnt make sense to be there.
+        // A more sensible approach would be to skip it.
+        // For now lets just PANIC!!!
+        err_msg := fmt.tprintfln("not an accepted field, %v", field_key)
+        panic(err_msg)
+      }
     }
 
     if parse_comma(p) {
-			break
-		}
+      break
+    }
 
   }
   return
